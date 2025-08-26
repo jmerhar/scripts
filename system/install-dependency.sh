@@ -9,7 +9,7 @@ set -e
 # --- 1. Argument Validation ---
 # Check if exactly one argument (the package name) is provided.
 if [ "$#" -ne 1 ]; then
-    echo "Usage: $0 <package_name>"
+    echo "Usage: $(basename "$0") <package_name>"
     exit 1
 fi
 

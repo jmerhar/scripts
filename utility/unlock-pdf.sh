@@ -43,7 +43,8 @@ ensure_dependency() {
 # Check if exactly two arguments (password and input file) are provided.
 if [ "$#" -ne 2 ]; then
     # Print usage instructions if the arguments are incorrect.
-    echo "Usage: $0 <password> <input.pdf>"
+    # Use 'basename' to only show the script's filename.
+    echo "Usage: $(basename "$0") <password> <input.pdf>"
     exit 1
 fi
 
