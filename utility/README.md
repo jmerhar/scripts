@@ -15,7 +15,7 @@ A script to decrypt a password-protected PDF file.
 
 #### Dependencies
 -   **`qpdf`**: The core command-line tool used for PDF manipulation.
--   **`install-dependency.sh`**: (Optional) Must be in the system's `PATH` for automatic installation of `qpdf`.
+-   **`install-dependency`**: (Optional) Must be in the system's `PATH` for automatic installation of `qpdf`.
 
 #### Usage
 Run the script with the PDF password and the input filename as arguments.
