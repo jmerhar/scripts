@@ -1,29 +1,60 @@
 # Shell Scripts Collection
 
-Welcome to my personal collection of shell scripts! This repository is a curated set of useful scripts designed to automate various tasks on Unix-like operating systems (macOS, Linux).
+This repository contains a curated collection of scripts designed for the automation of various tasks within Unix-like operating environments, including macOS and Linux.
 
 ## Repository Structure
 
-The repository is organized into two main directories:
+The repository is structured into two primary directories:
 
--   `/system`: Contains low-level scripts for system administration and dependency management. These are often called by other scripts.
--   `/utility`: Contains high-level, user-facing scripts that perform specific, practical tasks.
+* `/system`: This directory houses low-level scripts intended for system administration and dependency management, which are typically invoked by other scripts.
 
-Each directory has its own `README.md` with more detailed information about the scripts it contains.
+* `/utility`: This directory contains high-level, user-facing scripts designed to execute specific, practical tasks.
+
+Each directory includes a dedicated `README.md` file that provides more detailed information regarding its contents.
 
 ## Usage
 
-To use a script, you can either clone this repository and run it from the local directory or copy the script to a directory in your system's `PATH` (e.g., `/usr/local/bin`) to make it globally accessible.
+There are two primary methods for installing and utilizing these scripts.
 
-Ensure that the scripts are executable:
-```bash
-chmod +x path/to/script.sh
-```
+### macOS with Homebrew (Recommended)
+
+For users on macOS with Homebrew, the scripts can be installed directly from a custom tap, which manages the installation and ensures they are available in the system's PATH.
+
+1.  **Add the custom tap:**
+    ```bash
+    brew tap jmerhar/scripts
+    ```
+
+2.  **Install a specific script:**
+    Once the tap is configured, individual scripts can be installed using `brew install`.
+    ```bash
+    # Example: Install the 'unlock-pdf' script
+    brew install unlock-pdf
+    ```
+
+### Manual Installation
+
+For other Unix-like systems, or for users who prefer not to use Homebrew, the scripts can be installed manually.
+
+1.  **Clone the repository:**
+    ```bash
+    git clone [https://github.com/jmerhar/scripts.git](https://github.com/jmerhar/scripts.git)
+    cd scripts
+    ```
+
+2.  **Make the script executable:**
+    It is necessary to ensure that the script has execute permissions.
+    ```bash
+    chmod +x utility/unlock-pdf.sh
+    ```
+
+3.  **Run the script:**
+    The script can be executed from its location or, for global accessibility, moved to a directory included in the system's `PATH` variable (e.g., `/usr/local/bin`).
 
 ## Contributing
 
-This is a personal collection, but suggestions and improvements are welcome. Feel free to open an issue or submit a pull request if you have an idea for a new script or a way to improve an existing one.
+Suggestions for improvement to this collection are welcome. Contributions can be made by opening an issue to discuss potential changes or by submitting a pull request with proposed enhancements.
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is distributed under the terms of the MIT License. For further details, please refer to the [LICENSE](LICENSE) file.
