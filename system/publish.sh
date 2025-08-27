@@ -20,6 +20,10 @@
 set -e # Exit immediately if a command exits with a non-zero status.
 set -x # Print each command executed to standard error for debugging purposes.
 
+# --- Configuration ---
+# The parent directory containing all repositories, which is the current working directory.
+PARENT_DIR=$(pwd)
+
 # --- Script Functions ---
 
 # Parses the script path to get the formula name and the README path.
@@ -40,7 +44,7 @@ function parse_script_info() {
   FORMULA_NAME=${FORMULA_NAME%.*}
 
   # The path to the README file. Assumes the README is in the same directory as the script.
-  README_PATH="$(dirname "${SCRIPT_PATH}")/README.md"
+  README_PATH="${PARENT_DIR}/${SCRIPTS_REPO}/$(dirname "${SCRIPT_PATH}")/README.md"
 }
 
 # Parses the script's README for its description and dependencies.
@@ -98,7 +102,7 @@ function parse_readme() {
 
 # Generates the Homebrew formula file.
 function generate_homebrew_formula() {
-  local formula_file="${PWD}/../${HOMEBREW_TAP_REPO}/Formula/${FORMULA_NAME}.rb"
+  local formula_file="${PARENT_DIR}/${HOMEBREW_TAP_REPO}/Formula/${FORMULA_NAME}.rb"
 
   # Use awk to convert hyphenated name to CamelCase.
   local class_name=$(echo "${FORMULA_NAME}" | awk -F'-' '{
@@ -141,10 +145,10 @@ function generate_deb_package() {
     return 1
   fi
 
-  local package_dir="${PWD}/${FORMULA_NAME}-${VERSION}"
+  local package_dir="${PARENT_DIR}/${SCRIPTS_REPO}/dist/${FORMULA_NAME}-${VERSION}"
   local control_dir="${package_dir}/DEBIAN"
   local bin_dir="${package_dir}/usr/local/bin"
-  local script_file="${PWD}/${SCRIPT_PATH}"
+  local script_file="${PARENT_DIR}/${SCRIPT_PATH}"
 
   # Remove the 'v' prefix from the version number to comply with Debian standards.
   local deb_version=${VERSION#v}
@@ -196,6 +200,7 @@ EOF
     return 1
   fi
 }
+
 
 # --- Main Logic ---
 function main() {
