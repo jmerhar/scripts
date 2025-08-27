@@ -75,7 +75,7 @@ jobs:
               if head -n 1 "scripts/${script_path}" | grep -qE '^#!'; then
                 echo "--- Publishing changed script: ${script_path} ---"
                 # Call the generic publish script with the current script path.
-                ./scripts/system/publish.sh "${script_path}"
+                ./scripts/system/publish-script.sh "${script_path}"
               fi
             fi
           done
