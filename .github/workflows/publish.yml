@@ -93,17 +93,22 @@ jobs:
           # The DEB_DIST_DIR environment variable is now used for the source.
           cp ${DEB_DIST_DIR}/*.deb ./apt-scripts/pool/main/
 
-      - name: Generate GPG key and sign APT repository
+      - name: Import GPG key and sign APT repository
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           cd apt-scripts
-          gpg --batch --passphrase '' --quick-gen-key "jmerhar-bot" default default
+          # Import the GPG key from the secret.
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import --passphrase "$GPG_PASSPHRASE"
           
           # Use apt-ftparchive to generate the Packages and Release files.
           dpkg-scanpackages --arch=all pool/ > dists/stable/main/binary-all/Packages
           gzip -c dists/stable/main/binary-all/Packages > dists/stable/main/binary-all/Packages.gz
           
           apt-ftparchive -c apt-ftparchive.conf release dists/stable/ > dists/stable/Release
-          gpg --default-key "jmerhar-bot" -abs -o dists/stable/InRelease dists/stable/Release
+          # Sign the release file using the imported key.
+          gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --default-key "jmerhar-bot" -abs -o dists/stable/InRelease dists/stable/Release
 
       - name: Commit and push APT repository changes
         run: |
