@@ -148,7 +148,7 @@ function generate_deb_package() {
   local package_dir="${PARENT_DIR}/${SCRIPTS_REPO}/dist/${FORMULA_NAME}-${VERSION}"
   local control_dir="${package_dir}/DEBIAN"
   local bin_dir="${package_dir}/usr/local/bin"
-  local script_file="${PARENT_DIR}/${SCRIPT_PATH}"
+  local script_file="${PARENT_DIR}/${SCRIPTS_REPO}/${SCRIPT_PATH}"
 
   # Remove the 'v' prefix from the version number to comply with Debian standards.
   local deb_version=${VERSION#v}
