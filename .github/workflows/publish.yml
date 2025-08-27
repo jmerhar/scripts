@@ -1,0 +1,113 @@
+# This workflow automates the publication of a new script release.
+# It is triggered automatically when a new release is published.
+name: Publish New Script Release
+
+# Controls when the workflow is triggered.
+on:
+  release:
+    types: [published]
+
+# Defines a single job that will run on an Ubuntu environment.
+jobs:
+  publish-all-scripts:
+    runs-on: ubuntu-latest
+    
+    # We need to give the job permissions to write to other repos.
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout main scripts repo
+        uses: actions/checkout@v3
+        with:
+          path: scripts
+          token: ${{ secrets.PAT }}
+
+      - name: Checkout Homebrew tap repo
+        uses: actions/checkout@v3
+        with:
+          repository: jmerhar/homebrew-scripts
+          path: homebrew-scripts
+          token: ${{ secrets.PAT }}
+
+      - name: Checkout APT repo
+        uses: actions/checkout@v3
+        with:
+          repository: jmerhar/apt-scripts
+          path: apt-scripts
+          token: ${{ secrets.PAT }}
+
+      - name: Setup Git for multi-repo push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Prepare environment variables
+        run: |
+          echo "GITHUB_USER=jmerhar" >> $GITHUB_ENV
+          echo "SCRIPTS_REPO=scripts" >> $GITHUB_ENV
+          echo "HOMEBREW_TAP_REPO=homebrew-scripts" >> $GITHUB_ENV
+          echo "APT_REPO=apt-scripts" >> $GITHUB_ENV
+          echo "MAINTAINER_INFO=Jure Merhar <dev@merhar.si>" >> $GITHUB_ENV
+          echo "TARBALL_URL=${{ github.event.release.tarball_url }}" >> $GITHUB_ENV
+          echo "VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+          echo "SHA256_CHECKSUM=$(curl -sSL ${{ github.event.release.tarball_url }} | shasum -a 256 | awk '{print $1}')" >> $GITHUB_ENV
+          echo "DEB_DIST_DIR=./scripts/dist" >> $GITHUB_ENV
+
+      # This is the new core logic. It finds the previous tag and only publishes changed scripts.
+      - name: Publish changed scripts
+        run: |
+          # Fetch all tags to find the previous one.
+          git -C scripts fetch --tags
+          
+          # Get the tag of the previous release, excluding the current one.
+          PREV_TAG=$(git -C scripts tag --sort=-creatordate | sed '2!d')
+          
+          echo "Previous tag found: ${PREV_TAG}"
+          echo "Current tag: ${{ github.event.release.tag_name }}"
+          
+          # Find all files changed between the previous and current release.
+          git -C scripts diff --name-only "${PREV_TAG}" "${{ github.event.release.tag_name }}" | \
+          while read script_path; do
+            # Check if the file exists and is a regular file.
+            if [ -f "scripts/${script_path}" ]; then
+              # Check if the file's first line starts with a shebang (#!).
+              if head -n 1 "scripts/${script_path}" | grep -qE '^#!'; then
+                echo "--- Publishing changed script: ${script_path} ---"
+                # Call the generic publish script with the current script path.
+                ./scripts/system/publish.sh "${script_path}"
+              fi
+            fi
+          done
+
+      - name: Commit and push Homebrew changes
+        run: |
+          cd homebrew-scripts
+          git add .
+          git commit -m "chore: Automated update from new release ${{ github.event.release.tag_name }}" || echo "No Homebrew changes to commit."
+          git push
+
+      - name: Prepare APT repository
+        run: |
+          # Copy all generated .deb files to the APT repository.
+          # The DEB_DIST_DIR environment variable is now used for the source.
+          cp ${DEB_DIST_DIR}/*.deb ./apt-scripts/pool/main/
+
+      - name: Generate GPG key and sign APT repository
+        run: |
+          cd apt-scripts
+          gpg --batch --passphrase '' --quick-gen-key "jmerhar-bot" default default
+          
+          # Use apt-ftparchive to generate the Packages and Release files.
+          dpkg-scanpackages --arch=all pool/ > dists/stable/main/binary-all/Packages
+          gzip -c dists/stable/main/binary-all/Packages > dists/stable/main/binary-all/Packages.gz
+          
+          apt-ftparchive -c apt-ftparchive.conf release dists/stable/ > dists/stable/Release
+          gpg --default-key "jmerhar-bot" -abs -o dists/stable/InRelease dists/stable/Release
+
+      - name: Commit and push APT repository changes
+        run: |
+          cd apt-scripts
+          git add .
+          git commit -m "chore: Automated APT repo update from new release ${{ github.event.release.tag_name }}" || echo "No APT changes to commit."
+          git push
