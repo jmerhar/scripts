@@ -54,7 +54,6 @@ jobs:
           echo "SHA256_CHECKSUM=$(curl -sSL ${{ github.event.release.tarball_url }} | shasum -a 256 | awk '{print $1}')" >> $GITHUB_ENV
           echo "DEB_DIST_DIR=./scripts/dist" >> $GITHUB_ENV
 
-      # This is the new core logic. It finds the previous tag and only publishes changed scripts.
       - name: Publish changed scripts
         run: |
           # Fetch all tags to find the previous one.
@@ -89,9 +88,14 @@ jobs:
 
       - name: Prepare APT repository
         run: |
-          # Copy all generated .deb files to the APT repository.
-          # The DEB_DIST_DIR environment variable is now used for the source.
-          cp ${DEB_DIST_DIR}/*.deb ./apt-scripts/pool/main/
+          # Check if the distribution directory exists and contains any .deb files.
+          if [ -d "${DEB_DIST_DIR}" ] && [ -n "$(find "${DEB_DIST_DIR}" -maxdepth 1 -name '*.deb' -print -quit)" ]; then
+            echo "New .deb packages found. Copying to APT repository..."
+            # Copy all generated .deb files to the APT repository.
+            cp ${DEB_DIST_DIR}/*.deb ./apt-scripts/pool/main/
+          else
+            echo "No new .deb packages to prepare."
+          fi
 
       - name: Import GPG key and sign APT repository
         env:
