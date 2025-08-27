@@ -18,6 +18,7 @@
 # - DEB_DIST_DIR: The directory where final .deb files will be placed.
 
 set -e # Exit immediately if a command exits with a non-zero status.
+set -x # Print each command executed to standard error for debugging purposes.
 
 # --- Script Functions ---
 
