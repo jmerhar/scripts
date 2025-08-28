@@ -128,7 +128,7 @@ jobs:
           test -s dists/stable/Release || (echo "::error::Failed to generate a valid Release file. Check apt-ftparchive.conf." && exit 1)
           
           # Sign the release file using the imported key.
-          gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --default-key "jmerhar-bot" -abs -o dists/stable/InRelease dists/stable/Release
+          gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --default-key "jmerhar-bot" --clearsign -o dists/stable/InRelease dists/stable/Release
           echo "--- Listing final dists/stable directory ---"
           ls -l dists/stable/
 
