@@ -127,6 +127,9 @@ jobs:
           # CRITICAL: Verify that the Release file was created and is not empty.
           test -s dists/stable/Release || (echo "::error::Failed to generate a valid Release file. Check apt-ftparchive.conf." && exit 1)
           
+          # Remove the old InRelease file to prevent GPG from failing.
+          rm -f dists/stable/InRelease
+          
           # Sign the release file using the imported key.
           gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --default-key "jmerhar-bot" --clearsign -o dists/stable/InRelease dists/stable/Release
           echo "--- Listing final dists/stable directory ---"
