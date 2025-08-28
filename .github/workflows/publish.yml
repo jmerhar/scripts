@@ -102,7 +102,6 @@ jobs:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
-          set -x # Enable debug printing
           cd apt-scripts
           
           # Import the GPG key from the secret.
@@ -110,19 +109,10 @@ jobs:
           
           # Generate the Packages file.
           dpkg-scanpackages --arch=all pool/ > dists/stable/main/binary-all/Packages
-          echo "--- Listing Packages file ---"
-          ls -l dists/stable/main/binary-all/Packages
-          echo "--- Contents of Packages file ---"
-          cat dists/stable/main/binary-all/Packages
-          
           gzip -c dists/stable/main/binary-all/Packages > dists/stable/main/binary-all/Packages.gz
           
           # Generate the Release file.
           apt-ftparchive -c apt-ftparchive.conf release dists/stable/ > dists/stable/Release
-          echo "--- Listing Release file ---"
-          ls -l dists/stable/Release
-          echo "--- Contents of Release file ---"
-          cat dists/stable/Release
           
           # CRITICAL: Verify that the Release file was created and is not empty.
           test -s dists/stable/Release || (echo "::error::Failed to generate a valid Release file. Check apt-ftparchive.conf." && exit 1)
@@ -130,10 +120,8 @@ jobs:
           # Remove the old InRelease file to prevent GPG from failing.
           rm -f dists/stable/InRelease
           
-          # Sign the release file using the imported key.
+          # Sign the release file using the clearsign method for the InRelease file.
           gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --default-key "jmerhar-bot" --clearsign -o dists/stable/InRelease dists/stable/Release
-          echo "--- Listing final dists/stable directory ---"
-          ls -l dists/stable/
 
       - name: Commit and push APT repository changes
         run: |
