@@ -18,7 +18,7 @@ if ! command -v qpdf &> /dev/null; then
             echo "Please install it using APT: 'sudo apt-get install qpdf'" >&2
             ;;
         *)
-            echo "Please install 'qpdf' using your system's package manager." >&2
+            echo "Please install it using your system's package manager." >&2
             ;;
     esac
     exit 1
