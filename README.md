@@ -1,5 +1,7 @@
 # Shell Scripts Collection
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 This repository contains a curated collection of scripts designed for the automation of various tasks within Unix-like operating environments, including macOS and Linux.
 
 ## Repository Structure
