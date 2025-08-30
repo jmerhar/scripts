@@ -46,6 +46,7 @@ jobs:
           echo "HOMEPAGE_URL=https://github.com/jmerhar/scripts" >> $GITHUB_ENV
           echo "HOMEBREW_FORMULA_DIR=./dist/homebrew" >> $GITHUB_ENV
           echo "DEB_PACKAGE_DIR=./dist/debian" >> $GITHUB_ENV
+          echo "CONFIG_DIR=scripts/conf" >> $GITHUB_ENV
           echo "MAINTAINER_INFO=Jure Merhar <dev@merhar.si>" >> $GITHUB_ENV
           echo "TARBALL_URL=${{ github.event.release.tarball_url }}" >> $GITHUB_ENV
           echo "VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
@@ -62,7 +63,7 @@ jobs:
           git -C scripts diff --name-only "${PREV_TAG}" "${{ github.event.release.tag_name }}" | \
           while read script_path; do
             if [ -f "scripts/${script_path}" ] && head -n 1 "scripts/${script_path}" | grep -qE '^#!'; then
-              echo "--- Publishing changed script: ${script_path} ---"
+              echo "--- Packaging script: ${script_path} ---"
               ./scripts/system/package-script.sh "scripts/${script_path}"
             fi
           done
@@ -123,3 +124,4 @@ jobs:
           git add .
           git commit -m "chore: automated APT repo update for release ${{ github.event.release.tag_name }}" || echo "No APT changes to commit."
           git push
+

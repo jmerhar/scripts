@@ -39,6 +39,7 @@ This script is not intended for direct use on the command line. Instead, it is d
 * `HOMEPAGE_URL`: The URL for the project's homepage (e.g., `https://github.com/jmerhar/scripts`).
 * `HOMEBREW_FORMULA_DIR`: The local output directory for the generated Homebrew formula files.
 * `DEB_PACKAGE_DIR`: The local output directory for the generated Debian package files.
+* `CONFIG_DIR`: The directory where source config files are located.
 * `MAINTAINER_INFO`: The maintainer's name and email for the Debian packages.
 * `TARBALL_URL`: The URL to the tarball of the new release.
 * `VERSION`: The version string (e.g., `v1.0.1`).
