@@ -73,7 +73,7 @@ EOF
 }
 
 #######################################
-# Loads configuration from standard system locations.
+# Loads configuration from standard system locations, detecting the install prefix.
 # Globals:
 #   SCRIPT_NAME
 # Arguments:
@@ -82,14 +82,27 @@ EOF
 #   Sources the config file, modifying global config variables.
 #######################################
 load_configuration() {
-  local system_conf="/etc/${SCRIPT_NAME}.conf"
-  local local_conf="/usr/local/etc/${SCRIPT_NAME}.conf"
+  local script_path
+  script_path=$(command -v "$0")
   local config_to_load=""
 
-  if [[ -f "${system_conf}" ]]; then
-    config_to_load="${system_conf}"
-  elif [[ -f "${local_conf}" ]]; then
-    config_to_load="${local_conf}"
+  if [[ -n "${script_path}" ]]; then
+    local real_path
+    real_path=$(realpath "${script_path}")
+    local bin_dir
+    bin_dir=$(dirname "${real_path}")
+    local prefix
+    prefix=$(dirname "${bin_dir}")
+
+    # Check for config location relative to the prefix
+    if [[ -f "${prefix}/etc/${SCRIPT_NAME}.conf" ]]; then
+      config_to_load="${prefix}/etc/${SCRIPT_NAME}.conf"
+    fi
+  fi
+
+  # Fallback to standard location if the prefix-based one wasn't found
+  if [[ -z "${config_to_load}" && -f "/etc/${SCRIPT_NAME}.conf" ]]; then
+    config_to_load="/etc/${SCRIPT_NAME}.conf"
   fi
 
   if [[ -n "${config_to_load}" ]]; then
@@ -152,7 +165,6 @@ validate_configuration() {
   local unset_vars=()
 
   for var_name in "${required_vars[@]}"; do
-    # Using indirect parameter expansion to check the variable by its name
     if [[ -z "${!var_name}" ]]; then
       unset_vars+=("${var_name}")
     fi
@@ -247,15 +259,11 @@ log_debug() {
 run_command() {
   log_debug "Running command: $*"
   if [[ -n "${LOG_FILE}" ]]; then
-    # Execute and append both stdout and stderr to the log file,
-    # while still showing them on the console.
     "$@" 2>&1 | tee -a "${LOG_FILE}"
   else
-    # Execute without logging to a file.
     "$@"
   fi
 }
-
 
 #######################################
 # Verifies that a source directory exists and is not empty.
@@ -410,3 +418,4 @@ main() {
 }
 
 main "$@"
+
