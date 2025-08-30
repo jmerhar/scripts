@@ -1,23 +1,26 @@
 #!/bin/bash
 #
-# Creates a Homebrew formula and a Debian package for a given script.
+# A generic package-file generator designed to be run from a CI/CD workflow.
 #
-# This script is designed to be run from a GitHub Actions workflow and is
-# configured via environment variables. It parses a script's corresponding
-# README.md for metadata like its description and dependencies.
+# It takes the path to a script as an argument, parses metadata from a
+# corresponding README.md file (expected in the same directory), and generates
+# the necessary package files (.rb for Homebrew and .deb for Debian).
+#
+# The script is configured entirely through environment variables and places its
+# output into local directories specified by those variables, decoupling it
+# from any specific repository structure.
 #
 # Usage:
 #   ./publish-script.sh <path-to-script>
 #
 # Environment variables:
-#   - GITHUB_USER: GitHub username (e.g., "jmerhar").
-#   - SCRIPTS_REPO: Name of the main scripts repository.
-#   - HOMEBREW_TAP_REPO: Name of the Homebrew tap repository.
+#   - HOMEPAGE_URL: The URL for the project's homepage.
+#   - HOMEBREW_FORMULA_DIR: Local output directory for Homebrew formula files.
+#   - DEB_PACKAGE_DIR: Local output directory for Debian package files.
 #   - MAINTAINER_INFO: Maintainer's name and email for Debian packages.
 #   - TARBALL_URL: URL to the new release tarball.
 #   - VERSION: The version string (e.g., "v1.0.1").
 #   - SHA256_CHECKSUM: The checksum of the tarball.
-#   - DEB_DIST_DIR: Directory where final .deb files will be placed.
 
 set -o errexit
 set -o nounset
@@ -45,33 +48,31 @@ log_error() {
 #   Writes usage text to stdout.
 #######################################
 show_usage() {
-  local script_name
-  script_name=$(basename "$0")
-  echo "Usage: ${script_name} <path-to-script>"
-  echo "Example: ${script_name} utility/unlock-pdf.sh"
+  local script_basename
+  script_basename=$(basename "$0")
+  echo "Usage: ${script_basename} <path-to-script>"
+  echo "Example: ${script_basename} utility/unlock-pdf.sh"
 }
 
 #######################################
-# Parses the script path to set global script and formula name variables.
-# Globals:
-#   SCRIPTS_REPO
+# Parses the script path to set global script and name variables.
 # Arguments:
 #   Path to the script to be published.
 # Outputs:
-#   Sets script_path, readme_path, and formula_name global variables.
+#   Sets source_script_path, readme_path, and script_name global variables.
 #######################################
 parse_script_info() {
-  script_path="$1"
-  formula_name=$(basename "${script_path%.*}")
+  source_script_path="$1"
+  script_name=$(basename "${source_script_path%.*}")
   # Assumes README is in the same directory as the script.
-  readme_path="${SCRIPTS_REPO}/$(dirname "${script_path}")/README.md"
+  readme_path="$(dirname "${source_script_path}")/README.md"
 }
 
 #######################################
 # Parses the script's README for its description and dependencies.
 # Globals:
 #   readme_path
-#   formula_name
+#   script_name
 # Arguments:
 #   None
 # Outputs:
@@ -85,46 +86,47 @@ parse_readme() {
     exit 1
   fi
 
-  description=$(awk -v script_name="### \`*${formula_name}.*\`*" '
-      BEGIN {found=0}
-      $0 ~ script_name {found=1; next}
-      found && !/^[[:space:]]*$/ {
-          desc=$0;
-          gsub(/^[[:space:]]+|[[:space:]]+$/, "", desc);
-          print desc;
-          exit
-      }
+  description=$(awk -v script_heading="### \`*${script_name}.*\`*" '
+    BEGIN {found=0}
+    $0 ~ script_heading {found=1; next}
+    found && !/^[[:space:]]*$/ {
+      desc=$0;
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", desc);
+      print desc;
+      exit
+    }
   ' "${readme_path}")
 
   if [[ -z "${description}" ]]; then
-    log_error "Could not find description for '${formula_name}' in README.md."
+    log_error "Could not find description for '${script_name}' in README.md."
     exit 1
   fi
 
   dependencies=$(awk '
-      /^#### Dependencies/ { in_deps = 1; next }
-      in_deps && /^-/ {
-          if (match($0, /`[^`]+`/)) {
-              dep = substr($0, RSTART + 1, RLENGTH - 2);
-              if (length(dep) > 0) printf "  depends_on \"%s\"\n", dep;
-          }
+    /^#### Dependencies/ { in_deps = 1; next }
+    in_deps && /^-/ {
+      if (match($0, /`[^`]+`/)) {
+        dep = substr($0, RSTART + 1, RLENGTH - 2);
+        if (length(dep) > 0) printf "  depends_on \"%s\"\n", dep;
       }
-      in_deps && !/^-/ { in_deps = 0 }
+    }
+    in_deps && !/^-/ { in_deps = 0 }
   ' "${readme_path}")
 }
 
 #######################################
 # Generates the Homebrew formula file.
 # Globals:
-#   HOMEBREW_TAP_REPO, formula_name, GITHUB_USER, SCRIPTS_REPO,
-#   TARBALL_URL, SHA256_CHECKSUM, dependencies, script_path
+#   HOMEBREW_FORMULA_DIR, script_name, HOMEPAGE_URL,
+#   TARBALL_URL, SHA256_CHECKSUM, dependencies, source_script_path
 # Arguments:
 #   None
 #######################################
 generate_homebrew_formula() {
-  local formula_file="${HOMEBREW_TAP_REPO}/Formula/${formula_name}.rb"
+  mkdir -p "${HOMEBREW_FORMULA_DIR}"
+  local formula_file="${HOMEBREW_FORMULA_DIR}/${script_name}.rb"
   local class_name
-  class_name=$(echo "${formula_name}" | awk -F'-' '{
+  class_name=$(echo "${script_name}" | awk -F'-' '{
     for (i=1; i<=NF; i++) {
       printf "%s", toupper(substr($i,1,1)) substr($i,2)
     }
@@ -137,14 +139,14 @@ generate_homebrew_formula() {
 # This file was generated by the publish-script.sh script.
 class ${class_name} < Formula
   desc "${description}"
-  homepage "https://github.com/${GITHUB_USER}/${SCRIPTS_REPO}"
+  homepage "${HOMEPAGE_URL}"
   url "${TARBALL_URL}"
   sha256 "${SHA256_CHECKSUM}"
 
 ${dependencies}
 
   def install
-    bin.install "${script_path}" => "${formula_name}"
+    bin.install "${source_script_path}" => "${script_name}"
   end
 end
 EOF
@@ -153,7 +155,7 @@ EOF
 #######################################
 # Generates the Debian (.deb) package.
 # Globals:
-#   DEB_DIST_DIR, formula_name, VERSION, script_path, dependencies,
+#   DEB_PACKAGE_DIR, script_name, VERSION, source_script_path, dependencies,
 #   MAINTAINER_INFO, description
 # Arguments:
 #   None
@@ -164,17 +166,17 @@ generate_deb_package() {
   echo "Generating Debian (.deb) package..."
 
   if ! command -v dpkg-deb &> /dev/null; then
-    log_error "Warning: 'dpkg-deb' not found. Skipping .deb package generation."
+    log_error "'dpkg-deb' not found. Skipping .deb package generation."
     return 1
   fi
 
   local deb_version="${VERSION#v}"
-  local package_dir="${DEB_DIST_DIR}/${formula_name}-${VERSION}"
+  local package_dir="${DEB_PACKAGE_DIR}/${script_name}-${VERSION}"
   local control_dir="${package_dir}/DEBIAN"
   local bin_dir="${package_dir}/usr/local/bin"
-  local deb_file="${DEB_DIST_DIR}/${formula_name}_${deb_version}_all.deb"
+  local deb_file="${DEB_PACKAGE_DIR}/${script_name}_${deb_version}_all.deb"
 
-  mkdir -p "${DEB_DIST_DIR}"
+  mkdir -p "${DEB_PACKAGE_DIR}"
   rm -rf "${package_dir}"
   mkdir -p "${control_dir}" "${bin_dir}"
 
@@ -182,7 +184,7 @@ generate_deb_package() {
   deb_depends=$(echo "${dependencies}" | sed 's/  depends_on "//g; s/"//g' | tr '\n' ',' | sed 's/,$//')
 
   cat > "${control_dir}/control" <<EOF
-Package: ${formula_name}
+Package: ${script_name}
 Version: ${deb_version}
 Section: utils
 Priority: optional
@@ -190,11 +192,11 @@ Architecture: all
 Depends: ${deb_depends}
 Maintainer: ${MAINTAINER_INFO}
 Description: ${description}
- This package installs the '${formula_name}' script.
+ This package installs the '${script_name}' script.
 EOF
 
-  cp "${SCRIPTS_REPO}/${script_path}" "${bin_dir}/${formula_name}"
-  chmod +x "${bin_dir}/${formula_name}"
+  cp "${source_script_path}" "${bin_dir}/${script_name}"
+  chmod +x "${bin_dir}/${script_name}"
 
   echo "Building .deb package..."
   dpkg-deb --build "${package_dir}" "${deb_file}"

@@ -11,7 +11,7 @@ on:
 jobs:
   publish-all-scripts:
     runs-on: ubuntu-latest
-    
+
     # We need to give the job permissions to write to other repos.
     permissions:
       contents: write
@@ -21,7 +21,6 @@ jobs:
         uses: actions/checkout@v3
         with:
           path: scripts
-          token: ${{ secrets.PAT }}
 
       - name: Checkout Homebrew tap repo
         uses: actions/checkout@v3
@@ -44,58 +43,56 @@ jobs:
 
       - name: Prepare environment variables
         run: |
-          echo "GITHUB_USER=jmerhar" >> $GITHUB_ENV
-          echo "SCRIPTS_REPO=scripts" >> $GITHUB_ENV
-          echo "HOMEBREW_TAP_REPO=homebrew-scripts" >> $GITHUB_ENV
-          echo "APT_REPO=apt-scripts" >> $GITHUB_ENV
+          echo "HOMEPAGE_URL=https://github.com/jmerhar/scripts" >> $GITHUB_ENV
+          echo "HOMEBREW_FORMULA_DIR=./dist/homebrew" >> $GITHUB_ENV
+          echo "DEB_PACKAGE_DIR=./dist/debian" >> $GITHUB_ENV
           echo "MAINTAINER_INFO=Jure Merhar <dev@merhar.si>" >> $GITHUB_ENV
           echo "TARBALL_URL=${{ github.event.release.tarball_url }}" >> $GITHUB_ENV
           echo "VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
           echo "SHA256_CHECKSUM=$(curl -sSL ${{ github.event.release.tarball_url }} | shasum -a 256 | awk '{print $1}')" >> $GITHUB_ENV
-          echo "DEB_DIST_DIR=./scripts/dist" >> $GITHUB_ENV
 
       - name: Publish changed scripts
         run: |
           # Fetch all tags to find the previous one.
           git -C scripts fetch --tags
-          
-          # Get the tag of the previous release, excluding the current one.
           PREV_TAG=$(git -C scripts tag --sort=-creatordate | sed '2!d')
-          
-          echo "Previous tag found: ${PREV_TAG}"
-          echo "Current tag: ${{ github.event.release.tag_name }}"
-          
-          # Find all files changed between the previous and current release.
+          echo "Previous tag: ${PREV_TAG}, Current tag: ${{ github.event.release.tag_name }}"
+
+          # Find all executable files changed between the previous and current release.
           git -C scripts diff --name-only "${PREV_TAG}" "${{ github.event.release.tag_name }}" | \
           while read script_path; do
-            # Check if the file exists and is a regular file.
-            if [ -f "scripts/${script_path}" ]; then
-              # Check if the file's first line starts with a shebang (#!).
-              if head -n 1 "scripts/${script_path}" | grep -qE '^#!'; then
-                echo "--- Publishing changed script: ${script_path} ---"
-                # Call the generic publish script with the current script path.
-                ./scripts/system/publish-script.sh "${script_path}"
-              fi
+            if [ -f "scripts/${script_path}" ] && head -n 1 "scripts/${script_path}" | grep -qE '^#!'; then
+              echo "--- Publishing changed script: ${script_path} ---"
+              ./scripts/system/publish-script.sh "scripts/${script_path}"
             fi
           done
+
+      - name: Move Artifacts to Repositories
+        run: |
+          # Move Homebrew formulas, if any exist.
+          if [ -d "${HOMEBREW_FORMULA_DIR}" ] && [ -n "$(find "${HOMEBREW_FORMULA_DIR}" -maxdepth 1 -name '*.rb' -print -quit)" ]; then
+            echo "Moving Homebrew formulas..."
+            mkdir -p ./homebrew-scripts/Formula
+            mv ${HOMEBREW_FORMULA_DIR}/*.rb ./homebrew-scripts/Formula/
+          else
+            echo "No new Homebrew formulas to move."
+          fi
+
+          # Move Debian packages, if any exist.
+          if [ -d "${DEB_PACKAGE_DIR}" ] && [ -n "$(find "${DEB_PACKAGE_DIR}" -maxdepth 1 -name '*.deb' -print -quit)" ]; then
+            echo "Moving Debian packages..."
+            mkdir -p ./apt-scripts/pool/main
+            mv ${DEB_PACKAGE_DIR}/*.deb ./apt-scripts/pool/main/
+          else
+            echo "No new Debian packages to move."
+          fi
 
       - name: Commit and push Homebrew changes
         run: |
           cd homebrew-scripts
           git add .
-          git commit -m "chore: Automated update from new release ${{ github.event.release.tag_name }}" || echo "No Homebrew changes to commit."
+          git commit -m "chore: automated formula update for release ${{ github.event.release.tag_name }}" || echo "No Homebrew changes to commit."
           git push
-
-      - name: Prepare APT repository
-        run: |
-          # Check if the distribution directory exists and contains any .deb files.
-          if [ -d "${DEB_DIST_DIR}" ] && [ -n "$(find "${DEB_DIST_DIR}" -maxdepth 1 -name '*.deb' -print -quit)" ]; then
-            echo "New .deb packages found. Copying to APT repository..."
-            # Copy all generated .deb files to the APT repository.
-            cp ${DEB_DIST_DIR}/*.deb ./apt-scripts/pool/main/
-          else
-            echo "No new .deb packages to prepare."
-          fi
 
       - name: Import GPG key and sign APT repository
         env:
@@ -103,23 +100,20 @@ jobs:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           cd apt-scripts
-          
           # Import the GPG key from the secret.
           echo "$GPG_PRIVATE_KEY" | gpg --batch --import --passphrase "$GPG_PASSPHRASE"
-          
-          # Generate the Packages file.
+
+          # Generate the Packages and Release files.
           dpkg-scanpackages --arch=all pool/ > dists/stable/main/binary-all/Packages
           gzip -c dists/stable/main/binary-all/Packages > dists/stable/main/binary-all/Packages.gz
-          
-          # Generate the Release file.
           apt-ftparchive -c apt-ftparchive.conf release dists/stable/ > dists/stable/Release
-          
+
           # CRITICAL: Verify that the Release file was created and is not empty.
           test -s dists/stable/Release || (echo "::error::Failed to generate a valid Release file. Check apt-ftparchive.conf." && exit 1)
-          
+
           # Remove the old InRelease file to prevent GPG from failing.
           rm -f dists/stable/InRelease
-          
+
           # Sign the release file using the clearsign method for the InRelease file.
           gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --default-key "jmerhar-bot" --clearsign -o dists/stable/InRelease dists/stable/Release
 
@@ -127,5 +121,5 @@ jobs:
         run: |
           cd apt-scripts
           git add .
-          git commit -m "chore: Automated APT repo update from new release ${{ github.event.release.tag_name }}" || echo "No APT changes to commit."
+          git commit -m "chore: automated APT repo update for release ${{ github.event.release.tag_name }}" || echo "No APT changes to commit."
           git push
