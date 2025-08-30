@@ -133,6 +133,9 @@ parse_readme() {
   # A state machine to parse the README.
   while IFS= read -r line; do
     # Check for the start of a new section (a heading).
+    if [[ -z "$line" ]]; then
+      continue
+    fi
     if [[ "${line}" =~ ^#+ ]]; then
       # If we were in the correct script section and hit a new heading, we're done.
       if [[ "${in_script_section}" == "true" ]]; then
@@ -163,24 +166,26 @@ parse_readme() {
 
       # If we're in the dependencies section, parse the dependency lines.
       if [[ "${in_deps_section}" == "true" && "${line}" =~ ^\*[[:space:]]+\`([^`]+)\` ]]; then
-        local clean_dep="${BASH_REMATCH[1]}"
-        local dep_type="UNIVERSAL"
+        if [[ "${#BASH_REMATCH[@]}" -ge 2 ]]; then
+          local clean_dep="${BASH_REMATCH[1]}"
+          local dep_type="UNIVERSAL"
 
-        if [[ "${line}" =~ ^\*[[:space:]]+(macOS): ]]; then
-          dep_type="BREW_ONLY"
-        elif [[ "${line}" =~ ^\*[[:space:]]+(Debian\/Ubuntu): ]]; then
-          dep_type="DEB_ONLY"
-        fi
-
-        # Append to the correct global dependency variables.
-        if [[ "${dep_type}" == "BREW_ONLY" || "${dep_type}" == "UNIVERSAL" ]]; then
-          homebrew_dependencies+="  depends_on \"${clean_dep}\"\n"
-        fi
-        if [[ "${dep_type}" == "DEB_ONLY" || "${dep_type}" == "UNIVERSAL" ]]; then
-          if [[ -n "${deb_dependencies}" ]]; then
-            deb_dependencies+=","
+          if [[ "${line}" =~ ^\*[[:space:]]+(macOS): ]]; then
+            dep_type="BREW_ONLY"
+          elif [[ "${line}" =~ ^\*[[:space:]]+(Debian\/Ubuntu): ]]; then
+            dep_type="DEB_ONLY"
           fi
-          deb_dependencies+="${clean_dep}"
+
+          # Append to the correct global dependency variables.
+          if [[ "${dep_type}" == "BREW_ONLY" || "${dep_type}" == "UNIVERSAL" ]]; then
+            homebrew_dependencies+="  depends_on \"${clean_dep}\"\n"
+          fi
+          if [[ "${dep_type}" == "DEB_ONLY" || "${dep_type}" == "UNIVERSAL" ]]; then
+            if [[ -n "${deb_dependencies}" ]]; then
+              deb_dependencies+=","
+            fi
+            deb_dependencies+="${clean_dep}"
+          fi
         fi
       fi
     fi
