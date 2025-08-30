@@ -149,21 +149,26 @@ parse_readme() {
     # Process lines within the "Dependencies" section that start with "*".
     in_deps && /^\*/ {
       line = $0
-      # Remove the leading "* " from the line.
-      sub(/^\*[[:space:]]*/, "", line)
-      
-      # Check for macOS-specific dependencies, e.g., "* macOS: package-name"
-      if (match(line, /^(macOS):[[:space:]]*(.+)/, arr)) {
-        print "BREW:" arr[2]
+      # Extract the text within backticks
+      if (match(line, /`([^`]+)`/, arr)) {
+        clean_dep = arr[1]
+      } else {
+        # Fallback for dependencies without backticks
+        clean_dep = line
       }
-      # Check for Debian-specific dependencies, e.g., "* Debian/Ubuntu: package-name"
+
+      # Check for macOS-specific dependencies, e.g., "* macOS: `package-name`"
+      if (match(line, /^(macOS):[[:space:]]*(.+)/, arr)) {
+        print "BREW:" clean_dep
+      }
+      # Check for Debian-specific dependencies, e.g., "* Debian/Ubuntu: `package-name`"
       else if (match(line, /^(Debian\/Ubuntu):[[:space:]]*(.+)/, arr)) {
-        print "DEB:" arr[2]
-      } 
+        print "DEB:" clean_dep
+      }
       # All other dependencies are considered universal.
       else {
-        print "BREW:" line
-        print "DEB:" line
+        print "BREW:" clean_dep
+        print "DEB:" clean_dep
       }
     }
   ' "${readme_path}")
