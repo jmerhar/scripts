@@ -22,7 +22,7 @@ This script is intended to be called from another script. It takes a single argu
 ./install-dependency.sh qpdf
 ```
 
-### `publish-script.sh`
+### `package-script.sh`
 
 A generic package-file generator designed to be run from a CI/CD workflow. It takes the path to a script as an argument, parses metadata from a corresponding `README.md` file (expected in the same directory), and generates the necessary package files (`.rb` for Homebrew and `.deb` for Debian).
 
@@ -47,5 +47,5 @@ This script is not intended for direct use on the command line. Instead, it is d
 **Example of a Workflow Call:**
 
 ```bash
-./system/publish-script.sh "utility/unlock-pdf.sh"
+./system/package-script.sh "utility/unlock-pdf.sh"
 ```
