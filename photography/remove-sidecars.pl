@@ -290,4 +290,3 @@ define_extensions;
 traverse_tree($ARGV[0] // '.');
 # 3. Prompt the user for action and delete files if they confirm.
 delete_files if prompt;
-

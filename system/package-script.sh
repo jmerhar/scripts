@@ -56,6 +56,16 @@ show_usage() {
   echo "Example: ${script_basename} utility/unlock-pdf.sh"
 }
 
+# --- Global variables for dependencies ---
+# These are cleared and populated by the parse_readme function.
+homebrew_dependencies=""
+deb_dependencies=""
+description=""
+config_file_path=""
+source_script_path=""
+script_name=""
+readme_path=""
+
 #######################################
 # Parses the script path to set global script and name variables.
 # Arguments:
@@ -96,14 +106,13 @@ find_config_file() {
   fi
 }
 
-# --- Global variables for dependencies ---
-homebrew_dependencies=""
-deb_dependencies=""
-
 #######################################
 # Parses the script's README for its description and dependencies.
+# This function is the core of the script's logic. It reads the README
+# line-by-line to find the correct script's section and extract
+# the description and dependencies from within it, ignoring other sections.
 # Globals:
-#   readme_path, script_name
+#   readme_path, script_name, description, homebrew_dependencies, deb_dependencies
 # Arguments:
 #   None
 # Outputs:
@@ -117,78 +126,70 @@ parse_readme() {
     exit 1
   fi
 
-  description=$(awk -v script_heading="^#+ \`*${script_name}.*\`*" '
-    BEGIN {found=0}
-    $0 ~ script_heading {found=1; next}
-    found && !/^[[:space:]]*$/ {
-      desc=$0;
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", desc);
-      print desc;
-      exit
-    }
-  ' "${readme_path}")
+  local in_script_section="false"
+  local in_deps_section="false"
+  local script_heading_found="false"
+  
+  # A state machine to parse the README.
+  while IFS= read -r line; do
+    # Check for the start of a new section (a heading).
+    if [[ "${line}" =~ ^#+ ]]; then
+      # If we were in the correct script section and hit a new heading, we're done.
+      if [[ "${in_script_section}" == "true" ]]; then
+        break
+      fi
 
-  if [[ -z "${description}" ]]; then
-    log_error "Could not find description for '${script_name}' in README.md."
+      # Check if this new heading is for the script we're looking for.
+      if [[ "${line}" =~ ^#+[[:space:]]+\`*${script_name}.*\`* ]]; then
+        in_script_section="true"
+        script_heading_found="true"
+        continue # Skip the heading line itself.
+      fi
+    fi
+
+    # Only process lines if we're in the correct script section.
+    if [[ "${in_script_section}" == "true" ]]; then
+      # Capture the description (the first non-empty line after the heading).
+      if [[ "${description}" == "" && -n "${line}" ]]; then
+        description="${line}"
+        continue
+      fi
+
+      # Look for the "Dependencies" subheading within the script section.
+      if [[ "${line}" =~ ^#+[[:space:]]+Dependencies ]]; then
+        in_deps_section="true"
+        continue
+      fi
+
+      # If we're in the dependencies section, parse the dependency lines.
+      if [[ "${in_deps_section}" == "true" && "${line}" =~ ^\*[[:space:]]+\`([^`]+)\` ]]; then
+        local clean_dep="${BASH_REMATCH[1]}"
+        local dep_type="UNIVERSAL"
+
+        if [[ "${line}" =~ ^\*[[:space:]]+(macOS): ]]; then
+          dep_type="BREW_ONLY"
+        elif [[ "${line}" =~ ^\*[[:space:]]+(Debian\/Ubuntu): ]]; then
+          dep_type="DEB_ONLY"
+        fi
+
+        # Append to the correct global dependency variables.
+        if [[ "${dep_type}" == "BREW_ONLY" || "${dep_type}" == "UNIVERSAL" ]]; then
+          homebrew_dependencies+="  depends_on \"${clean_dep}\"\n"
+        fi
+        if [[ "${dep_type}" == "DEB_ONLY" || "${dep_type}" == "UNIVERSAL" ]]; then
+          if [[ -n "${deb_dependencies}" ]]; then
+            deb_dependencies+=","
+          fi
+          deb_dependencies+="${clean_dep}"
+        fi
+      fi
+    fi
+  done < "${readme_path}"
+
+  if [[ "${script_heading_found}" == "false" ]]; then
+    log_error "Could not find a section for '${script_name}' in README.md."
     exit 1
   fi
-
-  # Reset dependency variables
-  homebrew_dependencies=""
-  deb_dependencies=""
-
-  # This awk script parses the "Dependencies" section of a README.
-  # It outputs dependencies in a "TYPE:dependency" format, which is then
-  # processed by the shell script.
-  local parsed_deps
-  parsed_deps=$(awk '
-    # Start processing when the "Dependencies" header is found.
-    /^#+ Dependencies/ { in_deps = 1; next }
-    # Stop processing at the next header.
-    in_deps && /^#+/ { in_deps = 0 }
-    # Process lines within the "Dependencies" section that start with "*".
-    in_deps && /^\*/ {
-      line = $0
-      # Extract the text within backticks
-      if (match(line, /`([^`]+)`/, arr)) {
-        clean_dep = arr[1]
-      } else {
-        # Fallback for dependencies without backticks
-        clean_dep = line
-      }
-
-      # Check for macOS-specific dependencies, e.g., "* macOS: `package-name`"
-      if (match(line, /^(macOS):[[:space:]]*(.+)/, arr)) {
-        print "BREW:" clean_dep
-      }
-      # Check for Debian-specific dependencies, e.g., "* Debian/Ubuntu: `package-name`"
-      else if (match(line, /^(Debian\/Ubuntu):[[:space:]]*(.+)/, arr)) {
-        print "DEB:" clean_dep
-      }
-      # All other dependencies are considered universal.
-      else {
-        print "BREW:" clean_dep
-        print "DEB:" clean_dep
-      }
-    }
-  ' "${readme_path}")
-
-  # Process the awk output into the final dependency strings.
-  while IFS= read -r line; do
-    local type="${line%%:*}"
-    local dep="${line#*:}"
-    
-    if [[ "${type}" == "BREW" ]]; then
-      # Format for Homebrew: `  depends_on "package"`
-      homebrew_dependencies+="  depends_on \"${dep}\"\n"
-    elif [[ "${type}" == "DEB" ]]; then
-      # Format for Debian: `package1,package2`
-      if [[ -n "${deb_dependencies}" ]]; then
-        deb_dependencies+=","
-      fi
-      deb_dependencies+="${dep}"
-    fi
-  done <<< "${parsed_deps}"
 }
 
 #######################################
@@ -308,4 +309,3 @@ main() {
 }
 
 main "$@"
-
