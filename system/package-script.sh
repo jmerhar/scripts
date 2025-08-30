@@ -165,27 +165,27 @@ parse_readme() {
       fi
 
       # If we're in the dependencies section, parse the dependency lines.
-      if [[ "${in_deps_section}" == "true" && "${line}" =~ ^\*[[:space:]]+\`([^`]+)\` ]]; then
-        if [[ "${#BASH_REMATCH[@]}" -ge 2 ]]; then
-          local clean_dep="${BASH_REMATCH[1]}"
-          local dep_type="UNIVERSAL"
+      if [[ "${in_deps_section}" == "true" && "${line}" =~ ^\*[[:space:]]+(macOS|Debian/Ubuntu)?:?\s*\`([^`]+)\`$ ]]; then
+        # This regex now correctly matches both universal and platform-specific dependencies
+        # and captures the clean dependency name inside the backticks.
+        local clean_dep="${BASH_REMATCH[2]}"
+        local dep_type="UNIVERSAL"
 
-          if [[ "${line}" =~ ^\*[[:space:]]+(macOS): ]]; then
-            dep_type="BREW_ONLY"
-          elif [[ "${line}" =~ ^\*[[:space:]]+(Debian\/Ubuntu): ]]; then
-            dep_type="DEB_ONLY"
-          fi
+        if [[ "${BASH_REMATCH[1]}" == "macOS" ]]; then
+          dep_type="BREW_ONLY"
+        elif [[ "${BASH_REMATCH[1]}" == "Debian/Ubuntu" ]]; then
+          dep_type="DEB_ONLY"
+        fi
 
-          # Append to the correct global dependency variables.
-          if [[ "${dep_type}" == "BREW_ONLY" || "${dep_type}" == "UNIVERSAL" ]]; then
-            homebrew_dependencies+="  depends_on \"${clean_dep}\"\n"
+        # Append to the correct global dependency variables.
+        if [[ "${dep_type}" == "BREW_ONLY" || "${dep_type}" == "UNIVERSAL" ]]; then
+          homebrew_dependencies+="  depends_on \"${clean_dep}\"\n"
+        fi
+        if [[ "${dep_type}" == "DEB_ONLY" || "${dep_type}" == "UNIVERSAL" ]]; then
+          if [[ -n "${deb_dependencies}" ]]; then
+            deb_dependencies+=","
           fi
-          if [[ "${dep_type}" == "DEB_ONLY" || "${dep_type}" == "UNIVERSAL" ]]; then
-            if [[ -n "${deb_dependencies}" ]]; then
-              deb_dependencies+=","
-            fi
-            deb_dependencies+="${clean_dep}"
-          fi
+          deb_dependencies+="${clean_dep}"
         fi
       fi
     fi
