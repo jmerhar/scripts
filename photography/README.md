@@ -2,9 +2,9 @@
 
 A collection of utilities for managing photography workflows. This directory includes scripts for intelligent backups and for cleaning up photo libraries.
 
----
+## Scripts
 
-## `photo-backup.sh`
+### `photo-backup.sh`
 
 A robust backup solution for photographers managing multiple storage devices. It safely merges content from two sources into a consolidated backup on a remote server while preserving unique files from both.
 
@@ -81,7 +81,7 @@ total size is 250.11G  speedup is 20.26
 
 ---
 
-## `remove-sidecars.pl`
+### `remove-sidecars.pl`
 
 When shooting in RAW+JPEG mode, you get high-quality RAWs for editing and convenient JPEGs for quick previews. Lightroom is smart enough to recognise these JPEGs as "sidecars" to the RAW files, which is great.
 

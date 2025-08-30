@@ -117,7 +117,7 @@ parse_readme() {
     exit 1
   fi
 
-  description=$(awk -v script_heading="### \`*${script_name}.*\`*" '
+  description=$(awk -v script_heading="^#+ \`*${script_name}.*\`*" '
     BEGIN {found=0}
     $0 ~ script_heading {found=1; next}
     found && !/^[[:space:]]*$/ {
@@ -143,9 +143,9 @@ parse_readme() {
   local parsed_deps
   parsed_deps=$(awk '
     # Start processing when the "Dependencies" header is found.
-    /^#### Dependencies/ { in_deps = 1; next }
+    /^#+ Dependencies/ { in_deps = 1; next }
     # Stop processing at the next header.
-    in_deps && /^####/ { in_deps = 0 }
+    in_deps && /^#+/ { in_deps = 0 }
     # Process lines within the "Dependencies" section that start with "*".
     in_deps && /^\*/ {
       line = $0
