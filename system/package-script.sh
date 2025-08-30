@@ -96,15 +96,18 @@ find_config_file() {
   fi
 }
 
+# --- Global variables for dependencies ---
+homebrew_dependencies=""
+deb_dependencies=""
+
 #######################################
 # Parses the script's README for its description and dependencies.
 # Globals:
-#   readme_path
-#   script_name
+#   readme_path, script_name
 # Arguments:
 #   None
 # Outputs:
-#   Sets description and dependencies global variables.
+#   Sets description, homebrew_dependencies, and deb_dependencies global variables.
 #######################################
 parse_readme() {
   echo "Parsing README.md for description and dependencies..."
@@ -130,23 +133,64 @@ parse_readme() {
     exit 1
   fi
 
-  dependencies=$(awk '
+  # Reset dependency variables
+  homebrew_dependencies=""
+  deb_dependencies=""
+
+  # This awk script parses the "Dependencies" section of a README.
+  # It outputs dependencies in a "TYPE:dependency" format, which is then
+  # processed by the shell script.
+  local parsed_deps
+  parsed_deps=$(awk '
+    # Start processing when the "Dependencies" header is found.
     /^#### Dependencies/ { in_deps = 1; next }
-    in_deps && /^-/ {
-      if (match($0, /`[^`]+`/)) {
-        dep = substr($0, RSTART + 1, RLENGTH - 2);
-        if (length(dep) > 0) printf "  depends_on \"%s\"\n", dep;
+    # Stop processing at the next header.
+    in_deps && /^####/ { in_deps = 0 }
+    # Process lines within the "Dependencies" section that start with "*".
+    in_deps && /^\*/ {
+      line = $0
+      # Remove the leading "* " from the line.
+      sub(/^\*[[:space:]]*/, "", line)
+      
+      # Check for macOS-specific dependencies, e.g., "* macOS: package-name"
+      if (match(line, /^(macOS):[[:space:]]*(.+)/, arr)) {
+        print "BREW:" arr[2]
+      }
+      # Check for Debian-specific dependencies, e.g., "* Debian/Ubuntu: package-name"
+      else if (match(line, /^(Debian\/Ubuntu):[[:space:]]*(.+)/, arr)) {
+        print "DEB:" arr[2]
+      } 
+      # All other dependencies are considered universal.
+      else {
+        print "BREW:" line
+        print "DEB:" line
       }
     }
-    in_deps && !/^-/ { in_deps = 0 }
   ' "${readme_path}")
+
+  # Process the awk output into the final dependency strings.
+  while IFS= read -r line; do
+    local type="${line%%:*}"
+    local dep="${line#*:}"
+    
+    if [[ "${type}" == "BREW" ]]; then
+      # Format for Homebrew: `  depends_on "package"`
+      homebrew_dependencies+="  depends_on \"${dep}\"\n"
+    elif [[ "${type}" == "DEB" ]]; then
+      # Format for Debian: `package1,package2`
+      if [[ -n "${deb_dependencies}" ]]; then
+        deb_dependencies+=","
+      fi
+      deb_dependencies+="${dep}"
+    fi
+  done <<< "${parsed_deps}"
 }
 
 #######################################
 # Generates the Homebrew formula file.
 # Globals:
 #   HOMEBREW_FORMULA_DIR, script_name, HOMEPAGE_URL,
-#   TARBALL_URL, SHA256_CHECKSUM, dependencies, source_script_path,
+#   TARBALL_URL, SHA256_CHECKSUM, homebrew_dependencies, source_script_path,
 #   config_file_path
 # Arguments:
 #   None
@@ -172,8 +216,7 @@ class ${class_name} < Formula
   url "${TARBALL_URL}"
   sha256 "${SHA256_CHECKSUM}"
 
-${dependencies}
-
+${homebrew_dependencies}
   def install
     bin.install "${source_script_path}" => "${script_name}"
     $(if [[ -n "${config_file_path}" ]]; then
@@ -187,7 +230,7 @@ EOF
 #######################################
 # Generates the Debian (.deb) package.
 # Globals:
-#   DEB_PACKAGE_DIR, script_name, VERSION, source_script_path, dependencies,
+#   DEB_PACKAGE_DIR, script_name, VERSION, source_script_path, deb_dependencies,
 #   MAINTAINER_INFO, description, config_file_path
 # Arguments:
 #   None
@@ -213,16 +256,13 @@ generate_deb_package() {
   rm -rf "${package_dir}"
   mkdir -p "${control_dir}" "${bin_dir}"
 
-  local deb_depends
-  deb_depends=$(echo "${dependencies}" | sed 's/  depends_on "//g; s/"//g' | tr '\n' ',' | sed 's/,$//')
-
   cat > "${control_dir}/control" <<EOF
 Package: ${script_name}
 Version: ${deb_version}
 Section: utils
 Priority: optional
 Architecture: all
-Depends: ${deb_depends}
+Depends: ${deb_dependencies}
 Maintainer: ${MAINTAINER_INFO}
 Description: ${description}
  This package installs the '${script_name}' script.
@@ -263,3 +303,4 @@ main() {
 }
 
 main "$@"
+
