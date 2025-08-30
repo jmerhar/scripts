@@ -1,54 +1,100 @@
 #!/bin/bash
+#
+# Decrypts a password-protected PDF file using the 'qpdf' command-line tool.
+#
+# This script requires 'qpdf' to be installed and available in the system's PATH.
+# It provides OS-specific installation instructions if the dependency is not found.
+#
+# Usage:
+#   ./unlock-pdf.sh <password> <input.pdf>
 
-# This script decrypts a password-protected PDF file using qpdf.
+set -o errexit
+set -o nounset
 
-# Exit immediately if a command exits with a non-zero status.
-set -e
+#######################################
+# Prints a timestamped error message to stderr.
+# Globals:
+#   None
+# Arguments:
+#   Message to print.
+# Outputs:
+#   Writes timestamped error message to stderr.
+#######################################
+log_error() {
+  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]: Error: $*" >&2
+}
 
-# --- 1. Dependency Check ---
-# Verify that qpdf is installed before proceeding.
-if ! command -v qpdf &> /dev/null; then
-    echo "Error: 'qpdf' is not installed or not in your PATH." >&2
-    # Provide OS-specific installation instructions.
+#######################################
+# Prints the script's usage instructions to stdout.
+# Globals:
+#   None
+# Arguments:
+#   None
+# Outputs:
+#   Writes usage text to stdout.
+#######################################
+show_usage() {
+  echo "Usage: $(basename "$0") <password> <input.pdf>"
+}
+
+#######################################
+# Verifies that the 'qpdf' dependency is installed.
+# Globals:
+#   None
+# Arguments:
+#   None
+# Outputs:
+#   Writes error messages to stderr if dependency is not found.
+#######################################
+check_dependencies() {
+  if ! command -v qpdf &> /dev/null; then
+    log_error "'qpdf' is not installed or not in your PATH."
     case "$(uname)" in
-        "Darwin")
-            echo "Please install it using Homebrew: 'brew install qpdf'" >&2
-            ;;
-        "Linux")
-            echo "Please install it using APT: 'sudo apt-get install qpdf'" >&2
-            ;;
-        *)
-            echo "Please install it using your system's package manager." >&2
-            ;;
+      "Darwin")
+        echo "Please install it using Homebrew: 'brew install qpdf'" >&2
+        ;;
+      "Linux")
+        echo "Please install it using APT: 'sudo apt-get install qpdf'" >&2
+        ;;
+      *)
+        echo "Please install 'qpdf' using your system's package manager." >&2
+        ;;
     esac
     exit 1
-fi
+  fi
+}
 
-# --- 2. Argument Validation ---
-# Check if exactly two arguments (password and input file) are provided.
-if [ "$#" -ne 2 ]; then
-    # Print usage instructions if the arguments are incorrect.
-    echo "Usage: $(basename "$0") <password> <input.pdf>"
+#######################################
+# Decrypts the given PDF file using the provided password.
+# Globals:
+#   None
+# Arguments:
+#   password: The password for the PDF file.
+#   input_file: The path to the PDF file to decrypt.
+# Outputs:
+#   Writes progress messages to stdout.
+#   Creates a new, unlocked PDF file.
+#######################################
+decrypt_pdf() {
+  local password="$1"
+  local input_file="$2"
+  local output_file="${input_file%.pdf}-unlocked.pdf"
+
+  echo "Writing ${output_file}..."
+  qpdf --decrypt "--password=${password}" "${input_file}" "${output_file}"
+  echo "Done."
+}
+
+main() {
+  check_dependencies
+
+  if (( $# != 2 )); then
+    log_error "Missing required arguments."
+    show_usage
     exit 1
-fi
+  fi
 
-# --- 3. Assign Variables ---
-PASSWORD="$1"
-INPUT_FILE="$2"
+  decrypt_pdf "$1" "$2"
+}
 
-# --- 4. Process Files ---
-# Generate the output filename.
-# This uses Bash parameter expansion to remove the '.pdf' suffix from the input file
-# and then appends '-unlocked.pdf'.
-OUTPUT_FILE="${INPUT_FILE%.pdf}-unlocked.pdf"
-
-# --- 5. Decrypt the PDF ---
-echo "Writing ${OUTPUT_FILE}..."
-
-# Run the qpdf command to decrypt the file.
-# --password="$PASSWORD": Provides the password for decryption.
-# "$INPUT_FILE": Specifies the source PDF.
-# "$OUTPUT_FILE": Specifies the destination for the decrypted PDF.
-qpdf --decrypt "--password=${PASSWORD}" "${INPUT_FILE}" "${OUTPUT_FILE}"
-
-echo "done."
+main "$@"
