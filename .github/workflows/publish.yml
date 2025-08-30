@@ -44,84 +44,69 @@ jobs:
       - name: Prepare environment variables
         run: |
           echo "HOMEPAGE_URL=https://github.com/jmerhar/scripts" >> $GITHUB_ENV
-          echo "HOMEBREW_FORMULA_DIR=./dist/homebrew" >> $GITHUB_ENV
-          echo "DEB_PACKAGE_DIR=./dist/debian" >> $GITHUB_ENV
-          echo "CONFIG_DIR=scripts/conf" >> $GITHUB_ENV
+          echo "HOMEBREW_FORMULA_DIR=../dist/homebrew" >> $GITHUB_ENV
+          echo "DEB_PACKAGE_DIR=../dist/debian" >> $GITHUB_ENV
+          echo "CONFIG_DIR=../conf" >> $GITHUB_ENV
           echo "MAINTAINER_INFO=Jure Merhar <dev@merhar.si>" >> $GITHUB_ENV
           echo "TARBALL_URL=${{ github.event.release.tarball_url }}" >> $GITHUB_ENV
           echo "VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
           echo "SHA256_CHECKSUM=$(curl -sSL ${{ github.event.release.tarball_url }} | shasum -a 256 | awk '{print $1}')" >> $GITHUB_ENV
 
-      - name: Publish changed scripts
+      - name: Package changed scripts
+        working-directory: scripts
         run: |
           # Fetch all tags to find the previous one.
-          git -C scripts fetch --tags
-          PREV_TAG=$(git -C scripts tag --sort=-creatordate | sed '2!d')
+          git fetch --tags
+          PREV_TAG=$(git tag --sort=-creatordate | sed '2!d')
           echo "Previous tag: ${PREV_TAG}, Current tag: ${{ github.event.release.tag_name }}"
 
           # Find all executable files changed between the previous and current release.
-          git -C scripts diff --name-only "${PREV_TAG}" "${{ github.event.release.tag_name }}" | \
+          git diff --name-only "${PREV_TAG}" "${{ github.event.release.tag_name }}" | \
           while read script_path; do
-            if [ -f "scripts/${script_path}" ] && head -n 1 "scripts/${script_path}" | grep -qE '^#!'; then
+            if [ -f "${script_path}" ] && head -n 1 "${script_path}" | grep -qE '^#!'; then
               echo "--- Packaging script: ${script_path} ---"
-              ./scripts/system/package-script.sh "scripts/${script_path}"
+              ./system/package-script.sh "${script_path}"
             fi
           done
 
       - name: Move Artifacts to Repositories
         run: |
-          # Move Homebrew formulas, if any exist.
-          if [ -d "${HOMEBREW_FORMULA_DIR}" ] && [ -n "$(find "${HOMEBREW_FORMULA_DIR}" -maxdepth 1 -name '*.rb' -print -quit)" ]; then
-            echo "Moving Homebrew formulas..."
-            mkdir -p ./homebrew-scripts/Formula
-            mv ${HOMEBREW_FORMULA_DIR}/*.rb ./homebrew-scripts/Formula/
-          else
-            echo "No new Homebrew formulas to move."
+          # Move Homebrew formulas
+          if [ -d "dist/homebrew" ]; then
+            mv dist/homebrew/*.rb homebrew-scripts/Formula/
           fi
-
-          # Move Debian packages, if any exist.
-          if [ -d "${DEB_PACKAGE_DIR}" ] && [ -n "$(find "${DEB_PACKAGE_DIR}" -maxdepth 1 -name '*.deb' -print -quit)" ]; then
-            echo "Moving Debian packages..."
-            mkdir -p ./apt-scripts/pool/main
-            mv ${DEB_PACKAGE_DIR}/*.deb ./apt-scripts/pool/main/
-          else
-            echo "No new Debian packages to move."
+          # Move Debian packages
+          if [ -d "dist/debian" ]; then
+            mv dist/debian/*.deb apt-scripts/pool/main/
           fi
 
       - name: Commit and push Homebrew changes
         run: |
           cd homebrew-scripts
           git add .
-          git commit -m "chore: automated formula update for release ${{ github.event.release.tag_name }}" || echo "No Homebrew changes to commit."
+          git commit -m "chore: Automated update from new release ${{ github.event.release.tag_name }}" || echo "No Homebrew changes to commit."
           git push
 
-      - name: Import GPG key and sign APT repository
+      - name: Sign and commit APT repository changes
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           cd apt-scripts
-          # Import the GPG key from the secret.
+          # Import GPG key
           echo "$GPG_PRIVATE_KEY" | gpg --batch --import --passphrase "$GPG_PASSPHRASE"
-
-          # Generate the Packages and Release files.
+          # Generate package files
           dpkg-scanpackages --arch=all pool/ > dists/stable/main/binary-all/Packages
           gzip -c dists/stable/main/binary-all/Packages > dists/stable/main/binary-all/Packages.gz
+          # Generate release file
           apt-ftparchive -c apt-ftparchive.conf release dists/stable/ > dists/stable/Release
-
-          # CRITICAL: Verify that the Release file was created and is not empty.
-          test -s dists/stable/Release || (echo "::error::Failed to generate a valid Release file. Check apt-ftparchive.conf." && exit 1)
-
-          # Remove the old InRelease file to prevent GPG from failing.
+          # Verify release file
+          test -s dists/stable/Release || (echo "::error::Failed to generate valid Release file." && exit 1)
+          # Sign the release file
           rm -f dists/stable/InRelease
-
-          # Sign the release file using the clearsign method for the InRelease file.
           gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --default-key "jmerhar-bot" --clearsign -o dists/stable/InRelease dists/stable/Release
-
-      - name: Commit and push APT repository changes
-        run: |
-          cd apt-scripts
+          # Commit and push
           git add .
-          git commit -m "chore: automated APT repo update for release ${{ github.event.release.tag_name }}" || echo "No APT changes to commit."
+          git commit -m "chore: Automated update from new release ${{ github.event.release.tag_name }}" || echo "No APT changes to commit."
           git push
 
