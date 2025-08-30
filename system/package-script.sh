@@ -25,6 +25,7 @@
 
 set -o errexit
 set -o nounset
+set -o xtrace
 
 #######################################
 # Prints a timestamped error message to stderr for runtime errors.
