@@ -87,10 +87,8 @@ load_configuration() {
   local config_to_load=""
 
   if [[ -n "${script_path}" ]]; then
-    local real_path
-    real_path=$(realpath "${script_path}")
     local bin_dir
-    bin_dir=$(dirname "${real_path}")
+    bin_dir=$(dirname "${script_path}")
     local prefix
     prefix=$(dirname "${bin_dir}")
 
@@ -100,7 +98,7 @@ load_configuration() {
     fi
   fi
 
-  # Fallback to standard location if the prefix-based one wasn't found
+  # Fallback to standard system-wide location if the prefix-based one wasn't found
   if [[ -z "${config_to_load}" && -f "/etc/${SCRIPT_NAME}.conf" ]]; then
     config_to_load="/etc/${SCRIPT_NAME}.conf"
   fi
