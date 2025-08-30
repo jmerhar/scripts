@@ -206,7 +206,7 @@ generate_deb_package() {
   local package_dir="${DEB_PACKAGE_DIR}/${script_name}-${VERSION}"
   local control_dir="${package_dir}/DEBIAN"
   local bin_dir="${package_dir}/usr/local/bin"
-  local etc_dir="${package_dir}/etc"
+  local etc_dir="${package_dir}/usr/local/etc"
   local deb_file="${DEB_PACKAGE_DIR}/${script_name}_${deb_version}_all.deb"
 
   mkdir -p "${DEB_PACKAGE_DIR}"
@@ -263,4 +263,3 @@ main() {
 }
 
 main "$@"
-
