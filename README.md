@@ -6,10 +6,11 @@ This repository contains a curated collection of scripts designed for the automa
 
 ## Repository Structure
 
-The repository is structured into two primary directories:
+The repository is structured into three primary directories:
 
-* `/system`: This directory houses low-level scripts intended for system administration and dependency management, which are typically invoked by other scripts.
+* `/system`: This directory houses low-level scripts, such as package builders and dependency managers, which are typically invoked by other scripts or CI/CD workflows.
 * `/utility`: This directory contains high-level, user-facing scripts designed to execute specific, practical tasks.
+* `/photography`: Contains scripts specifically related to photography workflows.
 
 Each directory includes a dedicated `README.md` file that provides more detailed information regarding its contents.
 
