@@ -254,7 +254,7 @@ $(
     if [[ "${key}" == "Dependencies" || "${key}" == "Homebrew-Dependencies" || "${key}" == "Debian-Dependencies" || "${key}" == "ConfigFile" ]]; then
       continue
     fi
-    echo "  ${key}: \"${metadata[${key}]}\""
+    echo "  $(echo "${key}" | tr '[:upper:]' '[:lower:]') \"${metadata[${key}]}\""
   done
   # Combine dependencies
   for dep_name in ${metadata[Dependencies]:-}; do
@@ -375,4 +375,3 @@ main() {
 }
 
 main "$@"
-
