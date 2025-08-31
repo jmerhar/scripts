@@ -48,15 +48,16 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Package Scripts
-        id: package
+      - name: Prepare Environment Variables
         run: |
-          set -e
-          # Set common environment variables for the package-script.sh
           echo "PKGSCR_HOMEBREW_FORMULA_DIR=$(pwd)/dist/homebrew" >> $GITHUB_ENV
           echo "PKGSCR_DEB_PACKAGE_DIR=$(pwd)/dist/debian" >> $GITHUB_ENV
           echo "PKGSCR_CONFIG_DIR=$(pwd)/scripts/conf" >> $GITHUB_ENV
 
+      - name: Package Scripts
+        id: package
+        run: |
+          set -e
           # --- Single Script Release (from tag) ---
           if [[ "${{ github.event_name }}" == "release" ]]; then
             TAG="${{ github.event.release.tag_name }}"
@@ -82,7 +83,7 @@ jobs:
             fi
             popd
 
-            # Run the packaging script with the environment variables set directly for the command
+            # Run the packaging script with version-specific variables
             env \
               PKGSCR_VERSION="${VERSION}" \
               PKGSCR_TARBALL_URL="${TARBALL_URL}" \
