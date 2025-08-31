@@ -222,7 +222,8 @@ parse_script_metadata() {
 generate_homebrew_formula() {
   local script_name="${metadata[Name]}"
   local homepage="${metadata[Homepage]}"
-  local description="${metadata[Description]}"
+  # Escape double quotes in the description to prevent syntax errors in the formula.
+  local description="${metadata[Description]//\"/\\\"}"
 
   mkdir -p "${PKGSCR_HOMEBREW_FORMULA_DIR}"
   local formula_file="${PKGSCR_HOMEBREW_FORMULA_DIR}/${script_name}.rb"
@@ -254,7 +255,10 @@ $(
     if [[ "${key}" == "Dependencies" || "${key}" == "Homebrew-Dependencies" || "${key}" == "Debian-Dependencies" || "${key}" == "ConfigFile" ]]; then
       continue
     fi
-    echo "  $(echo "${key}" | tr '[:upper:]' '[:lower:]') \"${metadata[${key}]}\""
+    # Escape quotes in the value
+    local value="${metadata[${key}]}"
+    local escaped_value="${value//\"/\\\"}"
+    echo "  $(echo "${key}" | tr '[:upper:]' '[:lower:]') \"${escaped_value}\""
   done
   # Combine dependencies
   for dep_name in ${metadata[Dependencies]:-}; do
