@@ -35,6 +35,9 @@ jobs:
           repository: jmerhar/apt-scripts
           path: apt-scripts
           token: ${{ secrets.PAT }}
+      
+      - name: Clean old artifacts
+        run: rm -rf dist
 
       - name: Setup Git for multi-repo push
         run: |
