@@ -82,6 +82,44 @@ EOF
 }
 
 #######################################
+# Determines the installation prefix of the script.
+# Globals:
+#   None
+# Arguments:
+#   None
+# Outputs:
+#   Prints the install prefix to stdout.
+#######################################
+get_script_prefix() {
+  local script_dir
+  script_dir=$(dirname "$0")
+
+  # Use `cd` and `pwd` to get the absolute path
+  local script_path
+  script_path=$( (cd "${script_dir}" && pwd -P) )
+  
+  if [[ -z "${script_path}" ]]; then
+    # Could not resolve a path, which means we can't determine a reliable prefix.
+    return
+  fi
+
+  local bin_dir
+  bin_dir=$(basename "${script_path}")
+  
+  # Check if the directory name is 'bin' or 'sbin'.
+  if [[ "${bin_dir}" =~ ^(bin|sbin)$ ]]; then
+    local prefix
+    prefix=$(dirname "${script_path}")
+    echo "${prefix}"
+    return
+  fi
+  
+  # If we get here, the script is not in a recognized bin directory.
+  # We return nothing to prevent incorrect prefix detection.
+  return
+}
+
+#######################################
 # Loads configuration from standard system locations, detecting the install prefix.
 # Globals:
 #   SCRIPT_NAME
@@ -91,20 +129,13 @@ EOF
 #   Sources the config file, modifying global config variables.
 #######################################
 load_configuration() {
-  local script_path
-  script_path=$(command -v "$0")
+  local prefix
+  prefix=$(get_script_prefix)
   local config_to_load=""
 
-  if [[ -n "${script_path}" ]]; then
-    local bin_dir
-    bin_dir=$(dirname "${script_path}")
-    local prefix
-    prefix=$(dirname "${bin_dir}")
-
-    # Check for config location relative to the prefix
-    if [[ -f "${prefix}/etc/${SCRIPT_NAME}.conf" ]]; then
-      config_to_load="${prefix}/etc/${SCRIPT_NAME}.conf"
-    fi
+  # Check for config location relative to the prefix
+  if [[ -n "${prefix}" && -f "${prefix}/etc/${SCRIPT_NAME}.conf" ]]; then
+    config_to_load="${prefix}/etc/${SCRIPT_NAME}.conf"
   fi
 
   # Fallback to standard system-wide location if the prefix-based one wasn't found
@@ -201,6 +232,7 @@ log_message() {
   msg="[$(date +'%Y-%m-%dT%H:%M:%S%z')] [${level}]: ${message}"
 
   if [[ -n "${LOG_FILE}" ]]; then
+    # Ensure the directory exists before attempting to write to the file
     mkdir -p "$(dirname "${LOG_FILE}")"
     echo "${msg}" >> "${LOG_FILE}"
   fi
@@ -393,6 +425,16 @@ main() {
   load_configuration
   parse_options "$@"
   validate_configuration
+  
+  # If LOG_FILE is not set, determine a default location based on the script's prefix
+  if [[ -z "${LOG_FILE}" ]]; then
+    local prefix
+    prefix=$(get_script_prefix)
+    if [[ -n "${prefix}" ]]; then
+      LOG_FILE="${prefix}/var/log/${SCRIPT_NAME}.log"
+      log_info "No log file specified. Defaulting to: ${LOG_FILE}"
+    fi
+  fi
 
   DESTINATION="${HOST}:${DEST_PATH}"
 
