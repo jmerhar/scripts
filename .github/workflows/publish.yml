@@ -50,12 +50,13 @@ jobs:
 
       - name: Prepare Environment Variables
         run: |
-          echo "PKGSCR_HOMEBREW_FORMULA_DIR=$(pwd)/dist/homebrew" >> $GITHUB_ENV
-          echo "PKGSCR_DEB_PACKAGE_DIR=$(pwd)/dist/debian" >> $GITHUB_ENV
-          echo "PKGSCR_CONFIG_DIR=$(pwd)/scripts/conf" >> $GITHUB_ENV
+          echo "PKGSCR_HOMEBREW_FORMULA_DIR=../dist/homebrew" >> $GITHUB_ENV
+          echo "PKGSCR_DEB_PACKAGE_DIR=../dist/debian" >> $GITHUB_ENV
+          echo "PKGSCR_CONFIG_DIR=./conf" >> $GITHUB_ENV
 
       - name: Package Scripts
         id: package
+        working-directory: scripts
         run: |
           set -e
           # --- Single Script Release (from tag) ---
@@ -75,20 +76,18 @@ jobs:
             CHECKSUM=$(curl -sSL "${TARBALL_URL}" | shasum -a 256 | awk '{print $1}')
 
             # Find the path to the script file, excluding the conf directory
-            pushd scripts
             SCRIPT_PATH=$(find . -type f -name "${SCRIPT_NAME}.*" -not -path "./conf/*" | head -n 1)
             if [[ -z "${SCRIPT_PATH}" ]]; then
               echo "::error::Could not find a script file for '${SCRIPT_NAME}'."
               exit 1
             fi
-            popd
 
             # Run the packaging script with version-specific variables
             env \
               PKGSCR_VERSION="${VERSION}" \
               PKGSCR_TARBALL_URL="${TARBALL_URL}" \
               PKGSCR_SHA256_CHECKSUM="${CHECKSUM}" \
-              ./scripts/system/package-script.sh "scripts/${SCRIPT_PATH}"
+              ./system/package-script.sh "${SCRIPT_PATH}"
 
             # Set a specific commit message for the release
             echo "commit_message=feat(${SCRIPT_NAME}): Release version ${VERSION}" >> $GITHUB_OUTPUT
@@ -97,7 +96,6 @@ jobs:
           # --- Republish All Scripts (manual trigger) ---
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "--- Republishing latest version of all scripts ---"
-            pushd scripts
             # Find all files in subdirectories, excluding conf and .github.
             find . -mindepth 2 -type f -not -path "./conf/*" -not -path "./.github/*" | while read script_path; do
               # Check if the file starts with a shebang to identify it as a script.
@@ -127,7 +125,6 @@ jobs:
                 echo "--- Skipping script ${script_name}: No version tags found. ---"
               fi
             done
-            popd
 
             # Set a generic commit message for the republish action
             echo "commit_message=chore: Republish latest version of all scripts" >> $GITHUB_OUTPUT
