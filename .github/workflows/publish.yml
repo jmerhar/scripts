@@ -96,8 +96,8 @@ jobs:
           # --- Republish All Scripts (manual trigger) ---
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "--- Republishing latest version of all scripts ---"
-            # Find all files in subdirectories, excluding conf and .github.
-            find . -mindepth 2 -type f -not -path "./conf/*" -not -path "./.github/*" | while read script_path; do
+            # Find all files in subdirectories, excluding dot-directories (like .git) and conf.
+            find . -mindepth 2 -type f -not -path "./conf/*" -not -path "./.*/*" | while read script_path; do
               # Check if the file starts with a shebang to identify it as a script.
               if ! head -n 1 "${script_path}" | grep -qE '^#!'; then
                 echo "--- Skipping non-script file: ${script_path} ---"
