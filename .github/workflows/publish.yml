@@ -70,6 +70,8 @@ jobs:
 
             SCRIPT_NAME="${BASH_REMATCH[1]}"
             VERSION="v${BASH_REMATCH[2]}"
+            TARBALL_URL="${{ github.event.release.tarball_url }}"
+            CHECKSUM=$(curl -sSL "${TARBALL_URL}" | shasum -a 256 | awk '{print $1}')
 
             # Find the path to the script file, excluding the conf directory
             pushd scripts
@@ -80,13 +82,12 @@ jobs:
             fi
             popd
 
-            # Prepare environment variables for the packaging script
-            echo "PKGSCR_VERSION=${VERSION}" >> $GITHUB_ENV
-            echo "PKGSCR_TARBALL_URL=${{ github.event.release.tarball_url }}" >> $GITHUB_ENV
-            echo "PKGSCR_SHA256_CHECKSUM=$(curl -sSL "${{ github.event.release.tarball_url }}" | shasum -a 256 | awk '{print $1}')" >> $GITHUB_ENV
-
-            # Run the packaging script
-            ./scripts/system/package-script.sh "scripts/${SCRIPT_PATH}"
+            # Run the packaging script with the environment variables set directly for the command
+            env \
+              PKGSCR_VERSION="${VERSION}" \
+              PKGSCR_TARBALL_URL="${TARBALL_URL}" \
+              PKGSCR_SHA256_CHECKSUM="${CHECKSUM}" \
+              ./scripts/system/package-script.sh "scripts/${SCRIPT_PATH}"
 
             # Set a specific commit message for the release
             echo "commit_message=feat(${SCRIPT_NAME}): Release version ${VERSION}" >> $GITHUB_OUTPUT
