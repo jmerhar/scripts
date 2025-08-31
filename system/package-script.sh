@@ -1,10 +1,19 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# --- SCRIPT INFO START ---
+# Name: package-script
+# Description: A generic package-file generator for Homebrew and Debian.
+# Author: Jure Merhar <dev@merhar.si>
+# Homepage: https://github.com/jmerhar/scripts
+# Dependencies: awk
+# Debian-Dependencies: dpkg-deb
+# License: MIT
+# --- SCRIPT INFO END ---
 #
 # A generic package-file generator designed to be run from a CI/CD workflow.
 #
 # It takes the path to a script as an argument, parses metadata from a
-# corresponding README.md file (expected in the same directory), and generates
-# the necessary package files (.rb for Homebrew and .deb for Debian).
+# corresponding comment block on top of the script, and generates the necessary
+# package files (.rb for Homebrew and .deb for Debian).
 #
 # The script is configured entirely through environment variables and places its
 # output into local directories specified by those variables, decoupling it
@@ -14,18 +23,16 @@
 #   ./package-script.sh <path-to-script>
 #
 # Environment variables:
-#   - HOMEPAGE_URL: The URL for the project's homepage.
 #   - HOMEBREW_FORMULA_DIR: Local output directory for Homebrew formula files.
 #   - DEB_PACKAGE_DIR: Local output directory for Debian package files.
 #   - CONFIG_DIR: The directory where source config files are located.
-#   - MAINTAINER_INFO: Maintainer's name and email for Debian packages.
 #   - TARBALL_URL: URL to the new release tarball.
 #   - VERSION: The version string (e.g., "v1.0.1").
 #   - SHA256_CHECKSUM: The checksum of the tarball.
 
 set -o errexit
 set -o nounset
-set -o xtrace
+# set -o xtrace
 
 #######################################
 # Prints a timestamped error message to stderr for runtime errors.
@@ -56,28 +63,27 @@ show_usage() {
   echo "Example: ${script_basename} utility/unlock-pdf.sh"
 }
 
-# --- Global variables for dependencies ---
-# These are cleared and populated by the parse_readme function.
-homebrew_dependencies=""
-deb_dependencies=""
-description=""
-config_file_path=""
+# --- Global variables for dependencies and metadata ---
+declare -A metadata=()
 source_script_path=""
 script_name=""
-readme_path=""
+config_file_path=""
+
+# The start and end markers for the metadata block
+readonly METADATA_START="# --- SCRIPT INFO START ---"
+readonly METADATA_END="# --- SCRIPT INFO END ---"
+readonly REQUIRED_FIELDS=("Name" "Description" "Author" "Homepage")
 
 #######################################
 # Parses the script path to set global script and name variables.
 # Arguments:
 #   Path to the script to be published.
 # Outputs:
-#   Sets source_script_path, readme_path, and script_name global variables.
+#   Sets source_script_path and script_name global variables.
 #######################################
 parse_script_info() {
   source_script_path="$1"
   script_name=$(basename "${source_script_path%.*}")
-  # Assumes README is in the same directory as the script.
-  readme_path="$(dirname "${source_script_path}")/README.md"
 }
 
 #######################################
@@ -85,114 +91,97 @@ parse_script_info() {
 # Globals:
 #   script_name
 #   CONFIG_DIR
+#   metadata
 # Arguments:
 #   None
 # Outputs:
 #   Sets the config_file_path global variable if a file is found.
 #######################################
 find_config_file() {
-  # If CONFIG_DIR is not set or not a directory, skip the check.
-  if [[ -z "${CONFIG_DIR:-}" || ! -d "${CONFIG_DIR}" ]]; then
-    config_file_path=""
-    return
-  fi
+  local config_name="${metadata[ConfigFile]:-}"
 
-  local potential_config_path="${CONFIG_DIR}/${script_name}.conf"
-  if [[ -f "${potential_config_path}" ]]; then
-    echo "Found optional config file: ${potential_config_path}"
-    config_file_path="${potential_config_path}"
+  # If a config file is specified in the metadata
+  if [[ -n "${config_name}" ]]; then
+    # Validate that CONFIG_DIR is set and is a directory
+    if [[ -z "${CONFIG_DIR:-}" || ! -d "${CONFIG_DIR}" ]]; then
+      log_error "A config file ('${config_name}') is specified in the metadata, but the CONFIG_DIR environment variable is not set or is not a directory."
+      exit 1
+    fi
+    
+    local potential_config_path="${CONFIG_DIR}/${config_name}"
+    # Validate that the config file exists on disk
+    if [[ -f "${potential_config_path}" ]]; then
+      echo "Found optional config file: ${potential_config_path}"
+      config_file_path="${potential_config_path}"
+    else
+      log_error "The specified config file '${config_name}' was not found at '${potential_config_path}'."
+      exit 1
+    fi
   else
+    # No config file is specified, so we don't need to do anything.
     config_file_path=""
   fi
 }
 
 #######################################
-# Parses the script's README for its description and dependencies.
-# This function is the core of the script's logic. It reads the README
-# line-by-line to find the correct script's section and extract
-# the description and dependencies from within it, ignoring other sections.
+# Parses the script's comment block for its metadata.
 # Globals:
-#   readme_path, script_name, description, homebrew_dependencies, deb_dependencies
+#   source_script_path, metadata
 # Arguments:
 #   None
 # Outputs:
-#   Sets description, homebrew_dependencies, and deb_dependencies global variables.
+#   Populates the global metadata associative array.
+#   Exits with an error if metadata is not found or is incomplete.
 #######################################
-parse_readme() {
-  echo "Parsing README.md for description and dependencies..."
+parse_script_metadata() {
+  echo "Parsing metadata from script..."
 
-  if [[ ! -f "${readme_path}" ]]; then
-    log_error "README.md not found at '${readme_path}'"
+  local in_metadata_block="false"
+  
+  # Check if the file exists and is readable.
+  if [[ ! -f "${source_script_path}" ]]; then
+    log_error "Script file not found at '${source_script_path}'"
     exit 1
   fi
-
-  local in_script_section="false"
-  local in_deps_section="false"
-  local script_heading_found="false"
   
-  # A state machine to parse the README.
+  # A state machine to parse the script file.
   while IFS= read -r line; do
-    # Check for the start of a new section (a heading).
-    if [[ -z "$line" ]]; then
+    
+    if [[ "${line}" == "${METADATA_START}" ]]; then
+      in_metadata_block="true"
       continue
     fi
-    if [[ "${line}" =~ ^#+ ]]; then
-      # If we were in the correct script section and hit a new heading, we're done.
-      if [[ "${in_script_section}" == "true" ]]; then
-        break
-      fi
 
-      # Check if this new heading is for the script we're looking for.
-      if [[ "${line}" =~ ^#+[[:space:]]+\`*${script_name}.*\`* ]]; then
-        in_script_section="true"
-        script_heading_found="true"
-        continue # Skip the heading line itself.
-      fi
+    if [[ "${line}" == "${METADATA_END}" ]]; then
+      in_metadata_block="false"
+      break
     fi
 
-    # Only process lines if we're in the correct script section.
-    if [[ "${in_script_section}" == "true" ]]; then
-      # Capture the description (the first non-empty line after the heading).
-      if [[ "${description}" == "" && -n "${line}" ]]; then
-        description="${line}"
-        continue
-      fi
-
-      # Look for the "Dependencies" subheading within the script section.
-      if [[ "${line}" =~ ^#+[[:space:]]+Dependencies ]]; then
-        in_deps_section="true"
-        continue
-      fi
-
-      # If we're in the dependencies section, parse the dependency lines.
-      if [[ "${in_deps_section}" == "true" && "${line}" =~ ^\*[[:space:]]+(macOS|Debian/Ubuntu)?:?\s*\`([^`]+)\`$ ]]; then
-        # This regex now correctly matches both universal and platform-specific dependencies
-        # and captures the clean dependency name inside the backticks.
-        local clean_dep="${BASH_REMATCH[2]}"
-        local dep_type="UNIVERSAL"
-
-        if [[ "${BASH_REMATCH[1]}" == "macOS" ]]; then
-          dep_type="BREW_ONLY"
-        elif [[ "${BASH_REMATCH[1]}" == "Debian/Ubuntu" ]]; then
-          dep_type="DEB_ONLY"
-        fi
-
-        # Append to the correct global dependency variables.
-        if [[ "${dep_type}" == "BREW_ONLY" || "${dep_type}" == "UNIVERSAL" ]]; then
-          homebrew_dependencies+="  depends_on \"${clean_dep}\"\n"
-        fi
-        if [[ "${dep_type}" == "DEB_ONLY" || "${dep_type}" == "UNIVERSAL" ]]; then
-          if [[ -n "${deb_dependencies}" ]]; then
-            deb_dependencies+=","
-          fi
-          deb_dependencies+="${clean_dep}"
-        fi
+    if [[ "${in_metadata_block}" == "true" ]]; then
+      # Use a regex to capture the key-value pair, including the leading '# '
+      if [[ "${line}" =~ ^#\ ([[:alnum:]-]+):[[:space:]]*(.*)$ ]]; then
+        local key="${BASH_REMATCH[1]}"
+        local value="${BASH_REMATCH[2]}"
+        metadata[${key}]="${value}"
       fi
     fi
-  done < "${readme_path}"
+  done < "${source_script_path}"
 
-  if [[ "${script_heading_found}" == "false" ]]; then
-    log_error "Could not find a section for '${script_name}' in README.md."
+  if [[ "${in_metadata_block}" == "true" ]]; then
+    log_error "Metadata block not properly closed with '${METADATA_END}' in ${source_script_path}"
+    exit 1
+  fi
+  
+  # Check for mandatory fields
+  local missing_fields=()
+  for field in "${REQUIRED_FIELDS[@]}"; do
+    if [[ -z "${metadata[${field}]:-}" ]]; then
+      missing_fields+=("${field}")
+    fi
+  done
+
+  if (( ${#missing_fields[@]} > 0 )); then
+    log_error "The following required fields are missing from the script metadata: ${missing_fields[*]}"
     exit 1
   fi
 }
@@ -200,13 +189,16 @@ parse_readme() {
 #######################################
 # Generates the Homebrew formula file.
 # Globals:
-#   HOMEBREW_FORMULA_DIR, script_name, HOMEPAGE_URL,
-#   TARBALL_URL, SHA256_CHECKSUM, homebrew_dependencies, source_script_path,
-#   config_file_path
+#   HOMEBREW_FORMULA_DIR, metadata, TARBALL_URL, SHA256_CHECKSUM,
+#   source_script_path, config_file_path
 # Arguments:
 #   None
 #######################################
 generate_homebrew_formula() {
+  local script_name="${metadata[Name]}"
+  local homepage="${metadata[Homepage]}"
+  local description="${metadata[Description]}"
+
   mkdir -p "${HOMEBREW_FORMULA_DIR}"
   local formula_file="${HOMEBREW_FORMULA_DIR}/${script_name}.rb"
   local class_name
@@ -223,15 +215,34 @@ generate_homebrew_formula() {
 # This file was generated by the package-script.sh script.
 class ${class_name} < Formula
   desc "${description}"
-  homepage "${HOMEPAGE_URL}"
+  homepage "${homepage}"
   url "${TARBALL_URL}"
   sha256 "${SHA256_CHECKSUM}"
-
-${homebrew_dependencies}
+$(
+  # Dynamically add other metadata fields that are not hardcoded
+  for key in "${!metadata[@]}"; do
+    # Skip mandatory fields already handled
+    if [[ "${key}" == "Name" || "${key}" == "Description" || "${key}" == "Author" || "${key}" == "Homepage" ]]; then
+      continue
+    fi
+    # Skip special fields
+    if [[ "${key}" == "Dependencies" || "${key}" == "Homebrew-Dependencies" || "${key}" == "Debian-Dependencies" || "${key}" == "ConfigFile" ]]; then
+      continue
+    fi
+    echo "  ${key}: \"${metadata[${key}]}\""
+  done
+  # Combine dependencies
+  for dep_name in ${metadata[Dependencies]:-}; do
+    echo "  depends_on \"${dep_name}\""
+  done
+  for dep_name in ${metadata[Homebrew-Dependencies]:-}; do
+    echo "  depends_on \"${dep_name}\""
+  done
+)
   def install
     bin.install "${source_script_path}" => "${script_name}"
     $(if [[ -n "${config_file_path}" ]]; then
-      echo "etc.install \"${config_file_path}\" => \"${script_name}.conf\""
+      echo "etc.install \"${config_file_path}\" => \"${metadata[ConfigFile]}\""
     fi)
   end
 end
@@ -241,8 +252,7 @@ EOF
 #######################################
 # Generates the Debian (.deb) package.
 # Globals:
-#   DEB_PACKAGE_DIR, script_name, VERSION, source_script_path, deb_dependencies,
-#   MAINTAINER_INFO, description, config_file_path
+#   DEB_PACKAGE_DIR, metadata, VERSION, source_script_path, config_file_path
 # Arguments:
 #   None
 # Returns:
@@ -256,7 +266,20 @@ generate_deb_package() {
     return 1
   fi
 
+  local script_name="${metadata[Name]}"
   local deb_version="${VERSION#v}"
+  local deb_dependencies=""
+
+  # Combine dependencies
+  for dep_name in ${metadata[Dependencies]:-}; do
+    if [[ -n "${deb_dependencies}" ]]; then deb_dependencies+=", "; fi
+    deb_dependencies+="${dep_name}"
+  done
+  for dep_name in ${metadata[Debian-Dependencies]:-}; do
+    if [[ -n "${deb_dependencies}" ]]; then deb_dependencies+=", "; fi
+    deb_dependencies+="${dep_name}"
+  done
+
   local package_dir="${DEB_PACKAGE_DIR}/${script_name}-${VERSION}"
   local control_dir="${package_dir}/DEBIAN"
   local bin_dir="${package_dir}/usr/local/bin"
@@ -267,24 +290,35 @@ generate_deb_package() {
   rm -rf "${package_dir}"
   mkdir -p "${control_dir}" "${bin_dir}"
 
-  cat > "${control_dir}/control" <<EOF
-Package: ${script_name}
-Version: ${deb_version}
-Section: utils
-Priority: optional
-Architecture: all
-Depends: ${deb_dependencies}
-Maintainer: ${MAINTAINER_INFO}
-Description: ${description}
- This package installs the '${script_name}' script.
-EOF
+  # Build the control file
+  echo "Package: ${script_name}" > "${control_dir}/control"
+  echo "Version: ${deb_version}" >> "${control_dir}/control"
+  echo "Architecture: all" >> "${control_dir}/control"
+  if [[ -n "${deb_dependencies}" ]]; then
+    echo "Depends: ${deb_dependencies}" >> "${control_dir}/control"
+  fi
+  echo "Maintainer: ${metadata[Author]}" >> "${control_dir}/control"
+  echo "Description: ${metadata[Description]}" >> "${control_dir}/control"
+  
+  # Add all other optional fields
+  for key in "${!metadata[@]}"; do
+    # Skip mandatory and special fields
+    if [[ "${REQUIRED_FIELDS[*]}" =~ ${key} || "${key}" =~ ^(Dependencies|Homebrew-Dependencies|Debian-Dependencies|ConfigFile)$ ]]; then
+      continue
+    fi
+    echo "${key}: ${metadata[${key}]}" >> "${control_dir}/control"
+  done
+
+  # Add a blank line to the control file for debian linting
+  echo >> "${control_dir}/control"
+  echo " This package installs the '${script_name}' script." >> "${control_dir}/control"
 
   cp "${source_script_path}" "${bin_dir}/${script_name}"
   chmod +x "${bin_dir}/${script_name}"
 
   if [[ -n "${config_file_path}" ]]; then
     mkdir -p "${etc_dir}"
-    cp "${config_file_path}" "${etc_dir}/${script_name}.conf"
+    cp "${config_file_path}" "${etc_dir}/${metadata[ConfigFile]}"
   fi
 
   echo "Building .deb package..."
@@ -307,8 +341,8 @@ main() {
   fi
 
   parse_script_info "$1"
+  parse_script_metadata
   find_config_file
-  parse_readme
   generate_homebrew_formula
   generate_deb_package
 }

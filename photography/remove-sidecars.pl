@@ -1,4 +1,13 @@
 #!/usr/bin/env perl
+# --- SCRIPT INFO START ---
+# Name: remove-sidecars
+# Description: A script to find and delete "sidecar" files when a corresponding RAW photo file exists.
+# Author: Jure Merhar <dev@merhar.si>
+# Homepage: https://github.com/jmerhar/scripts
+# Dependencies: perl
+# Debian-Dependencies: libterm-ansicolor-perl
+# License: MIT
+# --- SCRIPT INFO END ---
 #
 # A script to find and delete "sidecar" files (e.g., JPEGs) when a
 # corresponding RAW photo file with the same base name exists in the same directory.

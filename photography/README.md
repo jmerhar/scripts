@@ -9,32 +9,18 @@ A collection of utilities for managing photography workflows. This directory inc
 A robust backup solution for photographers managing multiple storage devices. It safely merges content from two sources into a consolidated backup on a remote server while preserving unique files from both.
 
 #### Features
-
 * **Merge Overlapping Directories**: Safely syncs two source directories with similar structures (e.g., both containing `/Travel`) to a single destination.
-
 * **Deletion Protection**: Uses an rsync filter to ensure that files present in either source are not accidentally deleted from the destination.
-
 * **Highly Configurable**: All settings can be managed via a config file (`/etc/photo-backup.conf`) or command-line flags.
-
 * **Detailed Logging**: Provides comprehensive logging with support for debug mode and optional log file output.
-
 * **Dry-Run Mode**: Allows testing the sync operation without making any changes to files.
-
 * **macOS Cleanup**: Intelligently cleans up macOS-specific temporary files (`.DS_Store`, etc.) before backup.
-
 * **Safety Checks**: Includes validations to prevent running on empty source directories.
 
 #### Requirements
-
 * `bash` 4.0+
-
 * `rsync`
-
 * SSH access to the backup server
-
-#### Dependencies
-
-* `rsync`
 
 #### Usage
 
@@ -88,20 +74,14 @@ When shooting in RAW+JPEG mode, you get high-quality RAWs for editing and conven
 However, after a library grows to 100k+ photos, these sidecar files can take up a significant amount of disk space for little long-term benefit. This script was created to solve the problem of cleaning them up, freeing up hundreds of gigabytes of space.
 
 #### Features
-
 * **Interactive**: Prompts the user to define which file extensions are sidecars and which are RAW files, with sensible defaults.
-
 * **Safe**: It shows a summary of what will be deleted and asks for confirmation before proceeding.
-
 * **Informative**: Provides a detailed report at the end detailing how much disk space was recovered.
-
 * **Recursive**: Scans the specified directory and all of its subdirectories.
 
-#### Dependencies
-
+#### Requirements
 * `perl`
-
-* Debian/Ubuntu: `libterm-ansicolor-perl`
+* `Term::ANSIColor`
 
 #### Usage
 

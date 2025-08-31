@@ -1,4 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# --- SCRIPT INFO START ---
+# Name: unlock-pdf
+# Description: Decrypts a password-protected PDF file using the 'qpdf' command-line tool.
+# Author: Jure Merhar <dev@merhar.si>
+# Homepage: https://github.com/jmerhar/scripts
+# Dependencies: qpdf
+# License: MIT
+# --- SCRIPT INFO END ---
 #
 # Decrypts a password-protected PDF file using the 'qpdf' command-line tool.
 #

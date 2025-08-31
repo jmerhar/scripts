@@ -28,7 +28,8 @@ A generic package-file generator designed to be run from a CI/CD workflow. It ta
 
 The script is configured entirely through environment variables and places its output into local directories, decoupling it from any specific repository structure.
 
-#### Dependencies
+#### Requirements
+* `bash` 4.0+
 * `awk`
 * `dpkg-deb` (for Debian package creation)
 

@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# --- SCRIPT INFO START ---
+# Name: photo-backup
+# Description: A robust script for backing up photo collections from multiple sources to a remote server using rsync.
+# Author: Jure Merhar <dev@merhar.si>
+# Homepage: https://github.com/jmerhar/scripts
+# ConfigFile: photo-backup.conf
+# Dependencies: rsync
+# License: MIT
+# --- SCRIPT INFO END ---
 #
 # A robust script for backing up photo collections from multiple sources
 # to a remote server using rsync.

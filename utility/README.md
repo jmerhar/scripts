@@ -9,12 +9,12 @@ This directory contains a collection of user-facing scripts designed to perform 
 A script to decrypt a password-protected PDF file.
 
 #### Features
--   **Simple Usage**: Unlocks a PDF with a single command.
--   **Automatic Dependency Management**: If the required `qpdf` utility is not found, it automatically calls the `install-dependency.sh` script to install it.
--   **Safe Output**: Creates a new, unlocked file with an `-unlocked` suffix, preserving the original file.
+*   **Simple Usage**: Unlocks a PDF with a single command.
+*   **Automatic Dependency Management**: If the required `qpdf` utility is not found, it automatically calls the `install-dependency.sh` script to install it.
+*   **Safe Output**: Creates a new, unlocked file with an `-unlocked` suffix, preserving the original file.
 
-#### Dependencies
--   **`qpdf`**: The core command-line tool used for PDF manipulation.
+#### Requirements
+*   **`qpdf`**: The core command-line tool used for PDF manipulation.
 
 #### Usage
 Run the script with the PDF password and the input filename as arguments.
