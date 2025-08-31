@@ -43,14 +43,12 @@ jobs:
 
       - name: Prepare environment variables
         run: |
-          echo "HOMEPAGE_URL=https://github.com/jmerhar/scripts" >> $GITHUB_ENV
-          echo "HOMEBREW_FORMULA_DIR=../dist/homebrew" >> $GITHUB_ENV
-          echo "DEB_PACKAGE_DIR=../dist/debian" >> $GITHUB_ENV
-          echo "CONFIG_DIR=./conf" >> $GITHUB_ENV
-          echo "MAINTAINER_INFO=Jure Merhar <dev@merhar.si>" >> $GITHUB_ENV
-          echo "TARBALL_URL=${{ github.event.release.tarball_url }}" >> $GITHUB_ENV
-          echo "VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
-          echo "SHA256_CHECKSUM=$(curl -sSL ${{ github.event.release.tarball_url }} | shasum -a 256 | awk '{print $1}')" >> $GITHUB_ENV
+          echo "PKGSCR_HOMEBREW_FORMULA_DIR=../dist/homebrew" >> $GITHUB_ENV
+          echo "PKGSCR_DEB_PACKAGE_DIR=../dist/debian" >> $GITHUB_ENV
+          echo "PKGSCR_CONFIG_DIR=./conf" >> $GITHUB_ENV
+          echo "PKGSCR_TARBALL_URL=${{ github.event.release.tarball_url }}" >> $GITHUB_ENV
+          echo "PKGSCR_VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+          echo "PKGSCR_SHA256_CHECKSUM=$(curl -sSL ${{ github.event.release.tarball_url }} | shasum -a 256 | awk '{print $1}')" >> $GITHUB_ENV
 
       - name: Package changed scripts
         working-directory: scripts
