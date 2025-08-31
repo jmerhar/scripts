@@ -1,15 +1,20 @@
 # This workflow automates the publication of a new script release.
-# It is triggered automatically when a new release is published.
-name: Publish New Script Release
+# It supports two trigger mechanisms:
+# 1. A new release is published with a tag in the format "script-name-vX.Y.Z".
+# 2. A manual trigger from the GitHub Actions UI to republish all scripts.
+name: Publish Script
 
 # Controls when the workflow is triggered.
 on:
+  # Triggered when a new release is published.
   release:
     types: [published]
+  # Allows manual triggering from the GitHub Actions UI.
+  workflow_dispatch:
 
 # Defines a single job that will run on an Ubuntu environment.
 jobs:
-  publish-all-scripts:
+  publish-script:
     runs-on: ubuntu-latest
 
     # We need to give the job permissions to write to other repos.
@@ -21,6 +26,8 @@ jobs:
         uses: actions/checkout@v3
         with:
           path: scripts
+          # Fetch all history and tags to find previous versions
+          fetch-depth: 0
 
       - name: Checkout Homebrew tap repo
         uses: actions/checkout@v3
@@ -35,42 +42,98 @@ jobs:
           repository: jmerhar/apt-scripts
           path: apt-scripts
           token: ${{ secrets.PAT }}
-      
-      - name: Clean old artifacts
-        run: rm -rf dist
 
       - name: Setup Git for multi-repo push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Prepare environment variables
+      - name: Package Scripts
+        id: package
         run: |
-          echo "PKGSCR_HOMEBREW_FORMULA_DIR=../dist/homebrew" >> $GITHUB_ENV
-          echo "PKGSCR_DEB_PACKAGE_DIR=../dist/debian" >> $GITHUB_ENV
-          echo "PKGSCR_CONFIG_DIR=./conf" >> $GITHUB_ENV
-          echo "PKGSCR_TARBALL_URL=${{ github.event.release.tarball_url }}" >> $GITHUB_ENV
-          echo "PKGSCR_VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
-          echo "PKGSCR_SHA256_CHECKSUM=$(curl -sSL ${{ github.event.release.tarball_url }} | shasum -a 256 | awk '{print $1}')" >> $GITHUB_ENV
+          set -e
+          # Set common environment variables for the package-script.sh
+          echo "PKGSCR_HOMEBREW_FORMULA_DIR=$(pwd)/dist/homebrew" >> $GITHUB_ENV
+          echo "PKGSCR_DEB_PACKAGE_DIR=$(pwd)/dist/debian" >> $GITHUB_ENV
+          echo "PKGSCR_CONFIG_DIR=$(pwd)/scripts/conf" >> $GITHUB_ENV
 
-      - name: Package changed scripts
-        working-directory: scripts
-        run: |
-          # Fetch all tags to find the previous one.
-          git fetch --tags
-          PREV_TAG=$(git tag --sort=-creatordate | sed '2!d')
-          echo "Previous tag: ${PREV_TAG}, Current tag: ${{ github.event.release.tag_name }}"
+          # --- Single Script Release (from tag) ---
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            TAG="${{ github.event.release.tag_name }}"
+            echo "--- Processing release for tag: ${TAG} ---"
 
-          # Find all executable files changed between the previous and current release.
-          git diff --name-only "${PREV_TAG}" "${{ github.event.release.tag_name }}" | \
-          while read script_path; do
-            if [ -f "${script_path}" ] && head -n 1 "${script_path}" | grep -qE '^#!'; then
-              echo "--- Packaging script: ${script_path} ---"
-              ./system/package-script.sh "${script_path}"
+            # Validate tag format and extract script name and version
+            if [[ ! "${TAG}" =~ ^([a-zA-Z0-9_-]+)-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+              echo "::error::Tag format is invalid. Expected 'script-name-vX.Y.Z', but got '${TAG}'."
+              exit 1
             fi
-          done
+
+            SCRIPT_NAME="${BASH_REMATCH[1]}"
+            VERSION="v${BASH_REMATCH[2]}"
+
+            # Find the path to the script file, excluding the conf directory
+            pushd scripts
+            SCRIPT_PATH=$(find . -type f -name "${SCRIPT_NAME}.*" -not -path "./conf/*" | head -n 1)
+            if [[ -z "${SCRIPT_PATH}" ]]; then
+              echo "::error::Could not find a script file for '${SCRIPT_NAME}'."
+              exit 1
+            fi
+            popd
+
+            # Prepare environment variables for the packaging script
+            echo "PKGSCR_VERSION=${VERSION}" >> $GITHUB_ENV
+            echo "PKGSCR_TARBALL_URL=${{ github.event.release.tarball_url }}" >> $GITHUB_ENV
+            echo "PKGSCR_SHA256_CHECKSUM=$(curl -sSL "${{ github.event.release.tarball_url }}" | shasum -a 256 | awk '{print $1}')" >> $GITHUB_ENV
+
+            # Run the packaging script
+            ./scripts/system/package-script.sh "scripts/${SCRIPT_PATH}"
+
+            # Set a specific commit message for the release
+            echo "commit_message=feat(${SCRIPT_NAME}): Release version ${VERSION}" >> $GITHUB_OUTPUT
+          fi
+
+          # --- Republish All Scripts (manual trigger) ---
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "--- Republishing latest version of all scripts ---"
+            pushd scripts
+            # Find all files in subdirectories, excluding conf and .github.
+            find . -mindepth 2 -type f -not -path "./conf/*" -not -path "./.github/*" | while read script_path; do
+              # Check if the file starts with a shebang to identify it as a script.
+              if ! head -n 1 "${script_path}" | grep -qE '^#!'; then
+                echo "--- Skipping non-script file: ${script_path} ---"
+                continue
+              fi
+
+              script_name=$(basename "${script_path}" | cut -d. -f1)
+
+              # Find the latest version tag for this specific script
+              latest_tag=$(git tag --list "${script_name}-v*" --sort=-v:refname | head -n 1)
+
+              if [[ -n "${latest_tag}" ]]; then
+                echo "--- Packaging script: ${script_name}, latest tag: ${latest_tag} ---"
+                version=$(echo "${latest_tag}" | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+')
+                tarball_url="https://github.com/${{ github.repository }}/archive/refs/tags/${latest_tag}.tar.gz"
+                checksum=$(curl -sSL "${tarball_url}" | shasum -a 256 | awk '{print $1}')
+
+                # Run package-script with specific env vars for this script and version
+                env \
+                  PKGSCR_VERSION="${version}" \
+                  PKGSCR_TARBALL_URL="${tarball_url}" \
+                  PKGSCR_SHA256_CHECKSUM="${checksum}" \
+                  ./system/package-script.sh "${script_path}"
+              else
+                echo "--- Skipping script ${script_name}: No version tags found. ---"
+              fi
+            done
+            popd
+
+            # Set a generic commit message for the republish action
+            echo "commit_message=chore: Republish latest version of all scripts" >> $GITHUB_OUTPUT
+          fi
 
       - name: Move Artifacts to Repositories
+        # Only run if artifacts were actually created
+        if: success() && (steps.package.outputs.commit_message != '')
         run: |
           # Move Homebrew formulas
           if [ -d "dist/homebrew" ]; then
@@ -82,13 +145,15 @@ jobs:
           fi
 
       - name: Commit and push Homebrew changes
+        if: success() && (steps.package.outputs.commit_message != '')
         run: |
           cd homebrew-scripts
           git add .
-          git commit -m "chore: Automated update from new release ${{ github.event.release.tag_name }}" || echo "No Homebrew changes to commit."
+          git commit -m "${{ steps.package.outputs.commit_message }}" || echo "No Homebrew changes to commit."
           git push
 
       - name: Sign and commit APT repository changes
+        if: success() && (steps.package.outputs.commit_message != '')
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
@@ -108,6 +173,6 @@ jobs:
           gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --default-key "jmerhar-bot" --clearsign -o dists/stable/InRelease dists/stable/Release
           # Commit and push
           git add .
-          git commit -m "chore: Automated update from new release ${{ github.event.release.tag_name }}" || echo "No APT changes to commit."
+          git commit -m "${{ steps.package.outputs.commit_message }}" || echo "No APT changes to commit."
           git push
 
