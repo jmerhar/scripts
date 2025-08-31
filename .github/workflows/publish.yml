@@ -72,7 +72,7 @@ jobs:
 
             SCRIPT_NAME="${BASH_REMATCH[1]}"
             VERSION="v${BASH_REMATCH[2]}"
-            TARBALL_URL="${{ github.event.release.tarball_url }}"
+            TARBALL_URL="https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"
             CHECKSUM=$(curl -sSL "${TARBALL_URL}" | shasum -a 256 | awk '{print $1}')
 
             # Find the path to the script file, excluding the conf directory
