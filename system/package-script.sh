@@ -23,16 +23,16 @@
 #   ./package-script.sh <path-to-script>
 #
 # Environment variables:
-#   - HOMEBREW_FORMULA_DIR: Local output directory for Homebrew formula files.
-#   - DEB_PACKAGE_DIR: Local output directory for Debian package files.
-#   - CONFIG_DIR: The directory where source config files are located.
-#   - TARBALL_URL: URL to the new release tarball.
-#   - VERSION: The version string (e.g., "v1.0.1").
-#   - SHA256_CHECKSUM: The checksum of the tarball.
+#   - PKGSCR_HOMEBREW_FORMULA_DIR: Local output directory for Homebrew formula files.
+#   - PKGSCR_DEB_PACKAGE_DIR: Local output directory for Debian package files.
+#   - PKGSCR_CONFIG_DIR: The directory where source config files are located.
+#   - PKGSCR_TARBALL_URL: URL to the new release tarball.
+#   - PKGSCR_VERSION: The version string (e.g., "v1.0.1").
+#   - PKGSCR_SHA256_CHECKSUM: The checksum of the tarball.
 
 set -o errexit
 set -o nounset
-# set -o xtrace
+set -o xtrace
 
 #######################################
 # Prints a timestamped error message to stderr for runtime errors.
@@ -75,6 +75,31 @@ readonly METADATA_END="# --- SCRIPT INFO END ---"
 readonly REQUIRED_FIELDS=("Name" "Description" "Author" "Homepage")
 
 #######################################
+# Validates that all required environment variables are set.
+# Globals:
+#   None
+# Arguments:
+#   An array of variable names to check.
+# Outputs:
+#   Exits with an error if any required variable is not set.
+#######################################
+validate_env_vars() {
+  local required_vars=("$@")
+  local unset_vars=()
+
+  for var_name in "${required_vars[@]}"; do
+    if [[ -z "${!var_name:-}" ]]; then
+      unset_vars+=("${var_name}")
+    fi
+  done
+
+  if (( ${#unset_vars[@]} > 0 )); then
+    log_error "The following required environment variables are missing: ${unset_vars[*]}"
+    exit 1
+  fi
+}
+
+#######################################
 # Parses the script path to set global script and name variables.
 # Arguments:
 #   Path to the script to be published.
@@ -90,7 +115,7 @@ parse_script_info() {
 # Checks for an optional config file associated with the script.
 # Globals:
 #   script_name
-#   CONFIG_DIR
+#   PKGSCR_CONFIG_DIR
 #   metadata
 # Arguments:
 #   None
@@ -102,13 +127,13 @@ find_config_file() {
 
   # If a config file is specified in the metadata
   if [[ -n "${config_name}" ]]; then
-    # Validate that CONFIG_DIR is set and is a directory
-    if [[ -z "${CONFIG_DIR:-}" || ! -d "${CONFIG_DIR}" ]]; then
-      log_error "A config file ('${config_name}') is specified in the metadata, but the CONFIG_DIR environment variable is not set or is not a directory."
+    # Validate that PKGSCR_CONFIG_DIR is set and is a directory
+    if [[ -z "${PKGSCR_CONFIG_DIR:-}" || ! -d "${PKGSCR_CONFIG_DIR}" ]]; then
+      log_error "A config file ('${config_name}') is specified in the metadata, but the PKGSCR_CONFIG_DIR environment variable is not set or is not a directory."
       exit 1
     fi
     
-    local potential_config_path="${CONFIG_DIR}/${config_name}"
+    local potential_config_path="${PKGSCR_CONFIG_DIR}/${config_name}"
     # Validate that the config file exists on disk
     if [[ -f "${potential_config_path}" ]]; then
       echo "Found optional config file: ${potential_config_path}"
@@ -189,7 +214,7 @@ parse_script_metadata() {
 #######################################
 # Generates the Homebrew formula file.
 # Globals:
-#   HOMEBREW_FORMULA_DIR, metadata, TARBALL_URL, SHA256_CHECKSUM,
+#   PKGSCR_HOMEBREW_FORMULA_DIR, metadata, PKGSCR_TARBALL_URL, PKGSCR_SHA256_CHECKSUM,
 #   source_script_path, config_file_path
 # Arguments:
 #   None
@@ -199,8 +224,8 @@ generate_homebrew_formula() {
   local homepage="${metadata[Homepage]}"
   local description="${metadata[Description]}"
 
-  mkdir -p "${HOMEBREW_FORMULA_DIR}"
-  local formula_file="${HOMEBREW_FORMULA_DIR}/${script_name}.rb"
+  mkdir -p "${PKGSCR_HOMEBREW_FORMULA_DIR}"
+  local formula_file="${PKGSCR_HOMEBREW_FORMULA_DIR}/${script_name}.rb"
   local class_name
   class_name=$(echo "${script_name}" | awk -F'-' '{
     for (i=1; i<=NF; i++) {
@@ -216,8 +241,8 @@ generate_homebrew_formula() {
 class ${class_name} < Formula
   desc "${description}"
   homepage "${homepage}"
-  url "${TARBALL_URL}"
-  sha256 "${SHA256_CHECKSUM}"
+  url "${PKGSCR_TARBALL_URL}"
+  sha256 "${PKGSCR_SHA256_CHECKSUM}"
 $(
   # Dynamically add other metadata fields that are not hardcoded
   for key in "${!metadata[@]}"; do
@@ -252,7 +277,7 @@ EOF
 #######################################
 # Generates the Debian (.deb) package.
 # Globals:
-#   DEB_PACKAGE_DIR, metadata, VERSION, source_script_path, config_file_path
+#   PKGSCR_DEB_PACKAGE_DIR, metadata, PKGSCR_VERSION, source_script_path, config_file_path
 # Arguments:
 #   None
 # Returns:
@@ -267,7 +292,7 @@ generate_deb_package() {
   fi
 
   local script_name="${metadata[Name]}"
-  local deb_version="${VERSION#v}"
+  local deb_version="${PKGSCR_VERSION#v}"
   local deb_dependencies=""
 
   # Combine dependencies
@@ -280,13 +305,13 @@ generate_deb_package() {
     deb_dependencies+="${dep_name}"
   done
 
-  local package_dir="${DEB_PACKAGE_DIR}/${script_name}-${VERSION}"
+  local package_dir="${PKGSCR_DEB_PACKAGE_DIR}/${script_name}-${PKGSCR_VERSION}"
   local control_dir="${package_dir}/DEBIAN"
   local bin_dir="${package_dir}/usr/local/bin"
   local etc_dir="${package_dir}/usr/local/etc"
-  local deb_file="${DEB_PACKAGE_DIR}/${script_name}_${deb_version}_all.deb"
+  local deb_file="${PKGSCR_DEB_PACKAGE_DIR}/${script_name}_${deb_version}_all.deb"
 
-  mkdir -p "${DEB_PACKAGE_DIR}"
+  mkdir -p "${PKGSCR_DEB_PACKAGE_DIR}"
   rm -rf "${package_dir}"
   mkdir -p "${control_dir}" "${bin_dir}"
 
@@ -294,23 +319,23 @@ generate_deb_package() {
   echo "Package: ${script_name}" > "${control_dir}/control"
   echo "Version: ${deb_version}" >> "${control_dir}/control"
   echo "Architecture: all" >> "${control_dir}/control"
+  
   if [[ -n "${deb_dependencies}" ]]; then
     echo "Depends: ${deb_dependencies}" >> "${control_dir}/control"
   fi
   echo "Maintainer: ${metadata[Author]}" >> "${control_dir}/control"
-  echo "Description: ${metadata[Description]}" >> "${control_dir}/control"
   
-  # Add all other optional fields
+  # Add all other optional fields BEFORE the Description
   for key in "${!metadata[@]}"; do
     # Skip mandatory and special fields
-    if [[ "${REQUIRED_FIELDS[*]}" =~ ${key} || "${key}" =~ ^(Dependencies|Homebrew-Dependencies|Debian-Dependencies|ConfigFile)$ ]]; then
+    if [[ "${REQUIRED_FIELDS[*]}" =~ ${key} || "${key}" =~ ^(Dependencies|Homebrew-Dependencies|Debian-Dependencies|ConfigFile|Description)$ ]]; then
       continue
     fi
     echo "${key}: ${metadata[${key}]}" >> "${control_dir}/control"
   done
-
-  # Add a blank line to the control file for debian linting
-  echo >> "${control_dir}/control"
+  
+  # Add the Description and the correctly-indented long description
+  echo "Description: ${metadata[Description]}" >> "${control_dir}/control"
   echo " This package installs the '${script_name}' script." >> "${control_dir}/control"
 
   cp "${source_script_path}" "${bin_dir}/${script_name}"
@@ -334,6 +359,8 @@ generate_deb_package() {
 }
 
 main() {
+  validate_env_vars "PKGSCR_HOMEBREW_FORMULA_DIR" "PKGSCR_DEB_PACKAGE_DIR" "PKGSCR_CONFIG_DIR" "PKGSCR_TARBALL_URL" "PKGSCR_VERSION" "PKGSCR_SHA256_CHECKSUM"
+
   if (( $# != 1 )); then
     log_error "Missing required script path argument."
     show_usage
