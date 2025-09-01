@@ -118,6 +118,78 @@ get_script_prefix() {
 }
 
 #######################################
+# Detects and migrates a legacy config file to the new SOURCES array format.
+# Globals:
+#   None
+# Arguments:
+#   config_file: The path to the configuration file to check and migrate.
+# Outputs:
+#   Modifies the configuration file in place if a legacy format is detected.
+#######################################
+handle_legacy_configuration() {
+  local config_file="$1"
+
+  # Check if the file contains the old SRC_1/SRC_2 format and not the new one.
+  if grep -q -E "^SRC_[12]=" "${config_file}" && ! grep -q "^SOURCES=" "${config_file}"; then
+    log_info "Legacy configuration format detected in '${config_file}'."
+    log_info "Attempting to automatically migrate to the new format."
+
+    local backup_file="${config_file}.bak"
+    if ! cp "${config_file}" "${backup_file}" 2>/dev/null; then
+      log_error "Failed to create backup file at '${backup_file}'."
+      log_error "Migration aborted. Please try running the script with 'sudo'."
+      exit 1
+    fi
+    log_info "Backup of original configuration saved to '${backup_file}'."
+
+    # We source the file in a subshell to safely get the variable values.
+    local src1_val
+    local src2_val
+    src1_val=$(source "${config_file}" && echo "${SRC_1:-}")
+    src2_val=$(source "${config_file}" && echo "${SRC_2:-}")
+
+    # Build the new SOURCES array line
+    local new_sources_line="SOURCES=("
+    if [[ -n "${src1_val}" ]]; then
+      new_sources_line+="\"${src1_val}\""
+    fi
+    if [[ -n "${src2_val}" ]]; then
+      # Add a space if src1 was also present
+      if [[ -n "${src1_val}" ]]; then
+        new_sources_line+=" "
+      fi
+      new_sources_line+="\"${src2_val}\""
+    fi
+    new_sources_line+=")"
+    
+    # Create the new config in a temporary file first for atomicity
+    local temp_config
+    temp_config=$(mktemp)
+    
+    # Use sed to comment out the old lines, reading from original and writing to temp
+    sed 's/^\(SRC_[12]\)/# \1/' "${config_file}" > "${temp_config}"
+
+    # Append the new line to the temp config file
+    echo -e "\n# Migrated automatically by ${SCRIPT_NAME}" >> "${temp_config}"
+    echo "${new_sources_line}" >> "${temp_config}"
+
+    # Atomically replace the old config with the new one
+    if ! mv "${temp_config}" "${config_file}" 2>/dev/null; then
+      log_error "Failed to write migrated configuration to '${config_file}'."
+      log_error "Migration aborted. The original file is unchanged."
+      log_error "Please try running the script with 'sudo'."
+      # Clean up temp file on failure
+      rm -f "${temp_config}"
+      exit 1
+    fi
+
+    log_info "Configuration file has been successfully migrated."
+    log_info "Please review the changes in '${config_file}'."
+  fi
+}
+
+
+#######################################
 # Loads configuration from standard system locations, detecting the install prefix.
 # Globals:
 #   SCRIPT_NAME
@@ -142,6 +214,9 @@ load_configuration() {
   fi
 
   if [[ -n "${config_to_load}" ]]; then
+    # Before loading, check for and handle legacy config format
+    handle_legacy_configuration "${config_to_load}"
+
     log_info "Loading configuration from: ${config_to_load}"
     set +o nounset
     # shellcheck source=/dev/null

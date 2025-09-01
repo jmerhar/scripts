@@ -24,6 +24,33 @@ A robust backup solution for photographers managing multiple storage devices. It
 
 * **Safety Checks**: Includes validations to prevent running on empty source directories.
 
+#### Upgrading to Version 2.0+
+
+Version 2.0 introduced a breaking change to support multiple backup sources. If you are upgrading from an older version, you must update your configuration file (`/etc/photo-backup.conf`).
+
+* The old `SRC_1="..."` and `SRC_2="..."` variables are **deprecated**.
+
+* You must replace them with the new `SOURCES` array format.
+
+**Example Migration:**
+
+If your old configuration was:
+
+```
+SRC_1="/Volumes/PhotoStore"
+SRC_2="/Volumes/MorePhotos"
+
+```
+
+Your new configuration must be:
+
+```
+SOURCES=("/Volumes/PhotoStore" "/Volumes/MorePhotos")
+
+```
+
+The package upgrade will attempt to perform this migration automatically, but you should verify the new file to ensure it is correct. A backup of your original configuration will be saved as `photo-backup.conf.bak`.
+
 #### Requirements
 
 * `bash` 4.0+
