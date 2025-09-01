@@ -6,20 +6,30 @@ A collection of utilities for managing photography workflows. This directory inc
 
 ### `photo-backup.sh`
 
-A robust backup solution for photographers managing multiple storage devices. It safely merges content from two sources into a consolidated backup on a remote server while preserving unique files from both.
+A robust backup solution for photographers managing multiple storage devices. It safely merges content from multiple sources into a consolidated backup on a remote server while preserving unique files from all of them.
 
 #### Features
-* **Merge Overlapping Directories**: Safely syncs two source directories with similar structures (e.g., both containing `/Travel`) to a single destination.
-* **Deletion Protection**: Uses an rsync filter to ensure that files present in either source are not accidentally deleted from the destination.
+
+* **Merge Overlapping Directories**: Safely syncs multiple source directories with similar structures (e.g., both containing `/Travel`) to a single destination.
+
+* **Deletion Protection**: Uses an rsync filter to ensure that files present in any source are not accidentally deleted from the destination.
+
 * **Highly Configurable**: All settings can be managed via a config file (`/etc/photo-backup.conf`) or command-line flags.
+
 * **Detailed Logging**: Provides comprehensive logging with support for debug mode and optional log file output.
+
 * **Dry-Run Mode**: Allows testing the sync operation without making any changes to files.
+
 * **macOS Cleanup**: Intelligently cleans up macOS-specific temporary files (`.DS_Store`, etc.) before backup.
+
 * **Safety Checks**: Includes validations to prevent running on empty source directories.
 
 #### Requirements
+
 * `bash` 4.0+
+
 * `rsync`
+
 * SSH access to the backup server
 
 #### Usage
@@ -30,18 +40,19 @@ The script can be configured entirely via command-line options.
 
 ```bash
 ./photography/photo-backup.sh \
-  -1 /Volumes/PhotoStore \
-  -2 /Volumes/MorePhotos \
+  -s /Volumes/PhotoStore \
+  -s /Volumes/MorePhotos \
+  -s /Volumes/VacationPics \
   -H backup-server \
   -p /mnt/storage/photos
+
 ```
 
 **Common Options:**
 
 | Flag | Description |
  | ----- | ----- |
-| `-1 PATH` | Primary source path. |
-| `-2 PATH` | Secondary source path. |
+| `-s PATH` | Source path. Can be used multiple times. |
 | `-H HOST` | Backup server hostname or IP. |
 | `-p PATH` | Destination path on the server. |
 | `-n` | **Dry-run mode**: show what would happen without making changes. |
@@ -52,11 +63,16 @@ The script can be configured entirely via command-line options.
 
 ```text
 [INFO]: Starting photo backup operation.
-[INFO]: Source 1: /Volumes/PhotoStore
-[INFO]: Source 2: /Volumes/MorePhotos
+[INFO]: Found 3 source directories:
+[INFO]:  -> /Volumes/PhotoStore
+[INFO]:  -> /Volumes/MorePhotos
+[INFO]:  -> /Volumes/VacationPics
 [INFO]: Destination: aurora:/mnt/storage/photos
 [INFO]: Cleaning temporary files in '/Volumes/PhotoStore'...
 [DEBUG]: Running command: find /Volumes/PhotoStore -name .DS_Store -delete -print
+[INFO]: --- Starting backup for '/Volumes/PhotoStore' ---
+[INFO]: Generating protection rules for '/Volumes/MorePhotos'
+[INFO]: Generating protection rules for '/Volumes/VacationPics'
 [INFO]: Backing up '/Volumes/PhotoStore' to 'aurora:/mnt/storage/photos'...
 sending incremental file list
 ...

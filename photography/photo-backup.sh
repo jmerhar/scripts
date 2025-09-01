@@ -39,8 +39,7 @@ else
 fi
 
 # --- Configuration (initialized as empty) ---
-SRC_1=""
-SRC_2=""
+SOURCES=()
 HOST=""
 DEST_PATH=""
 LOG_FILE=""
@@ -64,14 +63,13 @@ trap 'rm -rf "${TEMP_DIR}"' EXIT
 show_usage() {
   cat <<EOF
 Usage: ${SCRIPT_NAME} [OPTIONS]
-Syncs photos from two sources to a remote backup server.
+Syncs photos from multiple sources to a remote backup server.
 
 Required settings must be provided either in a config file
 (e.g., /etc/${SCRIPT_NAME}.conf) or via the options below.
 
 Options:
-  -1 PATH       Source 1 path (required)
-  -2 PATH       Source 2 path (required)
+  -s PATH       Source path (can be used multiple times)
   -H HOST       Backup server hostname (required)
   -p PATH       Destination path (required)
   -l FILE       Log file path (optional)
@@ -155,15 +153,14 @@ load_configuration() {
 #######################################
 # Parses command-line options, overriding any config file values.
 # Globals:
-#   SRC_1, SRC_2, HOST, DEST_PATH, LOG_FILE, DRY_RUN_FLAG, IS_DEBUG_MODE
+#   SOURCES, HOST, DEST_PATH, LOG_FILE, DRY_RUN_FLAG, IS_DEBUG_MODE
 # Arguments:
 #   Command-line arguments passed to the script.
 #######################################
 parse_options() {
-  while getopts "1:2:H:p:l:ndh" opt; do
+  while getopts "s:H:p:l:ndh" opt; do
     case "${opt}" in
-      1) SRC_1="${OPTARG}" ;;
-      2) SRC_2="${OPTARG}" ;;
+      s) SOURCES+=("${OPTARG}") ;;
       H) HOST="${OPTARG}" ;;
       p) DEST_PATH="${OPTARG}" ;;
       l) LOG_FILE="${OPTARG}" ;;
@@ -192,14 +189,14 @@ parse_options() {
 #######################################
 # Validates that all required configuration variables have been set.
 # Globals:
-#   SRC_1, SRC_2, HOST, DEST_PATH
+#   SOURCES, HOST, DEST_PATH
 # Arguments:
 #   None
 # Outputs:
 #   Exits with an error if any required variable is not set.
 #######################################
 validate_configuration() {
-  local required_vars=("SRC_1" "SRC_2" "HOST" "DEST_PATH")
+  local required_vars=("HOST" "DEST_PATH")
   local unset_vars=()
 
   for var_name in "${required_vars[@]}"; do
@@ -207,6 +204,10 @@ validate_configuration() {
       unset_vars+=("${var_name}")
     fi
   done
+
+  if (( ${#SOURCES[@]} == 0 )); then
+    unset_vars+=("SOURCES")
+  fi
 
   if (( ${#unset_vars[@]} > 0 )); then
     log_error "The following required settings are missing: ${unset_vars[*]}"
@@ -357,24 +358,33 @@ clean_directory() {
 }
 
 #######################################
-# Generates rsync protection filter rules to prevent deletions.
+# Generates rsync protection filter rules from multiple directories.
 # Arguments:
-#   protect_src: The source directory whose contents should be protected.
 #   filter_file: The path to write the generated filter rules to.
+#   protect_dirs: An array of source directories whose contents should be protected.
 #######################################
 generate_protection_filter() {
-  local protect_src="$1"
-  local filter_file="$2"
+  local filter_file="$1"
+  shift
+  local protect_dirs=("$@")
 
-  log_info "Generating protection rules for '${protect_src}'"
-  run_command sh -c '
-    set -o errexit
-    set -o pipefail
-    find "$1" -mindepth 1 -print0 | while IFS= read -r -d "" path; do
-      relative_path="${path#"$1"/}"
-      printf "P /%s\n" "${relative_path}"
-    done > "$2"
-  ' _ "${protect_src}" "${filter_file}"
+  # Truncate the filter file to ensure it's empty before starting
+  >"${filter_file}"
+
+  for protect_src in "${protect_dirs[@]}"; do
+    log_info "Generating protection rules for '${protect_src}'"
+    # Use sh to create a subshell, ensuring path variables are handled correctly
+    run_command sh -c '
+      set -o errexit
+      set -o pipefail
+      # The find command lists all items, and the while loop creates relative paths
+      find "$1" -mindepth 1 -print0 | while IFS= read -r -d "" path; do
+        relative_path="${path#"$1"/}"
+        # "P" is rsync syntax to protect the path from deletion
+        printf "P /%s\n" "${relative_path}"
+      done >> "$2"
+    ' _ "${protect_src}" "${filter_file}"
+  done
 }
 
 #######################################
@@ -397,28 +407,38 @@ validate_filter_file() {
 }
 
 #######################################
-# Performs the rsync backup operation.
+# Performs the rsync backup operation, optionally using a protection filter.
 # Globals:
 #   DESTINATION, DRY_RUN_FLAG
 # Arguments:
 #   source_dir: The directory to back up.
-#   protect_dir: The directory whose contents should be protected from deletion.
+#   filter_file: (Optional) The path to the rsync filter file. If empty,
+#                no filter is used.
 #######################################
 perform_backup() {
   local source_dir="$1"
-  local protect_dir="$2"
-  local filter_file="${TEMP_DIR}/filter.rules"
-
-  generate_protection_filter "${protect_dir}" "${filter_file}"
-  validate_filter_file "${filter_file}"
+  # Default to empty string if filter_file is not provided
+  local filter_file="${2:-}"
 
   log_info "Backing up '${source_dir}' to '${DESTINATION}'..."
-  run_command rsync -aHv --progress \
-    --exclude '.*' \
-    --filter="merge ${filter_file}" \
-    --delete \
-    ${DRY_RUN_FLAG} \
-    "${source_dir}/" "${DESTINATION}"
+
+  local rsync_args=(
+    -aHv
+    --progress
+    --exclude '.*'
+    --delete
+  )
+
+  if [[ -n "${DRY_RUN_FLAG}" ]]; then
+    rsync_args+=("${DRY_RUN_FLAG}")
+  fi
+
+  if [[ -n "${filter_file}" ]]; then
+    log_info "Using protection filter: ${filter_file}"
+    rsync_args+=(--filter="merge ${filter_file}")
+  fi
+
+  run_command rsync "${rsync_args[@]}" "${source_dir}/" "${DESTINATION}"
 }
 
 main() {
@@ -439,8 +459,10 @@ main() {
   DESTINATION="${HOST}:${DEST_PATH}"
 
   log_info "Starting photo backup operation."
-  log_info "Source 1: ${SRC_1}"
-  log_info "Source 2: ${SRC_2}"
+  log_info "Found ${#SOURCES[@]} source director$( (( ${#SOURCES[@]} == 1 )) && echo "y" || echo "ies" ):"
+  for src in "${SOURCES[@]}"; do
+    log_info " -> ${src}"
+  done
   log_info "Destination: ${DESTINATION}"
   if [[ -n "${LOG_FILE}" ]]; then
     log_info "Logging to: ${LOG_FILE}"
@@ -449,19 +471,44 @@ main() {
     log_info "Dry-run mode is enabled. No files will be changed."
   fi
 
-  verify_source_directory "${SRC_1}"
-  verify_source_directory "${SRC_2}"
+  for src in "${SOURCES[@]}"; do
+    verify_source_directory "${src}"
+  done
 
   if [[ -z "${DRY_RUN_FLAG}" ]]; then
-    clean_directory "${SRC_1}"
-    clean_directory "${SRC_2}"
+    for src in "${SOURCES[@]}"; do
+      clean_directory "${src}"
+    done
   fi
 
-  log_info "Starting backup for Source 1 (protecting Source 2 files)..."
-  perform_backup "${SRC_1}" "${SRC_2}"
+  # --- Main Backup Loop ---
+  for i in "${!SOURCES[@]}"; do
+    local current_source="${SOURCES[i]}"
+    local protect_sources=()
+    
+    # Build an array of all other sources to protect
+    for j in "${!SOURCES[@]}"; do
+      if (( i != j )); then
+        protect_sources+=("${SOURCES[j]}")
+      fi
+    done
 
-  log_info "Starting backup for Source 2 (protecting Source 1 files)..."
-  perform_backup "${SRC_2}" "${SRC_1}"
+    log_info "--- Starting backup for '${current_source}' ---"
+    
+    local filter_file=""
+
+    # If there are other sources, generate a protection filter for them
+    if (( ${#protect_sources[@]} > 0 )); then
+      filter_file="${TEMP_DIR}/filter.rules"
+      generate_protection_filter "${filter_file}" "${protect_sources[@]}"
+      validate_filter_file "${filter_file}"
+    else
+      log_info "Only one source directory specified, or this is the only source; running sync without protection filter."
+    fi
+
+    # Perform the backup, passing the filter file path (which will be empty if not generated)
+    perform_backup "${current_source}" "${filter_file}"
+  done
 
   log_info "Backup operation completed successfully."
 }
