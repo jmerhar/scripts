@@ -22,6 +22,9 @@ set -o pipefail
 # --- Global Constants ---
 readonly SCRIPT_NAME=$(basename "$0" .sh)
 
+# --- Runtime Variables ---
+CONFIG_FILE_LOADED="" # Populated by load_config()
+
 #######################################
 # Internal function to handle writing log messages to the log file.
 # Globals:
@@ -98,43 +101,79 @@ get_script_prefix() {
 }
 
 #######################################
-# Loads configuration from standard system locations.
+# Finds and sources the configuration file from standard system locations.
 # Globals:
-#   SCRIPT_NAME, SOURCE_DIR, BACKUP_DIR, EXCLUDES, LOG_FILE, KEEP_BACKUPS
+#   SCRIPT_NAME, CONFIG_FILE_LOADED
 # Arguments:
 #   None
 # Outputs:
-#   Sources the config file, modifying global config variables.
-#   Exits with an error if config is not found or is invalid.
+#   Sources the config file, populating global config variables.
+#   Exits with an error if the config file cannot be found.
 #######################################
 load_config() {
   local prefix
   prefix=$(get_script_prefix)
-  local config_to_load=""
+  local config_path_prefix=""
+  local config_path_system="/etc/${SCRIPT_NAME}.conf"
 
-  # Check for config relative to prefix first, then system-wide.
-  if [[ -n "${prefix}" && -r "${prefix}/etc/${SCRIPT_NAME}.conf" ]]; then
-    config_to_load="${prefix}/etc/${SCRIPT_NAME}.conf"
-  elif [[ -r "/etc/${SCRIPT_NAME}.conf" ]]; then
-    config_to_load="/etc/${SCRIPT_NAME}.conf"
+  # Define the prefix-based path only if a prefix was found.
+  if [[ -n "${prefix}" ]]; then
+    config_path_prefix="${prefix}/etc/${SCRIPT_NAME}.conf"
   fi
 
-  if [[ -z "${config_to_load}" ]]; then
-    log_error "Config file not found."
-    log_error "Please create it at '/etc/${SCRIPT_NAME}.conf' or '<prefix>/etc/${SCRIPT_NAME}.conf'"
+  # Check for config relative to prefix first, then the system-wide path.
+  if [[ -n "${config_path_prefix}" && -r "${config_path_prefix}" ]]; then
+    CONFIG_FILE_LOADED="${config_path_prefix}"
+  elif [[ -r "${config_path_system}" ]]; then
+    CONFIG_FILE_LOADED="${config_path_system}"
+  fi
+
+  if [[ -z "${CONFIG_FILE_LOADED}" ]]; then
+    log_error "Configuration file not found. The script looked in the following locations:"
+    if [[ -n "${config_path_prefix}" ]]; then
+      log_error "  - ${config_path_prefix}"
+    fi
+    log_error "  - ${config_path_system}"
     exit 1
   fi
 
-  log_info "Loading configuration from: ${config_to_load}"
+  log_info "Loading configuration from: ${CONFIG_FILE_LOADED}"
   # Source the config file to load variables.
   set +o nounset
   # shellcheck source=/dev/null
-  source "${config_to_load}"
+  source "${CONFIG_FILE_LOADED}"
   set -o nounset
+}
 
+#######################################
+# Validates that all required variables have been loaded from the config file.
+# Globals:
+#   SOURCE_DIR, BACKUP_DIR, EXCLUDES, KEEP_BACKUPS, CONFIG_FILE_LOADED
+# Arguments:
+#   None
+# Outputs:
+#   Exits with an error if any required variables are missing.
+#######################################
+validate_config() {
+  local required_vars=("SOURCE_DIR" "BACKUP_DIR" "KEEP_BACKUPS")
+  local unset_vars=()
 
-  if [[ -z "${SOURCE_DIR:-}" || -z "${BACKUP_DIR:-}" || ${#EXCLUDES[@]} -eq 0 || -z "${KEEP_BACKUPS:-}" ]]; then
-    log_error "One or more required variables (SOURCE_DIR, BACKUP_DIR, EXCLUDES, KEEP_BACKUPS) are not set or are empty in the config file."
+  for var_name in "${required_vars[@]}"; do
+    if [[ -z "${!var_name:-}" ]]; then
+      unset_vars+=("${var_name}")
+    fi
+  done
+
+  # Special check for the EXCLUDES array, which cannot be empty.
+  if (( ${#EXCLUDES[@]} == 0 )); then
+    unset_vars+=("EXCLUDES")
+  fi
+
+  if (( ${#unset_vars[@]} > 0 )); then
+    log_error "The following required settings are missing in '${CONFIG_FILE_LOADED}':"
+    for var in "${unset_vars[@]}"; do
+      log_error "  - ${var}"
+    done
     exit 1
   fi
 }
@@ -193,10 +232,14 @@ run_prune() {
   local delete_count=$((total_backups - KEEP_BACKUPS))
   local backups_to_delete=("${backups[@]:0:${delete_count}}")
   
-  log_info "Deleting old backups..."
+  log_info "Found ${total_backups} backups. Deleting ${delete_count} oldest backup(s)..."
   for backup_to_delete in "${backups_to_delete[@]}"; do
-    log_error "Deleting $(basename "${backup_to_delete}")"
-    rm -rf "${backup_to_delete}"
+    local backup_name
+    backup_name=$(basename "${backup_to_delete}")
+    log_info "Deleting: ${backup_name}"
+    if ! rm -rf "${backup_to_delete}"; then
+        log_error "Failed to delete backup directory: ${backup_name}"
+    fi
   done
 
   log_info "Pruning complete!"
@@ -211,6 +254,7 @@ run_prune() {
 #######################################
 main() {
   load_config
+  validate_config
 
   if [[ -n "${LOG_FILE:-}" ]]; then
     log_info "Logging to: ${LOG_FILE}"
