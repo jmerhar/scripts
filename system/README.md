@@ -53,7 +53,7 @@ This script is not intended for direct use on the command line. Instead, it is d
 ./system/package-script.sh "utility/unlock-pdf.sh"
 ```
 
-### `local-backup`
+### `local-backup.sh`
 
 A generic script to create and automatically prune rsync-based system backups. It is designed to be run non-interactively by a cron job.
 
