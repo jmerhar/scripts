@@ -200,17 +200,29 @@ run_backup() {
   mkdir -p "${backup_path}"
 
   log_info "Running rsync..."
+  local rsync_exit_code=0
   rsync -ax --delete \
     "${rsync_excludes[@]}" \
     "${SOURCE_DIR}/" \
     --link-dest "${latest_link}" \
-    "${backup_path}"
+    "${backup_path}" || rsync_exit_code=$?
+
+  if [[ ${rsync_exit_code} -eq 0 ]]; then
+    log_info "Rsync process completed successfully."
+  elif [[ ${rsync_exit_code} -eq 24 ]]; then
+    # This non-fatal error means some files vanished during transfer.
+    # It's common for temp files and is safe to ignore.
+    log_info "Rsync completed with a non-fatal warning (code 24): Some source files vanished during transfer."
+  else
+    log_error "Rsync failed with a critical error (code ${rsync_exit_code})."
+    exit "${rsync_exit_code}"
+  fi
 
   log_info "Updating the 'latest' symbolic link."
   rm -f "${latest_link}"
   ln -s "${backup_path}" "${latest_link}"
   
-  log_info "Backup completed successfully!"
+  log_info "Backup operation completed."
 }
 
 #######################################
