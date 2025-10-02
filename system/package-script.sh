@@ -342,6 +342,14 @@ generate_deb_package() {
   echo "Description: ${metadata[Description]}" >> "${control_dir}/control"
   echo " This package installs the '${script_name}' script." >> "${control_dir}/control"
 
+  # If a config file is present, create a 'conffiles' entry
+  # to prevent user changes from being overwritten on upgrade.
+  if [[ -n "${config_file_path}" ]]; then
+    echo "Adding config file to conffiles list..."
+    # The path must be absolute, as it will be on the user's system.
+    echo "/usr/local/etc/${metadata[ConfigFile]}" > "${control_dir}/conffiles"
+  fi
+
   cp "${source_script_path}" "${bin_dir}/${script_name}"
   chmod +x "${bin_dir}/${script_name}"
 
