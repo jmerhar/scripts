@@ -173,8 +173,8 @@ handle_legacy_configuration() {
     echo -e "\n# Migrated automatically by ${SCRIPT_NAME}" >> "${temp_config}"
     echo "${new_sources_line}" >> "${temp_config}"
 
-    # Atomically replace the old config with the new one
-    if ! mv "${temp_config}" "${config_file}" 2>/dev/null; then
+    # Replace the old config with the new one, preserving original permissions
+    if ! cp "${temp_config}" "${config_file}" 2>/dev/null; then
       log_error "Failed to write migrated configuration to '${config_file}'."
       log_error "Migration aborted. The original file is unchanged."
       log_error "Please try running the script with 'sudo'."
@@ -182,6 +182,8 @@ handle_legacy_configuration() {
       rm -f "${temp_config}"
       exit 1
     fi
+
+    rm -f "${temp_config}"
 
     log_info "Configuration file has been successfully migrated."
     log_info "Please review the changes in '${config_file}'."
