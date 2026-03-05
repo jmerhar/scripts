@@ -449,7 +449,7 @@ generate_protection_filter() {
   for protect_src in "${protect_dirs[@]}"; do
     log_info "Generating protection rules for '${protect_src}'"
     # Use sh to create a subshell, ensuring path variables are handled correctly
-    run_command sh -c '
+    run_command bash -c '
       set -o errexit
       set -o pipefail
       # The find command lists all items, and the while loop creates relative paths
