@@ -5,7 +5,7 @@
 # Author: Jure Merhar <dev@merhar.si>
 # Homepage: https://github.com/jmerhar/scripts
 # ConfigFile: local-backup.conf
-# Dependencies: rsync
+# Dependencies: rsync ionice
 # License: MIT
 # --- SCRIPT INFO END ---
 #
@@ -21,6 +21,7 @@ set -o pipefail
 
 # --- Global Constants ---
 readonly SCRIPT_NAME=$(basename "$0" .sh)
+readonly MDSTAT_CHECK_INTERVAL=300 # Seconds between /proc/mdstat checks
 
 # --- Runtime Variables ---
 CONFIG_FILE_LOADED="" # Populated by load_config()
@@ -257,6 +258,39 @@ run_prune() {
 }
 
 #######################################
+# Waits for any active RAID resync/check/rebuild operations to finish.
+# Polls /proc/mdstat at a regular interval. If /proc/mdstat does not
+# exist (e.g., no RAID arrays on this system), returns immediately.
+# Globals:
+#   MDSTAT_CHECK_INTERVAL
+# Arguments:
+#   None
+#######################################
+wait_for_raid() {
+  if [[ ! -f /proc/mdstat ]]; then
+    return
+  fi
+
+  while grep -qE '\[(resync|check|recover|reshape)' /proc/mdstat 2>/dev/null; do
+    log_info "RAID operation in progress. Waiting ${MDSTAT_CHECK_INTERVAL}s before rechecking..."
+    sleep "${MDSTAT_CHECK_INTERVAL}"
+  done
+}
+
+#######################################
+# Lowers the I/O scheduling priority of the current process to idle.
+# This ensures the backup yields I/O to other processes.
+# Globals:
+#   None
+# Arguments:
+#   None
+#######################################
+set_low_io_priority() {
+  ionice -c3 -p $$
+  log_info "I/O priority set to idle (class 3)."
+}
+
+#######################################
 # Main function to orchestrate the script's execution.
 # Globals:
 #   All (via function calls)
@@ -278,6 +312,9 @@ main() {
   if [[ -n "${LOG_FILE:-}" ]]; then
     log_info "Logging to: ${LOG_FILE}"
   fi
+
+  set_low_io_priority
+  wait_for_raid
 
   run_backup
   run_prune
