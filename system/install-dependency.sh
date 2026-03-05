@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # --- SCRIPT INFO START ---
 # Name: install-dependency
 # Description: Handles the installation of a specified package on macOS (via Homebrew) or Debian-based Linux (via apt-get).
