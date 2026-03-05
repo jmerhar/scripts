@@ -316,6 +316,8 @@ generate_deb_package() {
 
   local package_dir="${PKGSCR_DEB_PACKAGE_DIR}/${script_name}-${PKGSCR_VERSION}"
   local control_dir="${package_dir}/DEBIAN"
+  # Install to /usr/local rather than /usr to avoid conflicts with
+  # distro-managed packages. This is intentional for a third-party repo.
   local bin_dir="${package_dir}/usr/local/bin"
   local etc_dir="${package_dir}/usr/local/etc"
   local deb_file="${PKGSCR_DEB_PACKAGE_DIR}/${script_name}_${deb_version}_all.deb"
