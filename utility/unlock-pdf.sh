@@ -89,7 +89,7 @@ decrypt_pdf() {
   local output_file="${input_file%.pdf}-unlocked.pdf"
 
   echo "Writing ${output_file}..."
-  qpdf --decrypt "--password=${password}" "${input_file}" "${output_file}"
+  qpdf --decrypt --password-file=<(printf '%s' "${password}") "${input_file}" "${output_file}"
   echo "Done."
 }
 
