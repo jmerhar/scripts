@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Source this file with `. test_env.sh` to be able to test package_script.sh locally
 
 export PKGSCR_TARBALL_URL="https://github.com/jmerhar/scripts/archive/refs/tags/v1.0.0.tar.gz"

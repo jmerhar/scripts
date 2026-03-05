@@ -20,7 +20,8 @@ set -o nounset
 set -o pipefail
 
 # --- Global Constants ---
-readonly SCRIPT_NAME=$(basename "$0" .sh)
+SCRIPT_NAME=$(basename "$0" .sh)
+readonly SCRIPT_NAME
 readonly MDSTAT_CHECK_INTERVAL=300 # Seconds between /proc/mdstat checks
 
 # --- Runtime Variables ---

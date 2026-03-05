@@ -20,23 +20,26 @@ set -o nounset
 set -o pipefail
 
 # --- Global Constants ---
-readonly SCRIPT_NAME=$(basename "$0" .sh)
-readonly TEMP_DIR=$(mktemp -d)
+SCRIPT_NAME=$(basename "$0" .sh)
+readonly SCRIPT_NAME
+TEMP_DIR=$(mktemp -d)
+readonly TEMP_DIR
 
 # --- Color Setup (only when connected to a terminal) ---
 if [[ -t 1 ]]; then
-  readonly color_info=$(tput setaf 4)    # Blue for info
-  readonly color_debug=$(tput setaf 8)   # Grey for debug
-  readonly color_error=$(tput setaf 1)   # Red for errors
-  readonly color_reset=$(tput sgr0)
-  readonly text_bold=$(tput bold)
+  color_info=$(tput setaf 4)    # Blue for info
+  color_debug=$(tput setaf 8)   # Grey for debug
+  color_error=$(tput setaf 1)   # Red for errors
+  color_reset=$(tput sgr0)
+  text_bold=$(tput bold)
 else
-  readonly color_info=""
-  readonly color_debug=""
-  readonly color_error=""
-  readonly color_reset=""
-  readonly text_bold=""
+  color_info=""
+  color_debug=""
+  color_error=""
+  color_reset=""
+  text_bold=""
 fi
+readonly color_info color_debug color_error color_reset text_bold
 
 # --- Configuration (initialized as empty) ---
 SOURCES=()
@@ -145,7 +148,9 @@ handle_legacy_configuration() {
     # We source the file in a subshell to safely get the variable values.
     local src1_val
     local src2_val
+    # shellcheck source=/dev/null
     src1_val=$(source "${config_file}" && echo "${SRC_1:-}")
+    # shellcheck source=/dev/null
     src2_val=$(source "${config_file}" && echo "${SRC_2:-}")
 
     # Build the new SOURCES array line
@@ -446,7 +451,7 @@ generate_protection_filter() {
   local protect_dirs=("$@")
 
   # Truncate the filter file to ensure it's empty before starting
-  >"${filter_file}"
+  true > "${filter_file}"
 
   for protect_src in "${protect_dirs[@]}"; do
     log_info "Generating protection rules for '${protect_src}'"
