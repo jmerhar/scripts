@@ -163,12 +163,12 @@ jobs:
           # Generate package files
           dpkg-scanpackages --arch=all pool/ > dists/stable/main/binary-all/Packages
           gzip -c dists/stable/main/binary-all/Packages > dists/stable/main/binary-all/Packages.gz
-          # Generate release file
+          # Generate release file (remove old one first to prevent self-referencing checksum)
+          rm -f dists/stable/Release dists/stable/InRelease
           apt-ftparchive -c apt-ftparchive.conf release dists/stable/ > dists/stable/Release
           # Verify release file
           test -s dists/stable/Release || (echo "::error::Failed to generate valid Release file." && exit 1)
           # Sign the release file
-          rm -f dists/stable/InRelease
           gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --default-key "jmerhar-bot" --clearsign -o dists/stable/InRelease dists/stable/Release
           # Commit and push
           git add .
