@@ -275,6 +275,10 @@ $(
       echo "etc.install \"${config_file_path}\" => \"${metadata[ConfigFile]}\""
     fi)
   end
+
+  test do
+    assert_predicate bin/"${script_name}", :executable?
+  end
 end
 EOF
 }
