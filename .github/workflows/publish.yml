@@ -23,21 +23,21 @@ jobs:
 
     steps:
       - name: Checkout main scripts repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: scripts
           # Fetch all history and tags to find previous versions
           fetch-depth: 0
 
       - name: Checkout Homebrew tap repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: jmerhar/homebrew-scripts
           path: homebrew-scripts
           token: ${{ secrets.PAT }}
 
       - name: Checkout APT repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: jmerhar/apt-scripts
           path: apt-scripts
