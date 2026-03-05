@@ -10,7 +10,7 @@ A script to decrypt a password-protected PDF file.
 
 #### Features
 *   **Simple Usage**: Unlocks a PDF with a single command.
-*   **Automatic Dependency Management**: If the required `qpdf` utility is not found, it automatically calls the `install-dependency.sh` script to install it.
+*   **Automatic Dependency Detection**: If the required `qpdf` utility is not found, it provides OS-specific installation instructions and exits.
 *   **Safe Output**: Creates a new, unlocked file with an `-unlocked` suffix, preserving the original file.
 
 #### Requirements
