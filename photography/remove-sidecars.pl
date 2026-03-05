@@ -237,7 +237,7 @@ sub delete_files {
             $total_size += $size;
             $ext_size->{$raw_ext} += $size;
             # The actual file deletion happens here.
-            unlink $file;
+            unlink $file or warn "Could not delete $file: $!\n";
         }
     }
     print_report($total_size, $ext_size);
