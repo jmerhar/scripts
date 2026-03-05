@@ -146,7 +146,7 @@ Found sidecars of:
 - 2 RW2 files
 - 3 DNG files
 
-Would you like to (d)elete them, (s)ee a list of directories, or (q)uit? [d/s/Q] y
+Would you like to (d)elete them, (s)ee a list of directories, or (q)uit? [d/s/Q] d
 Deleting /path/to/my/photos/Travel/IMG_174456.jpg (4.76 MB), a sidecar of RW2
 Deleting /path/to/my/photos/Travel/IMG_171458.jpg (4.35 MB), a sidecar of RW2
 Deleting /path/to/my/photos/Events/IMG_175816.jpg (3.75 MB), a sidecar of DNG
