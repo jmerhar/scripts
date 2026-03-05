@@ -172,7 +172,7 @@ handle_legacy_configuration() {
     temp_config=$(mktemp)
     
     # Use sed to comment out the old lines, reading from original and writing to temp
-    sed 's/^\(SRC_[12]\)/# \1/' "${config_file}" > "${temp_config}"
+    sed 's/^\(SRC_[12]=\)/# \1/' "${config_file}" > "${temp_config}"
 
     # Append the new line to the temp config file
     echo -e "\n# Migrated automatically by ${SCRIPT_NAME}" >> "${temp_config}"
