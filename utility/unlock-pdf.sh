@@ -18,6 +18,7 @@
 
 set -o errexit
 set -o nounset
+set -o pipefail
 
 #######################################
 # Prints a timestamped error message to stderr.
