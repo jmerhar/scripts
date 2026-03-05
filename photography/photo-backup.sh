@@ -240,7 +240,7 @@ load_configuration() {
 #   Command-line arguments passed to the script.
 #######################################
 parse_options() {
-  while getopts "s:H:p:l:ndh" opt; do
+  while getopts ":s:H:p:l:ndh" opt; do
     case "${opt}" in
       s) SOURCES+=("${OPTARG}") ;;
       H) HOST="${OPTARG}" ;;
@@ -251,6 +251,11 @@ parse_options() {
       h)
         show_usage
         exit 0
+        ;;
+      :)
+        log_error "Option -${OPTARG} requires an argument."
+        show_usage
+        exit 1
         ;;
       *)
         log_error "Invalid option: -${OPTARG}"
