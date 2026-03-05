@@ -165,7 +165,7 @@ validate_config() {
   done
 
   # Special check for the EXCLUDES array, which cannot be empty.
-  if (( ${#EXCLUDES[@]} == 0 )); then
+  if ! declare -p EXCLUDES &>/dev/null || (( ${#EXCLUDES[@]} == 0 )); then
     unset_vars+=("EXCLUDES")
   fi
 
