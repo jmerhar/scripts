@@ -4,6 +4,7 @@
 # Description: Handles the installation of a specified package on macOS (via Homebrew) or Debian-based Linux (via apt-get).
 # Author: Jure Merhar <dev@merhar.si>
 # Homepage: https://github.com/jmerhar/scripts
+# Publish: false
 # License: MIT
 # --- SCRIPT INFO END ---
 #

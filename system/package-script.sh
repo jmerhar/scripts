@@ -6,6 +6,7 @@
 # Homepage: https://github.com/jmerhar/scripts
 # Dependencies: awk
 # Debian-Dependencies: dpkg-deb
+# Publish: false
 # License: MIT
 # --- SCRIPT INFO END ---
 #

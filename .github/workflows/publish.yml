@@ -82,6 +82,12 @@ jobs:
               exit 1
             fi
 
+            # Check if the script opts out of publishing via metadata
+            if grep -q "^# Publish: false" "${SCRIPT_PATH}"; then
+              echo "::error::Script '${SCRIPT_NAME}' has 'Publish: false' in its metadata and cannot be published."
+              exit 1
+            fi
+
             # Run the packaging script with version-specific variables
             env \
               PKGSCR_VERSION="${VERSION}" \
@@ -101,6 +107,12 @@ jobs:
               # Check if the file starts with a shebang to identify it as a script.
               if ! head -n 1 "${script_path}" | grep -qE '^#!'; then
                 echo "--- Skipping non-script file: ${script_path} ---"
+                continue
+              fi
+
+              # Skip scripts that opt out of publishing via metadata
+              if grep -q "^# Publish: false" "${script_path}"; then
+                echo "--- Skipping unpublished script: ${script_path} ---"
                 continue
               fi
 
