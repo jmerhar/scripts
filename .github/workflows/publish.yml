@@ -173,7 +173,7 @@ jobs:
           # Import GPG key
           echo "$GPG_PRIVATE_KEY" | gpg --batch --import --passphrase "$GPG_PASSPHRASE"
           # Generate package files
-          dpkg-scanpackages --arch=all pool/ > dists/stable/main/binary-all/Packages
+          dpkg-scanpackages -m --arch=all pool/ > dists/stable/main/binary-all/Packages
           gzip -c dists/stable/main/binary-all/Packages > dists/stable/main/binary-all/Packages.gz
           # Generate release file (remove old one first to prevent self-referencing checksum)
           rm -f dists/stable/Release dists/stable/InRelease
