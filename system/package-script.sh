@@ -109,7 +109,7 @@ validate_env_vars() {
 #   Sets source_script_path and script_name global variables.
 #######################################
 parse_script_info() {
-  source_script_path="$1"
+  source_script_path="${1#./}"
   script_name=$(basename "${source_script_path%.*}")
 }
 
