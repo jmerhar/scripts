@@ -219,8 +219,7 @@ run_backup() {
   fi
 
   log_info "Updating the 'latest' symbolic link."
-  rm -f "${latest_link}"
-  ln -s "${backup_path}" "${latest_link}"
+  ln -sfn "${backup_path}" "${latest_link}"
   
   log_info "Backup operation completed."
 }
@@ -267,6 +266,14 @@ run_prune() {
 main() {
   load_config
   validate_config
+
+  # Prevent concurrent backup runs using a lockfile.
+  local lock_file="${BACKUP_DIR}/.local-backup.lock"
+  exec 9>"${lock_file}"
+  if ! flock -n 9; then
+    log_error "Another backup is already running (lockfile: ${lock_file}). Exiting."
+    exit 1
+  fi
 
   if [[ -n "${LOG_FILE:-}" ]]; then
     log_info "Logging to: ${LOG_FILE}"
