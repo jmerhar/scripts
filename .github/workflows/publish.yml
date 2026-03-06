@@ -147,6 +147,18 @@ jobs:
         if: success() && (steps.package.outputs.commit_message != '')
         run: |
           cd homebrew-scripts
+          # Regenerate the formula table in README.md from the current formulas
+          TABLE="| Formula | Description |\n|---------|-------------|"
+          for formula in Formula/*.rb; do
+            name=$(basename "$formula" .rb)
+            desc=$(grep '  desc ' "$formula" | sed 's/.*desc "\(.*\)"/\1/')
+            TABLE="${TABLE}\n| \`${name}\` | ${desc} |"
+          done
+          awk -v table="$TABLE" '
+            /<!-- BEGIN FORMULA TABLE -->/ { print; found=1; next }
+            /<!-- END FORMULA TABLE -->/ { printf "%b\n", table; print ""; found=0 }
+            !found { print }
+          ' README.md > README.md.tmp && mv README.md.tmp README.md
           git add .
           git commit -m "${{ steps.package.outputs.commit_message }}" || echo "No Homebrew changes to commit."
           git push
@@ -170,6 +182,18 @@ jobs:
           test -s dists/stable/Release || (echo "::error::Failed to generate valid Release file." && exit 1)
           # Sign the release file
           gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --default-key "jmerhar-bot" --clearsign -o dists/stable/InRelease dists/stable/Release
+          # Regenerate the package table in README.md from the Homebrew formulas
+          TABLE="| Package | Description |\n|---------|-------------|"
+          for formula in ../homebrew-scripts/Formula/*.rb; do
+            name=$(basename "$formula" .rb)
+            desc=$(grep '  desc ' "$formula" | sed 's/.*desc "\(.*\)"/\1/')
+            TABLE="${TABLE}\n| \`${name}\` | ${desc} |"
+          done
+          awk -v table="$TABLE" '
+            /<!-- BEGIN PACKAGE TABLE -->/ { print; found=1; next }
+            /<!-- END PACKAGE TABLE -->/ { printf "%b\n", table; print ""; found=0 }
+            !found { print }
+          ' README.md > README.md.tmp && mv README.md.tmp README.md
           # Commit and push
           git add .
           git commit -m "${{ steps.package.outputs.commit_message }}" || echo "No APT changes to commit."
