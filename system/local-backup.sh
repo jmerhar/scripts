@@ -234,7 +234,7 @@ run_backup() {
 run_prune() {
   log_info "Starting automatic backup pruning for: ${BACKUP_DIR}"
   
-  mapfile -t backups < <(find "${BACKUP_DIR}" -maxdepth 1 -mindepth 1 -type d | sort)
+  mapfile -t backups < <(find "${BACKUP_DIR}" -maxdepth 1 -mindepth 1 -type d -name '[0-9][0-9][0-9][0-9]-*' | sort)
   local total_backups=${#backups[@]}
 
   if (( total_backups <= KEEP_BACKUPS )); then
