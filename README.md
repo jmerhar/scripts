@@ -6,11 +6,12 @@ This repository contains a curated collection of scripts designed for the automa
 
 ## Repository Structure
 
-The repository is structured into three primary directories:
-
-* `/system`: This directory houses low-level scripts, such as package builders and dependency managers, which are typically invoked by other scripts or CI/CD workflows.
-* `/utility`: This directory contains high-level, user-facing scripts designed to execute specific, practical tasks.
-* `/photography`: Contains scripts specifically related to photography workflows.
+* `scripts/` — User-facing scripts, organized by topic:
+  * `scripts/system/` — System administration tools (e.g., backups).
+  * `scripts/utility/` — General-purpose utilities.
+  * `scripts/photography/` — Photography workflow automation.
+* `bin/` — Internal tooling used by CI/CD (packaging, dependency installation). Not published as packages.
+* `conf/` — Configuration file templates shipped with packages. Mirrors the `scripts/` subdirectory structure.
 
 Each directory includes a dedicated `README.md` file that provides more detailed information regarding its contents.
 
@@ -69,7 +70,7 @@ For other Unix-like systems, or for users who prefer not to use a package manage
 
 2.  **Make the script executable:**
     ```bash
-    chmod +x utility/unlock-pdf.sh
+    chmod +x scripts/utility/unlock-pdf.sh
     ```
 
 3.  **Run the script:**

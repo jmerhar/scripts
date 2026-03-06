@@ -10,16 +10,20 @@ A collection of packaged shell/Perl scripts for macOS and Debian/Ubuntu, distrib
 
 ### Directory Layout
 
-- `system/` — Infrastructure scripts (packaging, dependency installation, backup)
-- `utility/` — User-facing utility scripts
-- `photography/` — Photography workflow automation
-- `conf/` — Configuration file templates shipped with packages
+- `scripts/` — User-facing scripts, organized by topic:
+  - `scripts/system/` — System administration tools (e.g., backups)
+  - `scripts/utility/` — General-purpose utilities
+  - `scripts/photography/` — Photography workflow automation
+- `bin/` — Internal CI/CD tooling (packaging, dependency installation). Not published as packages.
+- `conf/` — Configuration file templates shipped with packages. Mirrors the `scripts/` subdirectory structure.
 
 ### Packaging System
 
-`system/package-script.sh` reads structured metadata from script headers and generates both Homebrew formulas (`.rb`) and Debian packages (`.deb`). It is driven entirely by environment variables (see `test_env.sh` for local testing).
+`bin/package-script.sh` reads structured metadata from script headers and generates both Homebrew formulas (`.rb`) and Debian packages (`.deb`). It is driven entirely by environment variables (see `test_env.sh` for local testing).
 
-Every script must include a metadata block:
+Only scripts under `scripts/` are publishable. Scripts under `bin/` are internal tooling.
+
+Every publishable script must include a metadata block:
 ```bash
 # --- SCRIPT INFO START ---
 # Name: script-name
@@ -30,7 +34,6 @@ Every script must include a metadata block:
 # Homebrew-Dependencies: macos-only-deps
 # Debian-Dependencies: debian-only-deps
 # ConfigFile: optional-config.conf
-# Publish: false
 # License: MIT
 # --- SCRIPT INFO END ---
 ```
@@ -45,7 +48,7 @@ Every script must include a metadata block:
 Source the test environment, then run the packager:
 ```bash
 . test_env.sh
-./system/package-script.sh <path-to-script>
+./bin/package-script.sh <path-to-script>
 ```
 Output lands in `./dist/homebrew/` and `./dist/debian/`.
 

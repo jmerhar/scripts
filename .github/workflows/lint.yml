@@ -36,14 +36,12 @@ jobs:
       - name: Run package-script against each publishable script
         run: |
           . test_env.sh
-          find . -mindepth 2 -type f -not -path './conf/*' -not -path './.*/*' | while read script_path; do
+          find ./scripts -mindepth 2 -type f | while read script_path; do
             # Skip non-scripts
             head -n 1 "${script_path}" | grep -qE '^#!' || continue
-            # Skip scripts that opt out of publishing
-            grep -q '^# Publish: false' "${script_path}" && continue
 
             echo "--- Smoke-testing: ${script_path} ---"
-            ./system/package-script.sh "${script_path}"
+            ./bin/package-script.sh "${script_path}"
           done
 
       - name: Verify output artifacts exist

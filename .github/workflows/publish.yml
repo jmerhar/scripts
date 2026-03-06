@@ -75,16 +75,10 @@ jobs:
             TARBALL_URL="https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"
             CHECKSUM=$(curl -fsSL "${TARBALL_URL}" | sha256sum | awk '{print $1}')
 
-            # Find the path to the script file, excluding the conf directory
-            SCRIPT_PATH=$(find . -type f -name "${SCRIPT_NAME}.*" -not -path "./conf/*" | head -n 1)
+            # Find the script file inside the scripts/ directory only
+            SCRIPT_PATH=$(find ./scripts -type f -name "${SCRIPT_NAME}.*" | head -n 1)
             if [[ -z "${SCRIPT_PATH}" ]]; then
               echo "::error::Could not find a script file for '${SCRIPT_NAME}'."
-              exit 1
-            fi
-
-            # Check if the script opts out of publishing via metadata
-            if grep -q "^# Publish: false" "${SCRIPT_PATH}"; then
-              echo "::error::Script '${SCRIPT_NAME}' has 'Publish: false' in its metadata and cannot be published."
               exit 1
             fi
 
@@ -93,7 +87,7 @@ jobs:
               PKGSCR_VERSION="${VERSION}" \
               PKGSCR_TARBALL_URL="${TARBALL_URL}" \
               PKGSCR_SHA256_CHECKSUM="${CHECKSUM}" \
-              ./system/package-script.sh "${SCRIPT_PATH}"
+              ./bin/package-script.sh "${SCRIPT_PATH}"
 
             # Set a specific commit message for the release
             echo "commit_message=feat(${SCRIPT_NAME}): Release version ${VERSION}" >> $GITHUB_OUTPUT
@@ -102,17 +96,11 @@ jobs:
           # --- Republish All Scripts (manual trigger) ---
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "--- Republishing latest version of all scripts ---"
-            # Find all files in subdirectories, excluding dot-directories (like .git) and conf.
-            find . -mindepth 2 -type f -not -path "./conf/*" -not -path "./.*/*" | while read script_path; do
+            # Find all script files inside the scripts/ directory only.
+            find ./scripts -mindepth 2 -type f | while read script_path; do
               # Check if the file starts with a shebang to identify it as a script.
               if ! head -n 1 "${script_path}" | grep -qE '^#!'; then
                 echo "--- Skipping non-script file: ${script_path} ---"
-                continue
-              fi
-
-              # Skip scripts that opt out of publishing via metadata
-              if grep -q "^# Publish: false" "${script_path}"; then
-                echo "--- Skipping unpublished script: ${script_path} ---"
                 continue
               fi
 
@@ -132,7 +120,7 @@ jobs:
                   PKGSCR_VERSION="${version}" \
                   PKGSCR_TARBALL_URL="${tarball_url}" \
                   PKGSCR_SHA256_CHECKSUM="${checksum}" \
-                  ./system/package-script.sh "${script_path}"
+                  ./bin/package-script.sh "${script_path}"
               else
                 echo "--- Skipping script ${script_name}: No version tags found. ---"
               fi
@@ -186,4 +174,3 @@ jobs:
           git add .
           git commit -m "${{ steps.package.outputs.commit_message }}" || echo "No APT changes to commit."
           git push
-

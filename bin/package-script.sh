@@ -6,7 +6,6 @@
 # Homepage: https://github.com/jmerhar/scripts
 # Dependencies: awk
 # Debian-Dependencies: dpkg-deb
-# Publish: false
 # License: MIT
 # --- SCRIPT INFO END ---
 #
@@ -62,7 +61,7 @@ show_usage() {
   local script_basename
   script_basename=$(basename "$0")
   echo "Usage: ${script_basename} <path-to-script>"
-  echo "Example: ${script_basename} utility/unlock-pdf.sh"
+  echo "Example: ${script_basename} scripts/utility/unlock-pdf.sh"
 }
 
 # --- Global variables for dependencies and metadata ---
@@ -134,8 +133,12 @@ find_config_file() {
       log_error "A config file ('${config_name}') is specified in the metadata, but the PKGSCR_CONFIG_DIR environment variable is not set or is not a directory."
       exit 1
     fi
-    
-    local potential_config_path="${PKGSCR_CONFIG_DIR}/${config_name}"
+
+    # Derive the subdirectory from the script's path (e.g. scripts/photography/foo.sh → photography)
+    local script_subdir
+    script_subdir=$(dirname "${source_script_path}")
+    script_subdir=$(basename "${script_subdir}")
+    local potential_config_path="${PKGSCR_CONFIG_DIR}/${script_subdir}/${config_name}"
     # Validate that the config file exists on disk
     if [[ -f "${potential_config_path}" ]]; then
       echo "Found optional config file: ${potential_config_path}"
