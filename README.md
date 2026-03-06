@@ -52,14 +52,20 @@ sudo apt-get update
 sudo apt-get install unlock-pdf   # or any script name from the table above
 ```
 
-### Manual
+### Direct Download
+
+Each [GitHub Release](https://github.com/jmerhar/scripts/releases) includes a self-contained tarball with just the script (and its config template, if any). Download, extract, and run:
 
 ```bash
-git clone https://github.com/jmerhar/scripts.git
-cd scripts
-chmod +x scripts/utility/unlock-pdf.sh
-./scripts/utility/unlock-pdf.sh
+# Example: download the latest local-backup release
+curl -fsSL https://github.com/jmerhar/scripts/releases/download/local-backup-v1.3.0/scripts-local-backup-v1.3.0.tar.gz \
+  | tar xz
+cd scripts-local-backup-v1.3.0
+chmod +x local-backup.sh
+./local-backup.sh -h
 ```
+
+Scripts that ship with a config file will include it in the same directory, so they work out of the box.
 
 ## Contributing
 

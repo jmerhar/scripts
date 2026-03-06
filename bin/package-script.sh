@@ -247,9 +247,11 @@ generate_homebrew_formula() {
 
   echo "Creating or updating Homebrew formula: ${formula_file}"
 
-  local install_lines="    bin.install \"${source_script_path}\" => \"${script_name}\""
+  local script_filename
+  script_filename=$(basename "${source_script_path}")
+  local install_lines="    bin.install \"${script_filename}\" => \"${script_name}\""
   if [[ -n "${config_file_path}" ]]; then
-    install_lines+=$'\n'"    etc.install \"${config_file_path}\" => \"${metadata[ConfigFile]}\""
+    install_lines+=$'\n'"    etc.install \"${metadata[ConfigFile]}\" => \"${metadata[ConfigFile]}\""
   fi
 
   cat > "${formula_file}" <<EOF

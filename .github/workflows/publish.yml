@@ -73,6 +73,58 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
+
+          # Creates a flat tarball containing just the script and its config
+          # file (if any), uploads it as a release asset, and prints the
+          # download URL and SHA256 checksum.
+          # Arguments:
+          #   tag:         The release tag (e.g., "local-backup-v1.3.0")
+          #   script_path: Path to the compiled script on disk
+          # Outputs (via stdout, one per line):
+          #   Line 1: tarball download URL
+          #   Line 2: SHA256 checksum
+          create_and_upload_tarball() {
+            local tag="$1"
+            local script_path="$2"
+            local script_name
+            script_name=$(basename "${script_path}" | cut -d. -f1)
+
+            local tarball_prefix="scripts-${tag}"
+            local tarball_file="${tarball_prefix}.tar.gz"
+            local staging="/tmp/${tarball_prefix}"
+
+            rm -rf "${staging}"
+            mkdir -p "${staging}"
+
+            # Copy the compiled script
+            cp "${script_path}" "${staging}/"
+
+            # Copy the config file if the script declares one
+            local config_name
+            config_name=$(sed -n 's/^# ConfigFile: *//p' "${script_path}")
+            if [[ -n "${config_name}" ]]; then
+              # Derive config subdirectory from script path (e.g., scripts/system/ → system/)
+              local script_subdir
+              script_subdir=$(dirname "${script_path}")
+              script_subdir=$(basename "${script_subdir}")
+              local config_src="./conf/${script_subdir}/${config_name}"
+              if [[ -f "${config_src}" ]]; then
+                cp "${config_src}" "${staging}/"
+              fi
+            fi
+
+            tar -czf "/tmp/${tarball_file}" -C /tmp "${tarball_prefix}"
+            local checksum
+            checksum=$(sha256sum "/tmp/${tarball_file}" | awk '{print $1}')
+
+            gh release upload "${tag}" "/tmp/${tarball_file}" --clobber
+            local url="https://github.com/${{ github.repository }}/releases/download/${tag}/${tarball_file}"
+
+            rm -rf "${staging}" "/tmp/${tarball_file}"
+            echo "${url}"
+            echo "${checksum}"
+          }
+
           # --- Single Script Release (from tag) ---
           if [[ "${{ github.event_name }}" == "release" ]]; then
             TAG="${{ github.event.release.tag_name }}"
@@ -87,26 +139,15 @@ jobs:
             SCRIPT_NAME="${BASH_REMATCH[1]}"
             VERSION="v${BASH_REMATCH[2]}"
 
-            # Create a compiled tarball from the working copy
-            TARBALL_PREFIX="scripts-${TAG}"
-            TARBALL_FILE="${TARBALL_PREFIX}.tar.gz"
-            git archive --format=tar --prefix="${TARBALL_PREFIX}/" HEAD \
-              | tar -x -C /tmp
-            # Overwrite archived scripts with compiled versions
-            cp -r ./scripts/ /tmp/"${TARBALL_PREFIX}"/scripts/
-            tar -czf "/tmp/${TARBALL_FILE}" -C /tmp "${TARBALL_PREFIX}"
-            CHECKSUM=$(sha256sum "/tmp/${TARBALL_FILE}" | awk '{print $1}')
-
-            # Upload the compiled tarball as a release asset
-            gh release upload "${TAG}" "/tmp/${TARBALL_FILE}" --clobber
-            TARBALL_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${TARBALL_FILE}"
-
             # Find the script file inside the scripts/ directory only (skip lib/)
             SCRIPT_PATH=$(find ./scripts -type f -not -path '*/lib/*' -name "${SCRIPT_NAME}.*" | head -n 1)
             if [[ -z "${SCRIPT_PATH}" ]]; then
               echo "::error::Could not find a script file for '${SCRIPT_NAME}'."
               exit 1
             fi
+
+            # Create flat tarball and upload as release asset
+            { read -r TARBALL_URL; read -r CHECKSUM; } < <(create_and_upload_tarball "${TAG}" "${SCRIPT_PATH}")
 
             # Run the packaging script with version-specific variables
             env \
@@ -139,19 +180,8 @@ jobs:
                 echo "--- Packaging script: ${script_name}, latest tag: ${latest_tag} ---"
                 version=$(echo "${latest_tag}" | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+')
 
-                # Create a compiled tarball for this tag's release
-                TARBALL_PREFIX="scripts-${latest_tag}"
-                TARBALL_FILE="${TARBALL_PREFIX}.tar.gz"
-                git archive --format=tar --prefix="${TARBALL_PREFIX}/" "${latest_tag}" \
-                  | tar -x -C /tmp
-                # Overwrite archived scripts with compiled versions from the working copy
-                cp -r ./scripts/ /tmp/"${TARBALL_PREFIX}"/scripts/
-                tar -czf "/tmp/${TARBALL_FILE}" -C /tmp "${TARBALL_PREFIX}"
-                checksum=$(sha256sum "/tmp/${TARBALL_FILE}" | awk '{print $1}')
-
-                # Upload the compiled tarball as a release asset
-                gh release upload "${latest_tag}" "/tmp/${TARBALL_FILE}" --clobber
-                tarball_url="https://github.com/${{ github.repository }}/releases/download/${latest_tag}/${TARBALL_FILE}"
+                # Create flat tarball and upload as release asset
+                { read -r tarball_url; read -r checksum; } < <(create_and_upload_tarball "${latest_tag}" "${script_path}")
 
                 # Run package-script with specific env vars for this script and version
                 env \
@@ -159,9 +189,6 @@ jobs:
                   PKGSCR_TARBALL_URL="${tarball_url}" \
                   PKGSCR_SHA256_CHECKSUM="${checksum}" \
                   ./bin/package-script.sh "${script_path}"
-
-                # Clean up temp files for this tag
-                rm -rf /tmp/"${TARBALL_PREFIX}" /tmp/"${TARBALL_FILE}"
               else
                 echo "--- Skipping script ${script_name}: No version tags found. ---"
               fi

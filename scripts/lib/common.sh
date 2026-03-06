@@ -151,8 +151,11 @@ log_debug() {
 }
 
 #######################################
-# Finds and sources the configuration file from standard system locations.
-# Looks for ${SCRIPT_NAME}.conf under the install prefix first, then /etc/.
+# Finds and sources the configuration file.
+# Search order:
+#   1. Same directory as the script (for standalone/tarball use)
+#   2. <install-prefix>/etc/ (for Homebrew/package installs)
+#   3. /etc/ (system-wide fallback)
 # Globals:
 #   SCRIPT_NAME
 # Arguments:
@@ -161,6 +164,10 @@ log_debug() {
 #   0 if config was found and sourced, 1 otherwise.
 #######################################
 load_config() {
+  local script_dir
+  script_dir=$(cd "$(dirname "$0")" && pwd -P)
+  local config_path_local="${script_dir}/${SCRIPT_NAME}.conf"
+
   local prefix
   prefix=$(get_script_prefix)
   local config_path_prefix=""
@@ -171,7 +178,9 @@ load_config() {
   fi
 
   local config_to_load=""
-  if [[ -n "${config_path_prefix}" && -r "${config_path_prefix}" ]]; then
+  if [[ -r "${config_path_local}" ]]; then
+    config_to_load="${config_path_local}"
+  elif [[ -n "${config_path_prefix}" && -r "${config_path_prefix}" ]]; then
     config_to_load="${config_path_prefix}"
   elif [[ -r "${config_path_system}" ]]; then
     config_to_load="${config_path_system}"
