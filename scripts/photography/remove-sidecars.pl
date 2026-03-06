@@ -26,19 +26,33 @@ use File::Spec;
 use File::Basename;
 
 # --- Argument Handling ---
-if (@ARGV && $ARGV[0] =~ /^(-h|--help)$/) {
-    print "Usage: " . basename($0) . " [DIRECTORY]\n";
-    print "Find and delete sidecar files when a corresponding RAW file exists.\n\n";
-    print "If no directory is given, the current directory is used.\n";
-    exit 0;
+my $dry_run = 0;
+
+# Extract flags before processing positional arguments.
+my @positional;
+for my $arg (@ARGV) {
+    if ($arg =~ /^(-h|--help)$/) {
+        print "Usage: " . basename($0) . " [-n|--dry-run] [DIRECTORY]\n";
+        print "Find and delete sidecar files when a corresponding RAW file exists.\n\n";
+        print "Options:\n";
+        print "  -n, --dry-run  Show what would be deleted without actually deleting.\n\n";
+        print "If no directory is given, the current directory is used.\n";
+        exit 0;
+    } elsif ($arg =~ /^(-n|--dry-run)$/) {
+        $dry_run = 1;
+    } elsif ($arg =~ /^-/) {
+        die "Error: Unknown option '$arg'. Use --help for usage.\n";
+    } else {
+        push @positional, $arg;
+    }
 }
 
-if (@ARGV > 1) {
-    die "Error: Expected at most one argument (directory path), got " . scalar(@ARGV) . ".\n";
+if (@positional > 1) {
+    die "Error: Expected at most one directory argument, got " . scalar(@positional) . ".\n";
 }
 
-if (@ARGV && ! -d $ARGV[0]) {
-    die "Error: '$ARGV[0]' is not a directory.\n";
+if (@positional && ! -d $positional[0]) {
+    die "Error: '$positional[0]' is not a directory.\n";
 }
 
 # --- Global Variables ---
@@ -216,6 +230,7 @@ sub prompt {
 sub print_directories {
     for my $raw_ext (sort keys %$files_to_delete) {
         print BOLD GREEN sprintf("\nFound sidecars for %s files in the following directories:\n", $raw_ext);
+
         # Count sidecars per directory.
         my %count;
         for my $file (@{ $files_to_delete->{$raw_ext} }) {
@@ -238,15 +253,17 @@ sub print_directories {
 sub delete_files {
     my $total_size = 0;
     my $ext_size;
+    my $verb = $dry_run ? "Would delete" : "Deleting";
     for my $raw_ext (keys %$files_to_delete) {
         # The value is the list of sidecar files to delete for that RAW type.
         for my $file (@{ $files_to_delete->{$raw_ext} }) {
             my $size = -s $file // 0;
-            print MAGENTA sprintf("Deleting %s (%s), a sidecar for a %s file\n", $file, format_size($size), $raw_ext);
+            print MAGENTA sprintf("%s %s (%s), a sidecar for a %s file\n", $verb, $file, format_size($size), $raw_ext);
             $total_size += $size;
             $ext_size->{$raw_ext} += $size;
-            # The actual file deletion happens here.
-            unlink $file or warn "Could not delete $file: $!\n";
+            unless ($dry_run) {
+                unlink $file or warn "Could not delete $file: $!\n";
+            }
         }
     }
     print_report($total_size, $ext_size);
@@ -265,7 +282,9 @@ sub print_report {
 
     return unless $total_size > 0;
 
-    print BOLD GREEN sprintf("\nIn total %s of disk space was recovered:\n", format_size($total_size));
+    print BOLD GREEN sprintf("\nIn total %s of disk space %s:\n",
+        format_size($total_size),
+        $dry_run ? "would be recovered" : "was recovered");
     for my $raw_ext (sort keys %$ext_size) {
         my $count = scalar @{ $files_to_delete->{$raw_ext} };
         next unless $count > 0;
@@ -305,6 +324,14 @@ sub format_size {
 # 1. Ask the user to define file extensions.
 define_extensions;
 # 2. Traverse the directory tree starting from the path given on the command line, or the current directory.
-traverse_tree($ARGV[0] // '.');
-# 3. Prompt the user for action and delete files if they confirm.
-delete_files if prompt;
+traverse_tree($positional[0] // '.');
+# 3. In dry-run mode, show what would be deleted. Otherwise, prompt and delete on confirmation.
+if ($dry_run) {
+    if (! keys %$files_to_delete) {
+        print BRIGHT_GREEN "\nNo sidecar files found to delete.\n";
+    } else {
+        delete_files;
+    }
+} else {
+    delete_files if prompt;
+}
