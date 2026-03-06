@@ -103,6 +103,18 @@ main() {
     exit 1
   fi
 
+  local input_file="$2"
+
+  if [[ ! -f "${input_file}" ]]; then
+    log_error "File not found: ${input_file}"
+    exit 1
+  fi
+
+  if [[ "${input_file}" != *.pdf && "${input_file}" != *.PDF ]]; then
+    log_error "Input file does not have a .pdf extension: ${input_file}"
+    exit 1
+  fi
+
   decrypt_pdf "$1" "$2"
 }
 
