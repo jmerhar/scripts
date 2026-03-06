@@ -89,6 +89,11 @@ decrypt_pdf() {
   local input_file="$2"
   local output_file="${input_file%.pdf}-unlocked.pdf"
 
+  if [[ -f "${output_file}" ]]; then
+    log_error "Output file already exists: ${output_file}"
+    exit 1
+  fi
+
   echo "Writing ${output_file}..."
   qpdf --decrypt --password-file=<(printf '%s' "${password}") "${input_file}" "${output_file}"
   echo "Done."
