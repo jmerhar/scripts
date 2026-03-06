@@ -189,6 +189,8 @@ parse_script_metadata() {
       if [[ "${line}" =~ ^#\ ([[:alnum:]-]+):[[:space:]]*(.*)$ ]]; then
         local key="${BASH_REMATCH[1]}"
         local value="${BASH_REMATCH[2]}"
+        # Strip trailing whitespace from the value
+        value="${value%"${value##*[![:space:]]}"}"
         metadata[${key}]="${value}"
       fi
     fi
