@@ -386,7 +386,8 @@ log_debug() {
 run_command() {
   log_debug "Running command: $*"
   if [[ -n "${LOG_FILE}" ]]; then
-    "$@" 2>&1 | tee -a "${LOG_FILE}"
+    # Log both streams to the file while preserving stderr/stdout separation
+    "$@" > >(tee -a "${LOG_FILE}") 2> >(tee -a "${LOG_FILE}" >&2)
   else
     "$@"
   fi
