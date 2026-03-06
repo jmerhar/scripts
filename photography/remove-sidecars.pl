@@ -25,6 +25,22 @@ use Term::ANSIColor qw( :constants );
 use File::Spec;
 use File::Basename;
 
+# --- Argument Handling ---
+if (@ARGV && $ARGV[0] =~ /^(-h|--help)$/) {
+    print "Usage: " . basename($0) . " [DIRECTORY]\n";
+    print "Find and delete sidecar files when a corresponding RAW file exists.\n\n";
+    print "If no directory is given, the current directory is used.\n";
+    exit 0;
+}
+
+if (@ARGV > 1) {
+    die "Error: Expected at most one argument (directory path), got " . scalar(@ARGV) . ".\n";
+}
+
+if (@ARGV && ! -d $ARGV[0]) {
+    die "Error: '$ARGV[0]' is not a directory.\n";
+}
+
 # --- Global Variables ---
 # A hash to store a list of sidecar files to be deleted, now grouped by the RAW extension.
 my $files_to_delete = {};
