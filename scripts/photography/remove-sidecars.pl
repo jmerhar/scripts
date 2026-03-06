@@ -54,20 +54,6 @@ my @raw_extensions;
 $Term::ANSIColor::AUTORESET = 1;
 
 #######################################
-# Returns a list of unique elements from an array.
-# Globals:
-#   None
-# Arguments:
-#   An array of strings.
-# Outputs:
-#   An array with duplicate elements removed.
-#######################################
-sub uniq {
-    my %seen;
-    grep !$seen{$_}++, @_;
-}
-
-#######################################
 # Reads a single line of input from the user.
 # Globals:
 #   None
@@ -230,10 +216,14 @@ sub prompt {
 sub print_directories {
     for my $raw_ext (sort keys %$files_to_delete) {
         print BOLD GREEN sprintf("\nFound sidecars for %s files in the following directories:\n", $raw_ext);
-        my $count = {};
-        # A bit of map/grep magic to get a unique, sorted list of directories and their counts.
-        for my $dir (sort(uniq(map { $count->{dirname($_)}++; dirname($_) } @{ $files_to_delete->{$raw_ext} }))) {
-            print BOLD YELLOW sprintf("[%5d] %s\n", $count->{$dir}, $dir);
+        # Count sidecars per directory.
+        my %count;
+        for my $file (@{ $files_to_delete->{$raw_ext} }) {
+            $count{dirname($file)}++;
+        }
+
+        for my $dir (sort keys %count) {
+            print BOLD YELLOW sprintf("[%5d] %s\n", $count{$dir}, $dir);
         }
     }
 }
