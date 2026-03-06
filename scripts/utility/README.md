@@ -12,7 +12,7 @@ Decrypts a password-protected PDF file using [`qpdf`](https://github.com/qpdf/qp
 * **Safe Output** — Creates a new `*-unlocked.pdf` file, leaving the original untouched.
 * **Input Validation** — Checks that the file exists and has a `.pdf` extension before processing.
 * **Overwrite Protection** — Refuses to run if the output file already exists.
-* **Secure** — Passes the password via a file descriptor (`--password-file`) to keep it out of the process list.
+* **Secure** — Prompts for the password interactively (hidden input), keeping it out of shell history and the process list.
 * **Dependency Detection** — Prints OS-specific installation instructions if `qpdf` is not found.
 
 ### Requirements
@@ -22,15 +22,14 @@ Decrypts a password-protected PDF file using [`qpdf`](https://github.com/qpdf/qp
 ### Usage
 
 ```bash
-unlock-pdf <password> <input.pdf>
+unlock-pdf <input.pdf>
 ```
 
-This creates `input-unlocked.pdf` in the same directory.
+The script prompts for the password interactively:
 
-```bash
-$ unlock-pdf 'my-secret-password' path/to/document.pdf
+```
+$ unlock-pdf path/to/document.pdf
+Password:
 Writing path/to/document-unlocked.pdf...
 Done.
 ```
-
-> **Tip:** The password will be saved in your shell history. Prefix the command with a space (` unlock-pdf ...`) to prevent this, or use `history -d` afterwards.

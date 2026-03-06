@@ -14,7 +14,7 @@
 # It provides OS-specific installation instructions if the dependency is not found.
 #
 # Usage:
-#   ./unlock-pdf.sh <password> <input.pdf>
+#   ./unlock-pdf.sh <input.pdf>
 
 set -o errexit
 set -o nounset
@@ -43,7 +43,7 @@ log_error() {
 #   Writes usage text to stdout.
 #######################################
 show_usage() {
-  echo "Usage: $(basename "$0") <password> <input.pdf>"
+  echo "Usage: $(basename "$0") <input.pdf>"
 }
 
 #######################################
@@ -102,13 +102,13 @@ decrypt_pdf() {
 main() {
   check_dependencies
 
-  if (( $# != 2 )); then
-    log_error "Missing required arguments."
+  if (( $# != 1 )); then
+    log_error "Expected exactly one argument."
     show_usage
     exit 1
   fi
 
-  local input_file="$2"
+  local input_file="$1"
 
   if [[ ! -f "${input_file}" ]]; then
     log_error "File not found: ${input_file}"
@@ -120,7 +120,16 @@ main() {
     exit 1
   fi
 
-  decrypt_pdf "$1" "$2"
+  local password
+  read -r -s -p "Password: " password
+  echo
+
+  if [[ -z "${password}" ]]; then
+    log_error "Password cannot be empty."
+    exit 1
+  fi
+
+  decrypt_pdf "${password}" "${input_file}"
 }
 
 main "$@"
