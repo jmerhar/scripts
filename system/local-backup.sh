@@ -5,7 +5,7 @@
 # Author: Jure Merhar <dev@merhar.si>
 # Homepage: https://github.com/jmerhar/scripts
 # ConfigFile: local-backup.conf
-# Dependencies: rsync ionice
+# Dependencies: rsync
 # License: MIT
 # --- SCRIPT INFO END ---
 #
@@ -287,6 +287,10 @@ wait_for_raid() {
 #   None
 #######################################
 set_low_io_priority() {
+  if ! command -v ionice &> /dev/null; then
+    log_info "ionice not found, skipping I/O priority adjustment."
+    return
+  fi
   ionice -c3 -p $$
   log_info "I/O priority set to idle (class 3)."
 }
