@@ -32,7 +32,7 @@ set -o pipefail
 #   Message to print.
 #######################################
 log_error() {
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]: Error: $*" >&2
+  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] [ERROR]: $*" >&2
 }
 
 #######################################
