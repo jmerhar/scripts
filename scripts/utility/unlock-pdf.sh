@@ -21,49 +21,29 @@ set -o nounset
 set -o pipefail
 
 #######################################
-# Prints a timestamped error message to stderr.
-# Globals:
-#   None
+# Prints an error message to stderr and exits.
 # Arguments:
 #   Message to print.
-# Outputs:
-#   Writes timestamped error message to stderr.
 #######################################
-log_error() {
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')]: Error: $*" >&2
-}
-
-#######################################
-# Prints the script's usage instructions to stdout.
-# Globals:
-#   None
-# Arguments:
-#   None
-# Outputs:
-#   Writes usage text to stdout.
-#######################################
-show_usage() {
-  echo "Usage: $(basename "$0") <input.pdf>"
+die() {
+  echo "Error: $*" >&2
+  exit 1
 }
 
 #######################################
 # Verifies that the 'qpdf' dependency is installed.
-# Globals:
-#   None
-# Arguments:
-#   None
 # Outputs:
-#   Writes error messages to stderr if dependency is not found.
+#   Writes install instructions to stderr if dependency is not found.
 #######################################
 check_dependencies() {
   if ! command -v qpdf &> /dev/null; then
-    log_error "'qpdf' is not installed or not in your PATH."
+    echo "Error: 'qpdf' is not installed or not in your PATH." >&2
     case "$(uname)" in
       "Darwin")
-        echo "Please install it using Homebrew: 'brew install qpdf'" >&2
+        echo "Install it with: brew install qpdf" >&2
         ;;
       "Linux")
-        echo "Please install it using APT: 'sudo apt-get install qpdf'" >&2
+        echo "Install it with: sudo apt-get install qpdf" >&2
         ;;
       *)
         echo "Please install 'qpdf' using your system's package manager." >&2
@@ -75,13 +55,10 @@ check_dependencies() {
 
 #######################################
 # Decrypts the given PDF file using the provided password.
-# Globals:
-#   None
 # Arguments:
 #   password: The password for the PDF file.
 #   input_file: The path to the PDF file to decrypt.
 # Outputs:
-#   Writes progress messages to stdout.
 #   Creates a new, unlocked PDF file.
 #######################################
 decrypt_pdf() {
@@ -89,10 +66,7 @@ decrypt_pdf() {
   local input_file="$2"
   local output_file="${input_file%.pdf}-unlocked.pdf"
 
-  if [[ -f "${output_file}" ]]; then
-    log_error "Output file already exists: ${output_file}"
-    exit 1
-  fi
+  [[ -f "${output_file}" ]] && die "Output file already exists: ${output_file}"
 
   echo "Writing ${output_file}..."
   qpdf --decrypt --password-file=<(printf '%s' "${password}") "${input_file}" "${output_file}"
@@ -103,31 +77,20 @@ main() {
   check_dependencies
 
   if (( $# != 1 )); then
-    log_error "Expected exactly one argument."
-    show_usage
+    echo "Usage: $(basename "$0") <input.pdf>" >&2
     exit 1
   fi
 
   local input_file="$1"
 
-  if [[ ! -f "${input_file}" ]]; then
-    log_error "File not found: ${input_file}"
-    exit 1
-  fi
-
-  if [[ "${input_file}" != *.pdf && "${input_file}" != *.PDF ]]; then
-    log_error "Input file does not have a .pdf extension: ${input_file}"
-    exit 1
-  fi
+  [[ -f "${input_file}" ]] || die "File not found: ${input_file}"
+  [[ "${input_file}" == *.pdf || "${input_file}" == *.PDF ]] || die "Not a PDF file: ${input_file}"
 
   local password
   read -r -s -p "Password: " password
   echo
 
-  if [[ -z "${password}" ]]; then
-    log_error "Password cannot be empty."
-    exit 1
-  fi
+  [[ -n "${password}" ]] || die "Password cannot be empty."
 
   decrypt_pdf "${password}" "${input_file}"
 }
