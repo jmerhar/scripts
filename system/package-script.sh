@@ -255,7 +255,9 @@ class ${class_name} < Formula
   sha256 "${PKGSCR_SHA256_CHECKSUM}"
 $(
   # Dynamically add other metadata fields that are not hardcoded
-  for key in "${!metadata[@]}"; do
+  # Sort keys for deterministic output across runs and Bash versions
+  mapfile -t sorted_keys < <(printf '%s\n' "${!metadata[@]}" | sort)
+  for key in "${sorted_keys[@]}"; do
     # Skip mandatory fields already handled
     if [[ "${key}" == "Name" || "${key}" == "Description" || "${key}" == "Author" || "${key}" == "Homepage" ]]; then
       continue
@@ -342,7 +344,10 @@ generate_deb_package() {
   echo "Maintainer: ${metadata[Author]}" >> "${control_dir}/control"
   
   # Add all other optional fields BEFORE the Description
-  for key in "${!metadata[@]}"; do
+  # Sort keys for deterministic output across runs and Bash versions
+  local sorted_keys
+  mapfile -t sorted_keys < <(printf '%s\n' "${!metadata[@]}" | sort)
+  for key in "${sorted_keys[@]}"; do
     # Skip mandatory and special fields
     if [[ "${REQUIRED_FIELDS[*]}" =~ ${key} || "${key}" =~ ^(Dependencies|Homebrew-Dependencies|Debian-Dependencies|ConfigFile|Description|Publish)$ ]]; then
       continue
