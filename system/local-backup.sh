@@ -178,6 +178,11 @@ validate_config() {
     done
     exit 1
   fi
+
+  if [[ ! "${KEEP_BACKUPS}" =~ ^[1-9][0-9]*$ ]]; then
+    log_error "KEEP_BACKUPS must be a positive integer, got '${KEEP_BACKUPS}'."
+    exit 1
+  fi
 }
 
 #######################################
