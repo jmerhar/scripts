@@ -428,6 +428,11 @@ remove_files() {
 
 #######################################
 # Cleans a directory of common temporary and metadata files.
+# The following are removed:
+#   - .DS_Store: macOS Finder metadata, not needed in backups.
+#   - *_original: Lightroom/Photoshop original files created when
+#     editing (e.g., "IMG_1234_original"). Safe to remove since the
+#     actual originals are the RAW files.
 # Arguments:
 #   dir: The directory to clean.
 #######################################
