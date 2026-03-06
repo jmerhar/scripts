@@ -20,6 +20,7 @@ scripts/          User-facing scripts, organized by topic
   system/           System administration (backups)
   utility/          General-purpose utilities
   photography/      Photography workflow automation
+  lib/              Shared library (sourced at dev time, inlined at build time)
 bin/              Internal CI/CD tooling (not published as packages)
 conf/             Configuration file templates shipped with packages
 ```

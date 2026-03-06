@@ -36,7 +36,14 @@ jobs:
       - name: Run package-script against each publishable script
         run: |
           . test_env.sh
-          find ./scripts -mindepth 2 -type f | while read script_path; do
+          # Compile @include directives before smoke-testing
+          while IFS= read -r -d '' script; do
+            if grep -q '# @include ' "${script}"; then
+              echo "--- Compiling: ${script} ---"
+              ./bin/compile-includes.sh "${script}" -i
+            fi
+          done < <(find ./scripts -type f -name '*.sh' -not -path '*/lib/*' -print0)
+          find ./scripts -mindepth 2 -type f -not -path '*/lib/*' | while read script_path; do
             # Skip non-scripts
             head -n 1 "${script_path}" | grep -qE '^#!' || continue
 

@@ -20,26 +20,13 @@ set -o nounset
 set -o pipefail
 
 # --- Global Constants ---
-SCRIPT_NAME=$(basename "$0" .sh)
-readonly SCRIPT_NAME
 TEMP_DIR=$(mktemp -d)
 readonly TEMP_DIR
 
-# --- Color Setup (only when connected to a terminal) ---
-if [[ -t 1 ]]; then
-  color_info=$(tput setaf 4)    # Blue for info
-  color_debug=$(tput setaf 8)   # Grey for debug
-  color_error=$(tput setaf 1)   # Red for errors
-  color_reset=$(tput sgr0)
-  text_bold=$(tput bold)
-else
-  color_info=""
-  color_debug=""
-  color_error=""
-  color_reset=""
-  text_bold=""
-fi
-readonly color_info color_debug color_error color_reset text_bold
+# --- Shared Library ---
+# shellcheck source=../lib/common.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../lib/common.sh"
+# @include ../lib/common.sh
 
 # --- Configuration (initialized as empty) ---
 SOURCES=()
@@ -47,7 +34,6 @@ HOST=""
 DEST_PATH=""
 LOG_FILE=""
 DRY_RUN_FLAG=""
-IS_DEBUG_MODE="false"
 
 # --- Runtime variables ---
 DESTINATION="" # Will be set in main after config is validated.
@@ -83,159 +69,9 @@ EOF
 }
 
 #######################################
-# Determines the installation prefix of the script.
-# Globals:
-#   None
-# Arguments:
-#   None
-# Outputs:
-#   Prints the install prefix to stdout.
-#######################################
-get_script_prefix() {
-  local script_dir
-  script_dir=$(dirname "$0")
-
-  # Use `cd` and `pwd` to get the absolute path
-  local script_path
-  script_path=$( (cd "${script_dir}" && pwd -P) )
-  
-  if [[ -z "${script_path}" ]]; then
-    # Could not resolve a path, which means we can't determine a reliable prefix.
-    return
-  fi
-
-  local bin_dir
-  bin_dir=$(basename "${script_path}")
-  
-  # Check if the directory name is 'bin' or 'sbin'.
-  if [[ "${bin_dir}" =~ ^(bin|sbin)$ ]]; then
-    local prefix
-    prefix=$(dirname "${script_path}")
-    echo "${prefix}"
-    return
-  fi
-  
-  # If we get here, the script is not in a recognized bin directory.
-  # We return nothing to prevent incorrect prefix detection.
-  return
-}
-
-#######################################
-# Detects and migrates a legacy config file to the new SOURCES array format.
-# Globals:
-#   None
-# Arguments:
-#   config_file: The path to the configuration file to check and migrate.
-# Outputs:
-#   Modifies the configuration file in place if a legacy format is detected.
-#######################################
-handle_legacy_configuration() {
-  local config_file="$1"
-
-  # Check if the file contains the old SRC_1/SRC_2 format and not the new one.
-  if grep -q -E "^SRC_[12]=" "${config_file}" && ! grep -q "^SOURCES=" "${config_file}"; then
-    log_info "Legacy configuration format detected in '${config_file}'."
-    log_info "Attempting to automatically migrate to the new format."
-
-    local backup_file="${config_file}.bak"
-    if ! cp "${config_file}" "${backup_file}" 2>/dev/null; then
-      log_error "Failed to create backup file at '${backup_file}'."
-      log_error "Migration aborted. Please try running the script with 'sudo'."
-      exit 1
-    fi
-    log_info "Backup of original configuration saved to '${backup_file}'."
-
-    # We source the file in a subshell to safely get the variable values.
-    local src1_val
-    local src2_val
-    # shellcheck source=/dev/null
-    src1_val=$(source "${config_file}" && echo "${SRC_1:-}")
-    # shellcheck source=/dev/null
-    src2_val=$(source "${config_file}" && echo "${SRC_2:-}")
-
-    # Build the new SOURCES array line
-    local new_sources_line="SOURCES=("
-    if [[ -n "${src1_val}" ]]; then
-      new_sources_line+="\"${src1_val}\""
-    fi
-    if [[ -n "${src2_val}" ]]; then
-      # Add a space if src1 was also present
-      if [[ -n "${src1_val}" ]]; then
-        new_sources_line+=" "
-      fi
-      new_sources_line+="\"${src2_val}\""
-    fi
-    new_sources_line+=")"
-    
-    # Create the new config in a temporary file first for atomicity
-    local temp_config
-    temp_config=$(mktemp)
-    
-    # Use sed to comment out the old lines, reading from original and writing to temp
-    sed 's/^\(SRC_[12]=\)/# \1/' "${config_file}" > "${temp_config}"
-
-    # Append the new line to the temp config file
-    echo -e "\n# Migrated automatically by ${SCRIPT_NAME}" >> "${temp_config}"
-    echo "${new_sources_line}" >> "${temp_config}"
-
-    # Replace the old config with the new one, preserving original permissions
-    if ! cp "${temp_config}" "${config_file}" 2>/dev/null; then
-      log_error "Failed to write migrated configuration to '${config_file}'."
-      log_error "Migration aborted. The original file is unchanged."
-      log_error "Please try running the script with 'sudo'."
-      # Clean up temp file on failure
-      rm -f "${temp_config}"
-      exit 1
-    fi
-
-    rm -f "${temp_config}"
-
-    log_info "Configuration file has been successfully migrated."
-    log_info "Please review the changes in '${config_file}'."
-  fi
-}
-
-
-#######################################
-# Loads configuration from standard system locations, detecting the install prefix.
-# Globals:
-#   SCRIPT_NAME
-# Arguments:
-#   None
-# Outputs:
-#   Sources the config file, modifying global config variables.
-#######################################
-load_configuration() {
-  local prefix
-  prefix=$(get_script_prefix)
-  local config_to_load=""
-
-  # Check for config location relative to the prefix
-  if [[ -n "${prefix}" && -f "${prefix}/etc/${SCRIPT_NAME}.conf" ]]; then
-    config_to_load="${prefix}/etc/${SCRIPT_NAME}.conf"
-  fi
-
-  # Fallback to standard system-wide location if the prefix-based one wasn't found
-  if [[ -z "${config_to_load}" && -f "/etc/${SCRIPT_NAME}.conf" ]]; then
-    config_to_load="/etc/${SCRIPT_NAME}.conf"
-  fi
-
-  if [[ -n "${config_to_load}" ]]; then
-    # Before loading, check for and handle legacy config format
-    handle_legacy_configuration "${config_to_load}"
-
-    log_info "Loading configuration from: ${config_to_load}"
-    set +o nounset
-    # shellcheck source=/dev/null
-    source "${config_to_load}"
-    set -o nounset
-  fi
-}
-
-#######################################
 # Parses command-line options, overriding any config file values.
 # Globals:
-#   SOURCES, HOST, DEST_PATH, LOG_FILE, DRY_RUN_FLAG, IS_DEBUG_MODE
+#   SOURCES, HOST, DEST_PATH, LOG_FILE, DRY_RUN_FLAG
 # Arguments:
 #   Command-line arguments passed to the script.
 #######################################
@@ -247,7 +83,7 @@ parse_options() {
       p) DEST_PATH="${OPTARG}" ;;
       l) LOG_FILE="${OPTARG}" ;;
       n) DRY_RUN_FLAG="--dry-run" ;;
-      d) IS_DEBUG_MODE="true" ;;
+      d) enable_debug_mode ;;
       h)
         show_usage
         exit 0
@@ -270,109 +106,6 @@ parse_options() {
     log_error "Unexpected arguments: $*"
     show_usage
     exit 1
-  fi
-}
-
-#######################################
-# Validates that all required configuration variables have been set.
-# Globals:
-#   SOURCES, HOST, DEST_PATH
-# Arguments:
-#   None
-# Outputs:
-#   Exits with an error if any required variable is not set.
-#######################################
-validate_configuration() {
-  local required_vars=("HOST" "DEST_PATH")
-  local unset_vars=()
-
-  for var_name in "${required_vars[@]}"; do
-    if [[ -z "${!var_name}" ]]; then
-      unset_vars+=("${var_name}")
-    fi
-  done
-
-  if (( ${#SOURCES[@]} == 0 )); then
-    unset_vars+=("SOURCES")
-  fi
-
-  if (( ${#unset_vars[@]} > 0 )); then
-    log_error "The following required settings are missing: ${unset_vars[*]}"
-    log_error "Please provide them in a config file or via command-line options."
-    show_usage
-    exit 1
-  fi
-}
-
-#######################################
-# Internal function to handle writing log messages to the log file.
-# Globals:
-#   LOG_FILE
-# Arguments:
-#   level: The log level (e.g., INFO, ERROR).
-#   message: The message to log.
-#######################################
-log_message() {
-  local level="$1"
-  shift
-  local message="$*"
-  local msg
-  msg="[$(date +'%Y-%m-%dT%H:%M:%S%z')] [${level}]: ${message}"
-
-  if [[ -n "${LOG_FILE}" ]]; then
-    # Ensure the directory exists before attempting to write to the file
-    mkdir -p "$(dirname "${LOG_FILE}")"
-    echo "${msg}" >> "${LOG_FILE}"
-  fi
-}
-
-#######################################
-# Prints a timestamped info message to stdout and to the log file.
-# Globals:
-#   color_info, text_bold, color_reset
-# Arguments:
-#   Message to print.
-#######################################
-log_info() {
-  log_message "INFO" "$*"
-  if [[ -t 1 ]]; then
-    printf "%b\n" "${color_info}${text_bold}[INFO]: $*${color_reset}"
-  else
-    printf "%s\n" "[INFO]: $*"
-  fi
-}
-
-#######################################
-# Prints a timestamped error message to stderr and to the log file.
-# Globals:
-#   color_error, text_bold, color_reset
-# Arguments:
-#   Message to print.
-#######################################
-log_error() {
-  log_message "ERROR" "$*"
-  if [[ -t 2 ]]; then
-    printf "%b\n" "${color_error}${text_bold}[ERROR]: $*${color_reset}" >&2
-  else
-    printf "%s\n" "[ERROR]: $*" >&2
-  fi
-}
-
-#######################################
-# Prints a timestamped debug message if debug mode is enabled.
-# Globals:
-#   IS_DEBUG_MODE, color_debug, color_reset
-# Arguments:
-#   Message to print.
-#######################################
-log_debug() {
-  if [[ "${IS_DEBUG_MODE}" == "true" ]]; then
-    log_message "DEBUG" "$*"
-    if [[ -t 1 ]]; then
-      printf "%b\n" "${color_debug}[DEBUG]: $*${color_reset}"
-    else
-      printf "%s\n" "[DEBUG]: $*"
-    fi
   fi
 }
 
@@ -535,10 +268,10 @@ perform_backup() {
 }
 
 main() {
-  load_configuration
+  load_config || true  # Config is optional; CLI args can provide everything
   parse_options "$@"
-  validate_configuration
-  
+  validate_config "HOST" "DEST_PATH" "array:SOURCES" || { show_usage; exit 1; }
+
   # If LOG_FILE is not set, determine a default location based on the script's prefix
   if [[ -z "${LOG_FILE}" ]]; then
     local prefix
@@ -578,7 +311,7 @@ main() {
   for i in "${!SOURCES[@]}"; do
     local current_source="${SOURCES[i]}"
     local protect_sources=()
-    
+
     # Build an array of all other sources to protect
     for j in "${!SOURCES[@]}"; do
       if (( i != j )); then
@@ -587,7 +320,7 @@ main() {
     done
 
     log_info "--- Starting backup for '${current_source}' ---"
-    
+
     local filter_file=""
 
     # If there are other sources, generate a protection filter for them

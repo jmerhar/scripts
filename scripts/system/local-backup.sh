@@ -20,167 +20,62 @@ set -o nounset
 set -o pipefail
 
 # --- Global Constants ---
-SCRIPT_NAME=$(basename "$0" .sh)
-readonly SCRIPT_NAME
 readonly MDSTAT_CHECK_INTERVAL=300 # Seconds between /proc/mdstat checks
 
-# --- Runtime Variables ---
-CONFIG_FILE_LOADED="" # Populated by load_config()
+# --- Shared Library ---
+_LOG_QUIET="true"
+# shellcheck source=../lib/common.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../lib/common.sh"
+# @include ../lib/common.sh
 
 #######################################
-# Internal function to handle writing log messages to the log file.
+# Prints the script's usage instructions to stderr.
 # Globals:
-#   LOG_FILE
+#   SCRIPT_NAME
 # Arguments:
-#   level: The log level (e.g., INFO, ERROR).
-#   message: The message to log.
+#   None
 #######################################
-log_message() {
-  # Return early if LOG_FILE is not set
-  if [[ -z "${LOG_FILE:-}" ]]; then
-    return
-  fi
+show_usage() {
+  cat <<EOF
+Usage: ${SCRIPT_NAME} [OPTIONS]
+Creates an incremental rsync backup and prunes old backups.
 
-  local level="$1"
-  shift
-  local message="$*"
-  local msg
-  msg="[$(date +'%Y-%m-%dT%H:%M:%S%z')] [${level}]: ${message}"
+All settings are read from a configuration file
+(e.g., /etc/${SCRIPT_NAME}.conf).
 
-  # Ensure the directory exists before attempting to write to the file
-  mkdir -p "$(dirname "${LOG_FILE}")"
-  echo "${msg}" >> "${LOG_FILE}"
+Options:
+  -d    Debug mode (enables verbose logging to stderr)
+  -h    Show this help message
+EOF
 }
 
 #######################################
-# Prints a timestamped info message to the log file only.
+# Parses command-line options.
 # Globals:
-#   None
+#   IS_DEBUG_MODE
 # Arguments:
-#   Message to print.
+#   Command-line arguments passed to the script.
 #######################################
-log_info() {
-  log_message "INFO" "$*"
-}
-
-#######################################
-# Prints a timestamped error message to stderr and to the log file.
-# Globals:
-#   None
-# Arguments:
-#   Message to print.
-#######################################
-log_error() {
-  log_message "ERROR" "$*"
-  # Always print errors to stderr for cron jobs.
-  printf "%s\n" "[ERROR]: $*" >&2
-}
-
-#######################################
-# Determines the installation prefix of the script (e.g., /usr/local).
-# Globals:
-#   None
-# Arguments:
-#   None
-# Outputs:
-#   Prints the install prefix to stdout.
-#######################################
-get_script_prefix() {
-  local script_dir
-  script_dir=$(dirname "$0")
-  local script_path
-  script_path=$( (cd "${script_dir}" && pwd -P))
-
-  if [[ -z "${script_path}" ]]; then
-    return
-  fi
-
-  local bin_dir
-  bin_dir=$(basename "${script_path}")
-  if [[ "${bin_dir}" =~ ^(bin|sbin)$ ]]; then
-    dirname "${script_path}"
-  fi
-}
-
-#######################################
-# Finds and sources the configuration file from standard system locations.
-# Globals:
-#   SCRIPT_NAME, CONFIG_FILE_LOADED
-# Arguments:
-#   None
-# Outputs:
-#   Sources the config file, populating global config variables.
-#   Exits with an error if the config file cannot be found.
-#######################################
-load_config() {
-  local prefix
-  prefix=$(get_script_prefix)
-  local config_path_prefix=""
-  local config_path_system="/etc/${SCRIPT_NAME}.conf"
-
-  # Define the prefix-based path only if a prefix was found.
-  if [[ -n "${prefix}" ]]; then
-    config_path_prefix="${prefix}/etc/${SCRIPT_NAME}.conf"
-  fi
-
-  # Check for config relative to prefix first, then the system-wide path.
-  if [[ -n "${config_path_prefix}" && -r "${config_path_prefix}" ]]; then
-    CONFIG_FILE_LOADED="${config_path_prefix}"
-  elif [[ -r "${config_path_system}" ]]; then
-    CONFIG_FILE_LOADED="${config_path_system}"
-  fi
-
-  if [[ -z "${CONFIG_FILE_LOADED}" ]]; then
-    log_error "Configuration file not found. The script looked in the following locations:"
-    if [[ -n "${config_path_prefix}" ]]; then
-      log_error "  - ${config_path_prefix}"
-    fi
-    log_error "  - ${config_path_system}"
-    exit 1
-  fi
-
-  log_info "Loading configuration from: ${CONFIG_FILE_LOADED}"
-  # Source the config file to load variables.
-  set +o nounset
-  # shellcheck source=/dev/null
-  source "${CONFIG_FILE_LOADED}"
-  set -o nounset
-}
-
-#######################################
-# Validates that all required variables have been loaded from the config file.
-# Globals:
-#   SOURCE_DIR, BACKUP_DIR, EXCLUDES, KEEP_BACKUPS, CONFIG_FILE_LOADED
-# Arguments:
-#   None
-# Outputs:
-#   Exits with an error if any required variables are missing.
-#######################################
-validate_config() {
-  local required_vars=("SOURCE_DIR" "BACKUP_DIR" "KEEP_BACKUPS")
-  local unset_vars=()
-
-  for var_name in "${required_vars[@]}"; do
-    if [[ -z "${!var_name:-}" ]]; then
-      unset_vars+=("${var_name}")
-    fi
+parse_options() {
+  while getopts ":dh" opt; do
+    case "${opt}" in
+      d) enable_debug_mode ;;
+      h)
+        show_usage
+        exit 0
+        ;;
+      *)
+        log_error "Invalid option: -${OPTARG}"
+        show_usage
+        exit 1
+        ;;
+    esac
   done
+  shift $((OPTIND - 1))
 
-  # Special check for the EXCLUDES array, which cannot be empty.
-  if ! declare -p EXCLUDES &>/dev/null || (( ${#EXCLUDES[@]} == 0 )); then
-    unset_vars+=("EXCLUDES")
-  fi
-
-  if (( ${#unset_vars[@]} > 0 )); then
-    log_error "The following required settings are missing in '${CONFIG_FILE_LOADED}':"
-    for var in "${unset_vars[@]}"; do
-      log_error "  - ${var}"
-    done
-    exit 1
-  fi
-
-  if [[ ! "${KEEP_BACKUPS}" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "KEEP_BACKUPS must be a positive integer, got '${KEEP_BACKUPS}'."
+  if (( $# > 0 )); then
+    log_error "Unexpected arguments: $*"
+    show_usage
     exit 1
   fi
 }
@@ -215,6 +110,8 @@ run_backup() {
     rsync_opts+=(--info=progress2)
   fi
 
+  log_debug "rsync command: rsync ${rsync_opts[*]} ${rsync_excludes[*]} ${SOURCE_DIR}/ --link-dest ${latest_link} ${backup_path}"
+
   rsync "${rsync_opts[@]}" \
     "${rsync_excludes[@]}" \
     "${SOURCE_DIR}/" \
@@ -234,7 +131,7 @@ run_backup() {
 
   log_info "Updating the 'latest' symbolic link."
   ln -sfn "${backup_path}" "${latest_link}"
-  
+
   log_info "Backup operation completed."
 }
 
@@ -245,9 +142,10 @@ run_backup() {
 #######################################
 run_prune() {
   log_info "Starting automatic backup pruning for: ${BACKUP_DIR}"
-  
+
   mapfile -t backups < <(find "${BACKUP_DIR}" -maxdepth 1 -mindepth 1 -type d -name '[0-9][0-9][0-9][0-9]-*' | sort)
   local total_backups=${#backups[@]}
+  log_debug "Found ${total_backups} existing backup(s) in ${BACKUP_DIR}"
 
   if (( total_backups <= KEEP_BACKUPS )); then
     log_info "Total backups (${total_backups}) is not greater than the number to keep (${KEEP_BACKUPS}). No pruning needed."
@@ -256,7 +154,7 @@ run_prune() {
 
   local delete_count=$((total_backups - KEEP_BACKUPS))
   local backups_to_delete=("${backups[@]:0:${delete_count}}")
-  
+
   log_info "Found ${total_backups} backups. Deleting ${delete_count} oldest backup(s)..."
   for backup_to_delete in "${backups_to_delete[@]}"; do
     local backup_name
@@ -281,6 +179,7 @@ run_prune() {
 #######################################
 wait_for_raid() {
   if [[ ! -f /proc/mdstat ]]; then
+    log_debug "/proc/mdstat not found, skipping RAID check."
     return
   fi
 
@@ -305,6 +204,7 @@ set_low_io_priority() {
   fi
   ionice -c3 -p $$
   log_info "I/O priority set to idle (class 3)."
+  log_debug "ionice applied to PID $$"
 }
 
 #######################################
@@ -315,8 +215,12 @@ set_low_io_priority() {
 #   All arguments passed to the script.
 #######################################
 main() {
-  load_config
-  validate_config
+  parse_options "$@"
+  load_config || { log_error "Configuration file not found."; exit 1; }
+  validate_config "SOURCE_DIR" "BACKUP_DIR" "int:KEEP_BACKUPS" "array:EXCLUDES" || exit 1
+
+  log_debug "Configuration loaded: SOURCE_DIR=${SOURCE_DIR}, BACKUP_DIR=${BACKUP_DIR}, KEEP_BACKUPS=${KEEP_BACKUPS}"
+  log_debug "Exclude patterns: ${EXCLUDES[*]}"
 
   # Prevent concurrent backup runs using a lockfile.
   local lock_file="${BACKUP_DIR}/.local-backup.lock"
@@ -325,6 +229,7 @@ main() {
     log_error "Another backup is already running (lockfile: ${lock_file}). Exiting."
     exit 1
   fi
+  log_debug "Lock acquired: ${lock_file}"
 
   if [[ -n "${LOG_FILE:-}" ]]; then
     log_info "Logging to: ${LOG_FILE}"

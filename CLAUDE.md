@@ -14,8 +14,21 @@ A collection of packaged shell/Perl scripts for macOS and Debian/Ubuntu, distrib
   - `scripts/system/` — System administration tools (e.g., backups)
   - `scripts/utility/` — General-purpose utilities
   - `scripts/photography/` — Photography workflow automation
+  - `scripts/lib/` — Shared library sourced by other scripts (not published as a package)
 - `bin/` — Internal CI/CD tooling (packaging, dependency installation). Not published as packages.
 - `conf/` — Configuration file templates shipped with packages. Mirrors the `scripts/` subdirectory structure.
+
+### Shared Library (`@include`)
+
+Scripts can share code via `scripts/lib/common.sh`. In development, scripts `source` the library directly. For publishing, `bin/compile-includes.sh` inlines the library contents at build time so published scripts are fully self-contained.
+
+The convention uses a two-line pattern in scripts:
+```bash
+# shellcheck source=../lib/common.sh
+# @include ../lib/common.sh
+```
+
+The `# shellcheck source=` line lets ShellCheck resolve the dependency during linting. The `# @include` line is the directive that `compile-includes.sh` replaces with the file contents. The `shellcheck source=` line is stripped during compilation since it's no longer needed.
 
 ### Packaging System
 

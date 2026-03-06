@@ -54,6 +54,18 @@ jobs:
           echo "PKGSCR_DEB_PACKAGE_DIR=../dist/debian" >> $GITHUB_ENV
           echo "PKGSCR_CONFIG_DIR=./conf" >> $GITHUB_ENV
 
+      - name: Compile @include directives
+        working-directory: scripts
+        run: |
+          set -e
+          echo "--- Compiling @include directives ---"
+          while IFS= read -r -d '' script; do
+            if grep -q '# @include ' "${script}"; then
+              echo "Compiling: ${script}"
+              ./bin/compile-includes.sh "${script}" -i
+            fi
+          done < <(find ./scripts -type f -name '*.sh' -not -path '*/lib/*' -print0)
+
       - name: Package Scripts
         id: package
         working-directory: scripts
@@ -72,11 +84,23 @@ jobs:
 
             SCRIPT_NAME="${BASH_REMATCH[1]}"
             VERSION="v${BASH_REMATCH[2]}"
-            TARBALL_URL="https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"
-            CHECKSUM=$(curl -fsSL "${TARBALL_URL}" | sha256sum | awk '{print $1}')
 
-            # Find the script file inside the scripts/ directory only
-            SCRIPT_PATH=$(find ./scripts -type f -name "${SCRIPT_NAME}.*" | head -n 1)
+            # Create a compiled tarball from the working copy
+            TARBALL_PREFIX="scripts-${TAG}"
+            TARBALL_FILE="${TARBALL_PREFIX}.tar.gz"
+            git archive --format=tar --prefix="${TARBALL_PREFIX}/" HEAD \
+              | tar -x -C /tmp
+            # Overwrite archived scripts with compiled versions
+            cp -r ./scripts/ /tmp/"${TARBALL_PREFIX}"/scripts/
+            tar -czf "/tmp/${TARBALL_FILE}" -C /tmp "${TARBALL_PREFIX}"
+            CHECKSUM=$(sha256sum "/tmp/${TARBALL_FILE}" | awk '{print $1}')
+
+            # Upload the compiled tarball as a release asset
+            gh release upload "${TAG}" "/tmp/${TARBALL_FILE}" --clobber
+            TARBALL_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${TARBALL_FILE}"
+
+            # Find the script file inside the scripts/ directory only (skip lib/)
+            SCRIPT_PATH=$(find ./scripts -type f -not -path '*/lib/*' -name "${SCRIPT_NAME}.*" | head -n 1)
             if [[ -z "${SCRIPT_PATH}" ]]; then
               echo "::error::Could not find a script file for '${SCRIPT_NAME}'."
               exit 1
@@ -96,8 +120,8 @@ jobs:
           # --- Republish All Scripts (manual trigger) ---
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "--- Republishing latest version of all scripts ---"
-            # Find all script files inside the scripts/ directory only.
-            find ./scripts -mindepth 2 -type f | while read script_path; do
+            # Find all script files inside the scripts/ directory only (skip lib/).
+            find ./scripts -mindepth 2 -type f -not -path '*/lib/*' | while read script_path; do
               # Check if the file starts with a shebang to identify it as a script.
               if ! head -n 1 "${script_path}" | grep -qE '^#!'; then
                 echo "--- Skipping non-script file: ${script_path} ---"
@@ -112,8 +136,20 @@ jobs:
               if [[ -n "${latest_tag}" ]]; then
                 echo "--- Packaging script: ${script_name}, latest tag: ${latest_tag} ---"
                 version=$(echo "${latest_tag}" | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+')
-                tarball_url="https://github.com/${{ github.repository }}/archive/refs/tags/${latest_tag}.tar.gz"
-                checksum=$(curl -fsSL "${tarball_url}" | sha256sum | awk '{print $1}')
+
+                # Create a compiled tarball for this tag's release
+                TARBALL_PREFIX="scripts-${latest_tag}"
+                TARBALL_FILE="${TARBALL_PREFIX}.tar.gz"
+                git archive --format=tar --prefix="${TARBALL_PREFIX}/" "${latest_tag}" \
+                  | tar -x -C /tmp
+                # Overwrite archived scripts with compiled versions from the working copy
+                cp -r ./scripts/ /tmp/"${TARBALL_PREFIX}"/scripts/
+                tar -czf "/tmp/${TARBALL_FILE}" -C /tmp "${TARBALL_PREFIX}"
+                checksum=$(sha256sum "/tmp/${TARBALL_FILE}" | awk '{print $1}')
+
+                # Upload the compiled tarball as a release asset
+                gh release upload "${latest_tag}" "/tmp/${TARBALL_FILE}" --clobber
+                tarball_url="https://github.com/${{ github.repository }}/releases/download/${latest_tag}/${TARBALL_FILE}"
 
                 # Run package-script with specific env vars for this script and version
                 env \
@@ -121,6 +157,9 @@ jobs:
                   PKGSCR_TARBALL_URL="${tarball_url}" \
                   PKGSCR_SHA256_CHECKSUM="${checksum}" \
                   ./bin/package-script.sh "${script_path}"
+
+                # Clean up temp files for this tag
+                rm -rf /tmp/"${TARBALL_PREFIX}" /tmp/"${TARBALL_FILE}"
               else
                 echo "--- Skipping script ${script_name}: No version tags found. ---"
               fi
