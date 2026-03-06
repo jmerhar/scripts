@@ -131,6 +131,9 @@ sub traverse_tree {
         my $filename = $_;
         my $path = File::Spec->catfile($dir, $filename);
 
+        # Skip symlinks to avoid cycles and unexpected traversal.
+        next if -l $path;
+
         if (-d $path) {
             # If it's a directory, recurse into it.
             traverse_tree($path);
