@@ -349,17 +349,18 @@ generate_deb_package() {
   fi
   echo "Maintainer: ${metadata[Author]}" >> "${control_dir}/control"
   
-  # Add all other optional fields BEFORE the Description
-  # Sort keys for deterministic output across runs and Bash versions
+  # Add recognized optional Debian control fields from metadata.
+  # Only standard fields are included to avoid lintian warnings.
+  local -A DEB_FIELD_MAP=(
+    [License]="License"
+    [Homepage]="Homepage"
+  )
   local sorted_keys
   mapfile -t sorted_keys < <(printf '%s\n' "${!metadata[@]}" | sort)
   for key in "${sorted_keys[@]}"; do
-    # Skip mandatory and special fields (use glob match to avoid
-    # substring false positives, e.g. "NameLong" matching "Name")
-    if [[ " ${REQUIRED_FIELDS[*]} " == *" ${key} "* || "${key}" =~ ^(Dependencies|Homebrew-Dependencies|Debian-Dependencies|ConfigFile|Description|Publish)$ ]]; then
-      continue
+    if [[ -n "${DEB_FIELD_MAP[${key}]:-}" ]]; then
+      echo "${DEB_FIELD_MAP[${key}]}: ${metadata[${key}]}" >> "${control_dir}/control"
     fi
-    echo "${key}: ${metadata[${key}]}" >> "${control_dir}/control"
   done
   
   # Add the Description and the correctly-indented long description
