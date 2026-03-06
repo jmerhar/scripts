@@ -27,15 +27,51 @@ jobs:
           find . -name '*.pl' -print0 \
             | xargs -0 -I{} perl -c {}
 
+  validate-manifest:
+    name: Validate scripts.yaml manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.52.4/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Check all manifest paths exist
+        run: |
+          ok=true
+          while IFS= read -r name; do
+            path=$(yq eval ".scripts.\"${name}\".path" scripts.yaml)
+            if [[ ! -f "${path}" ]]; then
+              echo "::error::Manifest entry '${name}' points to missing file: ${path}"
+              ok=false
+            fi
+          done < <(yq eval '.scripts | keys | .[]' scripts.yaml)
+          ${ok}
+
+      - name: Warn about unregistered scripts
+        run: |
+          while IFS= read -r -d '' script; do
+            name=$(basename "${script}" | sed 's/\.[^.]*$//')
+            if ! yq eval ".scripts.\"${name}\"" scripts.yaml | grep -q 'path:'; then
+              echo "::warning::Script '${script}' is not registered in scripts.yaml"
+            fi
+          done < <(find ./scripts -mindepth 2 -type f -not -path '*/lib/*' -print0)
+
   smoke-test:
     name: Packaging smoke test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run package-script against each publishable script
+      - name: Install yq
         run: |
-          . test_env.sh
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.52.4/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Run package-script against each manifest entry
+        run: |
           # Compile @include directives before smoke-testing
           while IFS= read -r -d '' script; do
             if grep -q '# @include ' "${script}"; then
@@ -43,15 +79,14 @@ jobs:
               ./bin/compile-includes.sh "${script}" -i
             fi
           done < <(find ./scripts -type f -name '*.sh' -not -path '*/lib/*' -print0)
-          find ./scripts -mindepth 2 -type f -not -path '*/lib/*' | while read script_path; do
-            # Skip non-scripts
-            head -n 1 "${script_path}" | grep -qE '^#!' || continue
-
-            echo "--- Smoke-testing: ${script_path} ---"
-            ./bin/package-script.sh "${script_path}"
-          done
+          # Smoke-test each script in the manifest
+          while IFS= read -r name; do
+            echo "--- Smoke-testing: ${name} ---"
+            ./bin/package-script.sh "${name}" v0.0.0
+          done < <(yq eval '.scripts | keys | .[]' scripts.yaml)
 
       - name: Verify output artifacts exist
         run: |
           test -d dist/homebrew && ls dist/homebrew/*.rb
+          test -d dist/tarballs && ls dist/tarballs/*.tar.gz
           test -d dist/debian && ls dist/debian/*.deb

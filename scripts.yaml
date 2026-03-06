@@ -1,0 +1,30 @@
+defaults:
+  author: "Jure Merhar <dev@merhar.si>"
+  homepage: "https://github.com/jmerhar/scripts"
+  license: "MIT"
+
+scripts:
+  local-backup:
+    path: scripts/system/local-backup.sh
+    description: "A generic script to create and automatically prune rsync-based system backups."
+    dependencies:
+      common: [rsync]
+
+  photo-backup:
+    path: scripts/photography/photo-backup.sh
+    description: "A robust script for backing up photo collections from multiple sources to a remote server using rsync."
+    dependencies:
+      common: [rsync]
+
+  remove-sidecars:
+    path: scripts/photography/remove-sidecars.pl
+    description: 'A script to find and delete "sidecar" files when a corresponding RAW photo file exists.'
+    dependencies:
+      common: [perl]
+      debian: [libterm-ansicolor-perl]
+
+  unlock-pdf:
+    path: scripts/utility/unlock-pdf.sh
+    description: "Decrypts a password-protected PDF file using the 'qpdf' command-line tool."
+    dependencies:
+      common: [qpdf]

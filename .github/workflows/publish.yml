@@ -1,23 +1,19 @@
-# This workflow automates the publication of a new script release.
-# It supports two trigger mechanisms:
-# 1. A new release is published with a tag in the format "script-name-vX.Y.Z".
-# 2. A manual trigger from the GitHub Actions UI to republish all scripts.
+# Publishes script releases as Homebrew formulas and Debian packages.
+#
+# Triggers:
+# 1. Release published with a "script-name-vX.Y.Z" tag → packages that script.
+# 2. Manual workflow_dispatch → republishes the latest version of all scripts.
 name: Publish Script
 
-# Controls when the workflow is triggered.
 on:
-  # Triggered when a new release is published.
   release:
     types: [published]
-  # Allows manual triggering from the GitHub Actions UI.
   workflow_dispatch:
 
-# Defines a single job that will run on an Ubuntu environment.
 jobs:
   publish-script:
     runs-on: ubuntu-latest
 
-    # We need to give the job permissions to write to other repos.
     permissions:
       contents: write
 
@@ -26,7 +22,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: scripts
-          # Fetch all history and tags to find previous versions
           fetch-depth: 0
 
       - name: Checkout Homebrew tap repo
@@ -48,11 +43,10 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Prepare Environment Variables
+      - name: Install yq
         run: |
-          echo "PKGSCR_HOMEBREW_FORMULA_DIR=../dist/homebrew" >> $GITHUB_ENV
-          echo "PKGSCR_DEB_PACKAGE_DIR=../dist/debian" >> $GITHUB_ENV
-          echo "PKGSCR_CONFIG_DIR=./conf" >> $GITHUB_ENV
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.52.4/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
 
       - name: Compile @include directives
         working-directory: scripts
@@ -66,7 +60,7 @@ jobs:
             fi
           done < <(find ./scripts -type f -name '*.sh' -not -path '*/lib/*' -print0)
 
-      - name: Package Scripts
+      - name: Package scripts
         id: package
         working-directory: scripts
         env:
@@ -74,162 +68,79 @@ jobs:
         run: |
           set -e
 
-          # Creates a flat tarball containing just the script and its config
-          # file (if any), uploads it as a release asset, and prints the
-          # download URL and SHA256 checksum.
+          # Packages a script and uploads its tarball as a release asset.
           # Arguments:
-          #   tag:         The release tag (e.g., "local-backup-v1.3.0")
-          #   script_path: Path to the compiled script on disk
-          # Outputs (via stdout, one per line):
-          #   Line 1: tarball download URL
-          #   Line 2: SHA256 checksum
-          create_and_upload_tarball() {
-            local tag="$1"
-            local script_path="$2"
-            local script_name
-            script_name=$(basename "${script_path}" | cut -d. -f1)
+          #   name    - Script name from the manifest
+          #   version - Version string (e.g., "v1.3.0")
+          #   tag     - Git tag (e.g., "local-backup-v1.3.0")
+          package_and_upload() {
+            local name="$1"
+            local version="$2"
+            local tag="$3"
 
-            local tarball_prefix="scripts-${tag}"
-            local tarball_file="${tarball_prefix}.tar.gz"
-            local staging="/tmp/${tarball_prefix}"
+            echo "--- Packaging ${name} ${version} ---"
+            ./bin/package-script.sh "${name}" "${version}"
 
-            rm -rf "${staging}"
-            mkdir -p "${staging}"
-
-            # Copy the compiled script
-            cp "${script_path}" "${staging}/"
-
-            # Copy the config file if the script declares one
-            local config_name
-            config_name=$(sed -n 's/^# ConfigFile: *//p' "${script_path}")
-            if [[ -n "${config_name}" ]]; then
-              # Derive config subdirectory from script path (e.g., scripts/system/ → system/)
-              local script_subdir
-              script_subdir=$(dirname "${script_path}")
-              script_subdir=$(basename "${script_subdir}")
-              local config_src="./conf/${script_subdir}/${config_name}"
-              if [[ -f "${config_src}" ]]; then
-                cp "${config_src}" "${staging}/"
-              fi
+            local tarball="dist/tarballs/scripts-${name}-${version}.tar.gz"
+            if [[ -f "${tarball}" ]]; then
+              gh release upload "${tag}" "${tarball}" --clobber
             fi
-
-            tar -czf "/tmp/${tarball_file}" -C /tmp "${tarball_prefix}"
-            local checksum
-            checksum=$(sha256sum "/tmp/${tarball_file}" | awk '{print $1}')
-
-            gh release upload "${tag}" "/tmp/${tarball_file}" --clobber
-            local url="https://github.com/${{ github.repository }}/releases/download/${tag}/${tarball_file}"
-
-            rm -rf "${staging}" "/tmp/${tarball_file}"
-            echo "${url}"
-            echo "${checksum}"
           }
 
-          # --- Single Script Release (from tag) ---
+          # --- Single script release (from tag) ---
           if [[ "${{ github.event_name }}" == "release" ]]; then
             TAG="${{ github.event.release.tag_name }}"
             echo "--- Processing release for tag: ${TAG} ---"
 
-            # Validate tag format and extract script name and version
             if [[ ! "${TAG}" =~ ^([a-zA-Z0-9_-]+)-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-              echo "::error::Tag format is invalid. Expected 'script-name-vX.Y.Z', but got '${TAG}'."
+              echo "::error::Tag format is invalid. Expected 'script-name-vX.Y.Z', got '${TAG}'."
               exit 1
             fi
 
             SCRIPT_NAME="${BASH_REMATCH[1]}"
             VERSION="v${BASH_REMATCH[2]}"
 
-            # Find the script file inside the scripts/ directory only (skip lib/)
-            SCRIPT_PATH=$(find ./scripts -type f -not -path '*/lib/*' -name "${SCRIPT_NAME}.*" | head -n 1)
-            if [[ -z "${SCRIPT_PATH}" ]]; then
-              echo "::error::Could not find a script file for '${SCRIPT_NAME}'."
-              exit 1
-            fi
+            package_and_upload "${SCRIPT_NAME}" "${VERSION}" "${TAG}"
 
-            # Create flat tarball and upload as release asset
-            { read -r TARBALL_URL; read -r CHECKSUM; } < <(create_and_upload_tarball "${TAG}" "${SCRIPT_PATH}")
-
-            # Run the packaging script with version-specific variables
-            env \
-              PKGSCR_VERSION="${VERSION}" \
-              PKGSCR_TARBALL_URL="${TARBALL_URL}" \
-              PKGSCR_SHA256_CHECKSUM="${CHECKSUM}" \
-              ./bin/package-script.sh "${SCRIPT_PATH}"
-
-            # Set a specific commit message for the release
             echo "commit_message=feat(${SCRIPT_NAME}): Release version ${VERSION}" >> $GITHUB_OUTPUT
           fi
 
-          # --- Republish All Scripts (manual trigger) ---
+          # --- Republish all scripts (manual trigger) ---
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "--- Republishing latest version of all scripts ---"
-            # Find all script files inside the scripts/ directory only (skip lib/).
-            find ./scripts -mindepth 2 -type f -not -path '*/lib/*' | while read script_path; do
-              # Check if the file starts with a shebang to identify it as a script.
-              if ! head -n 1 "${script_path}" | grep -qE '^#!'; then
-                echo "--- Skipping non-script file: ${script_path} ---"
+
+            while IFS= read -r name; do
+              latest_tag=$(git tag --list "${name}-v*" --sort=-v:refname | head -n 1)
+              if [[ -z "${latest_tag}" ]]; then
+                echo "--- Skipping ${name}: no version tags found ---"
                 continue
               fi
 
-              script_name=$(basename "${script_path}" | cut -d. -f1)
+              version=$(echo "${latest_tag}" | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+')
+              package_and_upload "${name}" "${version}" "${latest_tag}"
+            done < <(yq eval '.scripts | keys | .[]' scripts.yaml)
 
-              # Find the latest version tag for this specific script
-              latest_tag=$(git tag --list "${script_name}-v*" --sort=-v:refname | head -n 1)
-
-              if [[ -n "${latest_tag}" ]]; then
-                echo "--- Packaging script: ${script_name}, latest tag: ${latest_tag} ---"
-                version=$(echo "${latest_tag}" | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+')
-
-                # Create flat tarball and upload as release asset
-                { read -r tarball_url; read -r checksum; } < <(create_and_upload_tarball "${latest_tag}" "${script_path}")
-
-                # Run package-script with specific env vars for this script and version
-                env \
-                  PKGSCR_VERSION="${version}" \
-                  PKGSCR_TARBALL_URL="${tarball_url}" \
-                  PKGSCR_SHA256_CHECKSUM="${checksum}" \
-                  ./bin/package-script.sh "${script_path}"
-              else
-                echo "--- Skipping script ${script_name}: No version tags found. ---"
-              fi
-            done
-
-            # Set a generic commit message for the republish action
             echo "commit_message=chore: Republish latest version of all scripts" >> $GITHUB_OUTPUT
           fi
 
-      - name: Move Artifacts to Repositories
-        # Only run if artifacts were actually created
+      - name: Move artifacts to repositories
         if: success() && (steps.package.outputs.commit_message != '')
         run: |
-          # Move Homebrew formulas
-          if [ -d "dist/homebrew" ]; then
-            mv dist/homebrew/*.rb homebrew-scripts/Formula/
+          if [ -d "scripts/dist/homebrew" ]; then
+            mv scripts/dist/homebrew/*.rb homebrew-scripts/Formula/
           fi
-          # Move Debian packages
-          if [ -d "dist/debian" ]; then
-            mv dist/debian/*.deb apt-scripts/pool/main/
+          if [ -d "scripts/dist/debian" ]; then
+            mv scripts/dist/debian/*.deb apt-scripts/pool/main/
           fi
 
       - name: Commit and push Homebrew changes
         if: success() && (steps.package.outputs.commit_message != '')
+        working-directory: scripts
         run: |
-          cd homebrew-scripts
-          # Regenerate the formula table in README.md from the current formulas
-          TABLE="| Formula | Description |\n|---------|-------------|"
-          for formula in Formula/*.rb; do
-            name=$(basename "$formula" .rb)
-            desc=$(grep '  desc ' "$formula" | sed 's/.*desc "\(.*\)"/\1/')
-            TABLE="${TABLE}\n| \`${name}\` | ${desc} |"
-          done
-          awk -v table="$TABLE" '
-            /<!-- BEGIN FORMULA TABLE -->/ { print; found=1; next }
-            /<!-- END FORMULA TABLE -->/ { printf "%b\n", table; print ""; found=0 }
-            !found { print }
-          ' README.md > README.md.tmp && mv README.md.tmp README.md
+          cd ../homebrew-scripts
+          ../scripts/bin/update-readme-table.sh README.md "Formula"
           git add .
           git commit -m "${{ steps.package.outputs.commit_message }}" || echo "No Homebrew changes to commit."
-          # Retry with rebase if a concurrent release pushed first
           for attempt in 1 2 3; do
             git push && break
             echo "Push failed (attempt ${attempt}/3), rebasing..."
@@ -241,8 +152,9 @@ jobs:
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        working-directory: scripts
         run: |
-          cd apt-scripts
+          cd ../apt-scripts
           # Import GPG key
           echo "$GPG_PRIVATE_KEY" | gpg --batch --import --passphrase "$GPG_PASSPHRASE"
           # Generate package files
@@ -251,26 +163,14 @@ jobs:
           # Generate release file (remove old one first to prevent self-referencing checksum)
           rm -f dists/stable/Release dists/stable/InRelease
           apt-ftparchive -c apt-ftparchive.conf release dists/stable/ > dists/stable/Release
-          # Verify release file
           test -s dists/stable/Release || (echo "::error::Failed to generate valid Release file." && exit 1)
           # Sign the release file
           gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --default-key "jmerhar-bot" --clearsign -o dists/stable/InRelease dists/stable/Release
-          # Regenerate the package table in README.md from the Homebrew formulas
-          TABLE="| Package | Description |\n|---------|-------------|"
-          for formula in ../homebrew-scripts/Formula/*.rb; do
-            name=$(basename "$formula" .rb)
-            desc=$(grep '  desc ' "$formula" | sed 's/.*desc "\(.*\)"/\1/')
-            TABLE="${TABLE}\n| \`${name}\` | ${desc} |"
-          done
-          awk -v table="$TABLE" '
-            /<!-- BEGIN PACKAGE TABLE -->/ { print; found=1; next }
-            /<!-- END PACKAGE TABLE -->/ { printf "%b\n", table; print ""; found=0 }
-            !found { print }
-          ' README.md > README.md.tmp && mv README.md.tmp README.md
+          # Update README table
+          ../scripts/bin/update-readme-table.sh README.md "Package"
           # Commit and push
           git add .
           git commit -m "${{ steps.package.outputs.commit_message }}" || echo "No APT changes to commit."
-          # Retry with rebase if a concurrent release pushed first
           for attempt in 1 2 3; do
             git push && break
             echo "Push failed (attempt ${attempt}/3), rebasing..."

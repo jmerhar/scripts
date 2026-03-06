@@ -16,7 +16,29 @@ A collection of packaged shell/Perl scripts for macOS and Debian/Ubuntu, distrib
   - `scripts/photography/` — Photography workflow automation
   - `scripts/lib/` — Shared library sourced by other scripts (not published as a package)
 - `bin/` — Internal CI/CD tooling (packaging, dependency installation). Not published as packages.
-- `conf/` — Configuration file templates shipped with packages. Mirrors the `scripts/` subdirectory structure.
+- `scripts.yaml` — Central manifest defining all publishable scripts, their metadata, and dependencies.
+
+Config files (`.conf`) live next to their scripts (e.g., `scripts/system/local-backup.conf`). They are discovered by convention — no metadata field needed.
+
+### Manifest (`scripts.yaml`)
+
+All publishable scripts are registered in `scripts.yaml`. The manifest contains repo-level defaults (author, homepage, license) and per-script entries with path, description, and dependencies.
+
+```yaml
+defaults:
+  author: "Jure Merhar <dev@merhar.si>"
+  homepage: "https://github.com/jmerhar/scripts"
+  license: "MIT"
+
+scripts:
+  script-name:
+    path: scripts/topic/script-name.sh
+    description: "One-line description."
+    dependencies:
+      common: [dep1, dep2]       # All platforms
+      homebrew: [macos-only-dep] # Homebrew only
+      debian: [debian-only-dep]  # Debian only
+```
 
 ### Shared Library (`@include`)
 
@@ -32,39 +54,26 @@ The `# shellcheck source=` line lets ShellCheck resolve the dependency during li
 
 ### Packaging System
 
-`bin/package-script.sh` reads structured metadata from script headers and generates both Homebrew formulas (`.rb`) and Debian packages (`.deb`). It is driven entirely by environment variables (see `test_env.sh` for local testing).
+`bin/package-script.sh` reads metadata from `scripts.yaml` (via `yq`) and generates Homebrew formulas (`.rb`), Debian packages (`.deb`), and release tarballs (`.tar.gz`).
 
-Only scripts under `scripts/` are publishable. Scripts under `bin/` are internal tooling.
-
-Every publishable script must include a metadata block:
-```bash
-# --- SCRIPT INFO START ---
-# Name: script-name
-# Description: One-line description.
-# Author: Jure Merhar <dev@merhar.si>
-# Homepage: https://github.com/jmerhar/scripts
-# Dependencies: common-deps
-# Homebrew-Dependencies: macos-only-deps
-# Debian-Dependencies: debian-only-deps
-# ConfigFile: optional-config.conf
-# License: MIT
-# --- SCRIPT INFO END ---
-```
+Only scripts registered in `scripts.yaml` are publishable. Scripts under `bin/` are internal tooling.
 
 ### Release & CI/CD
 
 - **Per-script versioning**: tags follow `script-name-vX.Y.Z` (e.g., `unlock-pdf-v1.5.0`)
 - `.github/workflows/publish.yml` packages on release or manual dispatch, then pushes formulas to `jmerhar/homebrew-scripts` and signed `.deb` packages to `jmerhar/apt-scripts`
+- `bin/update-readme-table.sh` regenerates README tables in downstream repos from the manifest
 - **Release notes**: every GitHub Release should include a summary of user-facing changes (new features, fixes, breaking changes). Use markdown headers (`### New features`, `### Fixes`, etc.) for multi-item releases, or a plain bullet list for single-item releases.
 
 ### Testing Locally
 
-Source the test environment, then run the packager:
+Run the packager directly:
 ```bash
-. test_env.sh
-./bin/package-script.sh <path-to-script>
+./bin/package-script.sh unlock-pdf v1.0.0
 ```
-Output lands in `./dist/homebrew/` and `./dist/debian/`.
+Output lands in `./dist/tarballs/`, `./dist/homebrew/`, and `./dist/debian/`.
+
+Requires [yq](https://github.com/mikefarah/yq) to be installed.
 
 ## Shell Script Conventions
 

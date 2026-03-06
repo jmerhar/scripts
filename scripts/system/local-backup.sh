@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-# --- SCRIPT INFO START ---
-# Name: local-backup
-# Description: A generic script to create and automatically prune rsync-based system backups.
-# Author: Jure Merhar <dev@merhar.si>
-# Homepage: https://github.com/jmerhar/scripts
-# ConfigFile: local-backup.conf
-# Dependencies: rsync
-# License: MIT
-# --- SCRIPT INFO END ---
 #
 # A script to create an incremental backup and then automatically prune old ones
 # based on a retention policy defined in its configuration file.

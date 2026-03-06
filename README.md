@@ -16,13 +16,13 @@ A collection of packaged shell and Perl scripts for macOS and Linux, distributed
 ## Repository Structure
 
 ```
+scripts.yaml      Central manifest — all publishable scripts and their metadata
 scripts/          User-facing scripts, organized by topic
-  system/           System administration (backups)
+  system/           System administration (backups); config files live here too
   utility/          General-purpose utilities
   photography/      Photography workflow automation
   lib/              Shared library (sourced at dev time, inlined at build time)
 bin/              Internal CI/CD tooling (not published as packages)
-conf/             Configuration file templates shipped with packages
 ```
 
 ## Installation

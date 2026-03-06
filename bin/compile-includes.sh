@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# --- SCRIPT INFO START ---
-# Name: compile-includes
-# Description: Inlines @include directives for build-time script compilation.
-# Author: Jure Merhar <dev@merhar.si>
-# Homepage: https://github.com/jmerhar/scripts
-# License: MIT
-# --- SCRIPT INFO END ---
 #
 # Processes a shell script and replaces `# @include <path>` directives with
 # the contents of the referenced file. Also strips `# shellcheck source=`
