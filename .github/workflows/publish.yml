@@ -73,7 +73,7 @@ jobs:
             SCRIPT_NAME="${BASH_REMATCH[1]}"
             VERSION="v${BASH_REMATCH[2]}"
             TARBALL_URL="https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"
-            CHECKSUM=$(curl -fsSL "${TARBALL_URL}" | shasum -a 256 | awk '{print $1}')
+            CHECKSUM=$(curl -fsSL "${TARBALL_URL}" | sha256sum | awk '{print $1}')
 
             # Find the path to the script file, excluding the conf directory
             SCRIPT_PATH=$(find . -type f -name "${SCRIPT_NAME}.*" -not -path "./conf/*" | head -n 1)
@@ -125,7 +125,7 @@ jobs:
                 echo "--- Packaging script: ${script_name}, latest tag: ${latest_tag} ---"
                 version=$(echo "${latest_tag}" | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+')
                 tarball_url="https://github.com/${{ github.repository }}/archive/refs/tags/${latest_tag}.tar.gz"
-                checksum=$(curl -fsSL "${tarball_url}" | shasum -a 256 | awk '{print $1}')
+                checksum=$(curl -fsSL "${tarball_url}" | sha256sum | awk '{print $1}')
 
                 # Run package-script with specific env vars for this script and version
                 env \
