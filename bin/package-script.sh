@@ -238,7 +238,7 @@ generate_homebrew_formula() {
   mkdir -p "${PKGSCR_HOMEBREW_FORMULA_DIR}"
   local formula_file="${PKGSCR_HOMEBREW_FORMULA_DIR}/${script_name}.rb"
   local class_name
-  class_name=$(echo "${script_name}" | awk -F'-' '{
+  class_name=$(echo "${script_name}" | awk -F'[-_]' '{
     for (i=1; i<=NF; i++) {
       printf "%s", toupper(substr($i,1,1)) substr($i,2)
     }
