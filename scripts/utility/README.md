@@ -1,28 +1,36 @@
 # Utility Scripts
 
-This directory contains a collection of user-facing scripts designed to perform everyday tasks and automate common workflows.
+General-purpose user-facing utilities. For installation instructions, see the [main README](../../README.md#installation).
 
-## Scripts
+## `unlock-pdf`
 
-### `unlock-pdf.sh`
+Decrypts a password-protected PDF file using [`qpdf`](https://github.com/qpdf/qpdf).
 
-A script to decrypt a password-protected PDF file.
+### Features
 
-#### Features
-*   **Simple Usage**: Unlocks a PDF with a single command.
-*   **Automatic Dependency Detection**: If the required `qpdf` utility is not found, it provides OS-specific installation instructions and exits.
-*   **Safe Output**: Creates a new, unlocked file with an `-unlocked` suffix, preserving the original file.
+* **Simple** — Unlocks a PDF with a single command.
+* **Safe Output** — Creates a new `*-unlocked.pdf` file, leaving the original untouched.
+* **Input Validation** — Checks that the file exists and has a `.pdf` extension before processing.
+* **Overwrite Protection** — Refuses to run if the output file already exists.
+* **Secure** — Passes the password via a file descriptor (`--password-file`) to keep it out of the process list.
+* **Dependency Detection** — Prints OS-specific installation instructions if `qpdf` is not found.
 
-#### Requirements
-*   **`qpdf`**: The core command-line tool used for PDF manipulation.
+### Requirements
 
-#### Usage
-Run the script with the PDF password and the input filename as arguments.
+* [`qpdf`](https://github.com/qpdf/qpdf)
+
+### Usage
 
 ```bash
-# Usage: ./unlock-pdf.sh <password> <input.pdf>
-
-./unlock-pdf.sh 'my-secret-password' 'path/to/document.pdf'
+unlock-pdf <password> <input.pdf>
 ```
 
-This will create a new file named `document-unlocked.pdf` in the same directory.
+This creates `input-unlocked.pdf` in the same directory.
+
+```bash
+$ unlock-pdf 'my-secret-password' path/to/document.pdf
+Writing path/to/document-unlocked.pdf...
+Done.
+```
+
+> **Tip:** The password will be saved in your shell history. Prefix the command with a space (` unlock-pdf ...`) to prevent this, or use `history -d` afterwards.

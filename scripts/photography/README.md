@@ -1,94 +1,68 @@
 # Photography Scripts
 
-A collection of utilities for managing photography workflows. This directory includes scripts for intelligent backups and for cleaning up photo libraries.
+Utilities for managing photography workflows — intelligent backups and library cleanup. For installation instructions, see the [main README](../../README.md#installation).
 
-## Scripts
+## `photo-backup`
 
-### `photo-backup.sh`
+A robust backup solution for photographers managing multiple storage devices. It safely merges content from multiple sources into a consolidated backup on a remote server while preserving unique files from all sources.
 
-A robust backup solution for photographers managing multiple storage devices. It safely merges content from multiple sources into a consolidated backup on a remote server while preserving unique files from all of them.
+### Features
 
-#### Features
+* **Merge Overlapping Directories** — Safely syncs multiple source directories with similar structures (e.g., both containing `/Travel`) to a single destination.
+* **Deletion Protection** — Uses rsync filter rules to ensure files present in any source are not accidentally deleted from the destination.
+* **Highly Configurable** — All settings can come from a config file (`/etc/photo-backup.conf`) or command-line flags.
+* **Detailed Logging** — Comprehensive logging with debug mode and optional log file output.
+* **Dry-Run Mode** — Test the sync operation without making any changes.
+* **macOS Cleanup** — Removes macOS-specific temporary files (`.DS_Store`, etc.) before backup.
+* **Safety Checks** — Validates that source directories exist and are not empty.
 
-* **Merge Overlapping Directories**: Safely syncs multiple source directories with similar structures (e.g., both containing `/Travel`) to a single destination.
+### Upgrading to Version 2.0+
 
-* **Deletion Protection**: Uses an rsync filter to ensure that files present in any source are not accidentally deleted from the destination.
+Version 2.0 introduced a breaking change to support multiple backup sources. If upgrading from an older version, update your configuration file (`/etc/photo-backup.conf`):
 
-* **Highly Configurable**: All settings can be managed via a config file (`/etc/photo-backup.conf`) or command-line flags.
+The old `SRC_1="..."` and `SRC_2="..."` variables are **deprecated**. Replace them with the new `SOURCES` array:
 
-* **Detailed Logging**: Provides comprehensive logging with support for debug mode and optional log file output.
-
-* **Dry-Run Mode**: Allows testing the sync operation without making any changes to files.
-
-* **macOS Cleanup**: Intelligently cleans up macOS-specific temporary files (`.DS_Store`, etc.) before backup.
-
-* **Safety Checks**: Includes validations to prevent running on empty source directories.
-
-#### Upgrading to Version 2.0+
-
-Version 2.0 introduced a breaking change to support multiple backup sources. If you are upgrading from an older version, you must update your configuration file (`/etc/photo-backup.conf`).
-
-* The old `SRC_1="..."` and `SRC_2="..."` variables are **deprecated**.
-
-* You must replace them with the new `SOURCES` array format.
-
-**Example Migration:**
-
-If your old configuration was:
-
-```
+```bash
+# Old format (deprecated):
 SRC_1="/Volumes/PhotoStore"
 SRC_2="/Volumes/MorePhotos"
 
-```
-
-Your new configuration must be:
-
-```
+# New format:
 SOURCES=("/Volumes/PhotoStore" "/Volumes/MorePhotos")
-
 ```
 
-The package upgrade will attempt to perform this migration automatically, but you should verify the new file to ensure it is correct. A backup of your original configuration will be saved as `photo-backup.conf.bak`.
+The package upgrade attempts this migration automatically, saving a backup as `photo-backup.conf.bak`.
 
-#### Requirements
+### Requirements
 
 * `bash` 4.0+
-
 * `rsync`
-
 * SSH access to the backup server
 
-#### Usage
-
-The script can be configured entirely via command-line options.
-
-**Basic Command:**
+### Usage
 
 ```bash
-./photography/photo-backup.sh \
+photo-backup \
   -s /Volumes/PhotoStore \
   -s /Volumes/MorePhotos \
   -s /Volumes/VacationPics \
   -H backup-server \
   -p /mnt/storage/photos
-
 ```
 
-**Common Options:**
-
 | Flag | Description |
- | ----- | ----- |
-| `-s PATH` | Source path. Can be used multiple times. |
+|------|-------------|
+| `-s PATH` | Source path (can be used multiple times). |
 | `-H HOST` | Backup server hostname or IP. |
 | `-p PATH` | Destination path on the server. |
-| `-n` | **Dry-run mode**: show what would happen without making changes. |
-| `-d` | **Debug mode**: enable verbose command logging. |
-| `-l FILE` | Log all output to a custom log file. |
+| `-n` | Dry-run mode — show what would happen without making changes. |
+| `-d` | Debug mode — enable verbose command logging. |
+| `-l FILE` | Log all output to a file. |
+| `-h` | Show help. |
 
 **Sample Output:**
 
-```text
+```
 [INFO]: Starting photo backup operation.
 [INFO]: Found 3 source directories:
 [INFO]:  -> /Volumes/PhotoStore
@@ -96,45 +70,41 @@ The script can be configured entirely via command-line options.
 [INFO]:  -> /Volumes/VacationPics
 [INFO]: Destination: aurora:/mnt/storage/photos
 [INFO]: Cleaning temporary files in '/Volumes/PhotoStore'...
-[DEBUG]: Running command: find /Volumes/PhotoStore -name .DS_Store -delete -print
 [INFO]: --- Starting backup for '/Volumes/PhotoStore' ---
 [INFO]: Generating protection rules for '/Volumes/MorePhotos'
 [INFO]: Generating protection rules for '/Volumes/VacationPics'
 [INFO]: Backing up '/Volumes/PhotoStore' to 'aurora:/mnt/storage/photos'...
-sending incremental file list
-...
-sent 12.34G bytes  received 156.78k bytes  8.23M bytes/sec
-total size is 250.11G  speedup is 20.26
 [INFO]: Backup operation completed successfully.
 ```
 
 ---
 
-### `remove-sidecars.pl`
+## `remove-sidecars`
 
-When shooting in RAW+JPEG mode, you get high-quality RAWs for editing and convenient JPEGs for quick previews. Lightroom is smart enough to recognise these JPEGs as "sidecars" to the RAW files, which is great.
+When shooting in RAW+JPEG mode, you get high-quality RAWs for editing and convenient JPEGs for quick previews. After a library grows to 100k+ photos, these sidecar JPEGs can consume hundreds of gigabytes for little long-term benefit. This script finds and deletes them.
 
-However, after a library grows to 100k+ photos, these sidecar files can take up a significant amount of disk space for little long-term benefit. This script was created to solve the problem of cleaning them up, freeing up hundreds of gigabytes of space.
+### Features
 
-#### Features
-* **Interactive**: Prompts the user to define which file extensions are sidecars and which are RAW files, with sensible defaults.
-* **Safe**: It shows a summary of what will be deleted and asks for confirmation before proceeding.
-* **Informative**: Provides a detailed report at the end detailing how much disk space was recovered.
-* **Recursive**: Scans the specified directory and all of its subdirectories.
+* **Interactive** — Prompts for sidecar and RAW file extensions, with sensible defaults.
+* **Safe** — Shows a summary of what will be deleted and asks for confirmation before proceeding.
+* **Informative** — Reports how much disk space was recovered, broken down by RAW type.
+* **Recursive** — Scans the specified directory and all subdirectories.
 
-#### Requirements
+### Requirements
+
 * `perl`
-* `Term::ANSIColor`
+* `Term::ANSIColor` (Debian: `libterm-ansicolor-perl`)
 
-#### Usage
-
-Run the script from your terminal, providing a path to the directory you want to scan. If no path is provided, it will scan the current directory.
-
-You'll be prompted to provide a list of extensions for your sidecars and for your RAW photos. You can press Enter to accept the defaults or provide your own space-separated list. The script will then scan your photos, show a summary of the files it found, and ask you to confirm deletion.
+### Usage
 
 ```bash
-# Run the script against a specific directory
-$ ./photography/remove-sidecars.pl /path/to/my/photos
+remove-sidecars [DIRECTORY]
+```
+
+If no directory is given, the current directory is used. Use `--help` for usage information.
+
+```
+$ remove-sidecars /path/to/my/photos
 
 What extensions do your sidecars have? [JPG jpg JPEG jpeg] JPG jpg
 What extensions do your raw photos have? [RW2 CR2 DNG dng] RW2 DNG

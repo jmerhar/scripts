@@ -1,45 +1,38 @@
 # System Scripts
 
-User-facing scripts for system administration tasks.
+User-facing scripts for system administration tasks. For installation instructions, see the [main README](../../README.md#installation).
 
-## Scripts
+## `local-backup`
 
-### `local-backup.sh`
+A script to create and automatically prune incremental rsync-based system backups. Designed to run unattended via `cron`.
 
-A generic script to create and automatically prune rsync-based system backups. It is designed to be run non-interactively by a cron job.
+### Features
 
-#### Features
-* **Incremental Backups**: Uses `rsync` with hard links (`--link-dest`) to create space-efficient incremental backups.
-* **Automatic Pruning**: Automatically deletes the oldest backups, keeping a configurable number of recent copies.
-* **Centralized Configuration**: All settings, including source/destination directories, retention policy, and exclusion patterns, are managed in `/etc/local-backup.conf`.
-* **Cron-Friendly**: Operates silently, logging informational output to a file and only sending errors to `stderr` for email notifications.
-* **Flexible Exclusions**: Supports a detailed list of files and directories to exclude from the backup, defined as a Bash array in the config file.
+* **Incremental Backups** — Uses `rsync --link-dest` to create space-efficient hard-linked snapshots.
+* **Automatic Pruning** — Keeps a configurable number of recent backups and deletes the oldest.
+* **RAID Awareness** — Detects active RAID operations (resync, check) via `/proc/mdstat` and waits for them to finish before starting the backup.
+* **Low I/O Priority** — Optionally lowers the process I/O priority to idle (`ionice -c3`) so backups yield to other workloads.
+* **Concurrent Run Protection** — Uses `flock` to prevent overlapping backup runs.
+* **Centralized Configuration** — All settings are managed in a single config file (`/etc/local-backup.conf`).
+* **Flexible Exclusions** — Exclusion patterns are defined as a Bash array in the config file.
+* **Cron-Friendly** — Logs to a file and only sends errors to `stderr` (for cron email notifications).
 
-#### Requirements
+### Requirements
+
 * `bash` 4.0+
 * `rsync`
 
-#### Usage
+### Usage
 
-The script is intended to be run without arguments, typically by a system scheduler like `cron`.
+The script takes no arguments. All settings come from the configuration file.
 
-**1. Configuration:**
-
-Create a configuration file at `/etc/local-backup.conf`.
+**1. Configure** — Create `/etc/local-backup.conf` (a [template](../../conf/system/local-backup.conf) is included):
 
 ```bash
-# /etc/local-backup.conf
-
-# The source directory to back up.
 SOURCE_DIR="/"
-
-# The main directory where all backups will be stored.
 BACKUP_DIR="/mnt/storage/backup"
-
-# Number of recent backups to keep.
 KEEP_BACKUPS=12
 
-# Bash array of rsync exclude patterns.
 EXCLUDES=(
   "/dev"
   "/proc"
@@ -50,22 +43,17 @@ EXCLUDES=(
   "/mnt/*"
 )
 
-# (Optional) Path to the log file.
 LOG_FILE="/var/log/local-backup.log"
 ```
 
-**2. Execution:**
-
-Run the script directly. It's recommended to run it as `root` to ensure it can read all system files.
+**2. Run:**
 
 ```bash
 sudo local-backup
 ```
 
-**Example Cron Job:**
+**3. Schedule** — Add to root's crontab (`sudo crontab -e`):
 
-To run a backup every day at 4:05 AM, edit the root crontab (`sudo crontab -e`) and add the following line:
-
-```bash
+```
 5 4 * * * /usr/local/bin/local-backup
 ```

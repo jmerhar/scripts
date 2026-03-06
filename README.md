@@ -2,84 +2,68 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-This repository contains a curated collection of scripts designed for the automation of various tasks within Unix-like operating environments, including macOS and Linux.
+A collection of packaged shell and Perl scripts for macOS and Linux, distributed via [Homebrew](https://brew.sh/) and [APT](https://jmerhar.github.io/apt-scripts/).
+
+## Available Scripts
+
+| Script | Description | Directory |
+|--------|-------------|-----------|
+| [`local-backup`](scripts/system/) | Incremental rsync backups with automatic pruning and RAID awareness. | `scripts/system/` |
+| [`photo-backup`](scripts/photography/#photo-backupsh) | Multi-source photo backup to a remote server with deletion protection. | `scripts/photography/` |
+| [`remove-sidecars`](scripts/photography/#remove-sidecarspl) | Clean up sidecar JPEG files from RAW+JPEG photo libraries. | `scripts/photography/` |
+| [`unlock-pdf`](scripts/utility/) | Decrypt a password-protected PDF file. | `scripts/utility/` |
 
 ## Repository Structure
 
-* `scripts/` — User-facing scripts, organized by topic:
-  * `scripts/system/` — System administration tools (e.g., backups).
-  * `scripts/utility/` — General-purpose utilities.
-  * `scripts/photography/` — Photography workflow automation.
-* `bin/` — Internal tooling used by CI/CD (packaging, dependency installation). Not published as packages.
-* `conf/` — Configuration file templates shipped with packages. Mirrors the `scripts/` subdirectory structure.
-
-Each directory includes a dedicated `README.md` file that provides more detailed information regarding its contents.
+```
+scripts/          User-facing scripts, organized by topic
+  system/           System administration (backups)
+  utility/          General-purpose utilities
+  photography/      Photography workflow automation
+bin/              Internal CI/CD tooling (not published as packages)
+conf/             Configuration file templates shipped with packages
+```
 
 ## Installation
 
-There are several methods for installing and utilizing these scripts. The recommended approach is to use a package manager, as this handles dependencies and PATH configuration automatically.
+The recommended approach is to use a package manager, which handles dependencies and updates automatically.
 
-### macOS with Homebrew (Recommended)
+### macOS (Homebrew)
 
-For users on macOS with Homebrew, the scripts can be installed directly from a custom tap.
+```bash
+brew tap jmerhar/scripts
+brew install unlock-pdf        # or any script name from the table above
+```
 
-1.  **Add the custom tap:**
-    ```bash
-    brew tap jmerhar/scripts
-    ```
+### Debian / Ubuntu (APT)
 
-2.  **Install a specific script:**
-    ```bash
-    # Example: Install the 'unlock-pdf' script
-    brew install unlock-pdf
-    ```
+```bash
+# Add the GPG key
+wget -qO- https://jmerhar.github.io/apt-scripts/public.key \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/jmerhar-scripts.gpg
 
-### Debian/Ubuntu Linux (Recommended)
+# Add the repository source
+echo "deb [arch=all signed-by=/etc/apt/keyrings/jmerhar-scripts.gpg] https://jmerhar.github.io/apt-scripts/ stable main" \
+  | sudo tee /etc/apt/sources.list.d/jmerhar-scripts.list
 
-For users on Debian-based distributions like Ubuntu, the scripts can be installed from a custom APT repository.
+# Install
+sudo apt-get update
+sudo apt-get install unlock-pdf   # or any script name from the table above
+```
 
-1.  **Add the GPG Key and Repository Source:**
-    Run the following commands to trust the repository's GPG key and add it to your system's sources.
-    ```bash
-    # Add the GPG key
-    wget -qO- https://jmerhar.github.io/apt-scripts/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/jmerhar-scripts.gpg
+### Manual
 
-    # Add the repository source
-    echo "deb [arch=all signed-by=/etc/apt/keyrings/jmerhar-scripts.gpg] https://jmerhar.github.io/apt-scripts/ stable main" | sudo tee /etc/apt/sources.list.d/jmerhar-scripts.list
-    ```
-
-2.  **Install a specific script:**
-    First, update your package list, then install the desired script.
-    ```bash
-    # Update package lists
-    sudo apt-get update
-
-    # Example: Install the 'unlock-pdf' script
-    sudo apt-get install unlock-pdf
-    ```
-
-### Manual Installation
-
-For other Unix-like systems, or for users who prefer not to use a package manager, the scripts can be installed manually.
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/jmerhar/scripts.git
-    cd scripts
-    ```
-
-2.  **Make the script executable:**
-    ```bash
-    chmod +x scripts/utility/unlock-pdf.sh
-    ```
-
-3.  **Run the script:**
-    Execute the script directly from its path, or move it to a directory in your system's `PATH` (e.g., `/usr/local/bin`) for global access.
+```bash
+git clone https://github.com/jmerhar/scripts.git
+cd scripts
+chmod +x scripts/utility/unlock-pdf.sh
+./scripts/utility/unlock-pdf.sh
+```
 
 ## Contributing
 
-Suggestions for improvement to this collection are welcome. Contributions can be made by opening an issue to discuss potential changes or by submitting a pull request with proposed enhancements.
+Contributions are welcome. Open an issue to discuss changes or submit a pull request.
 
 ## License
 
-This project is distributed under the terms of the MIT License. For further details, please refer to the [LICENSE](LICENSE) file.
+Distributed under the [MIT License](LICENSE).
