@@ -309,8 +309,8 @@ generate_deb_package() {
   echo "Generating Debian (.deb) package..."
 
   if ! command -v dpkg-deb &> /dev/null; then
-    log_error "'dpkg-deb' not found. Skipping .deb package generation."
-    return 1
+    echo "Note: 'dpkg-deb' not found. Skipping .deb package generation."
+    return 0
   fi
 
   local script_name="${metadata[Name]}"
