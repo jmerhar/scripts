@@ -229,7 +229,12 @@ jobs:
           ' README.md > README.md.tmp && mv README.md.tmp README.md
           git add .
           git commit -m "${{ steps.package.outputs.commit_message }}" || echo "No Homebrew changes to commit."
-          git push
+          # Retry with rebase if a concurrent release pushed first
+          for attempt in 1 2 3; do
+            git push && break
+            echo "Push failed (attempt ${attempt}/3), rebasing..."
+            git pull --rebase
+          done
 
       - name: Sign and commit APT repository changes
         if: success() && (steps.package.outputs.commit_message != '')
@@ -265,4 +270,9 @@ jobs:
           # Commit and push
           git add .
           git commit -m "${{ steps.package.outputs.commit_message }}" || echo "No APT changes to commit."
-          git push
+          # Retry with rebase if a concurrent release pushed first
+          for attempt in 1 2 3; do
+            git push && break
+            echo "Push failed (attempt ${attempt}/3), rebasing..."
+            git pull --rebase
+          done
