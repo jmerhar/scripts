@@ -33,7 +33,10 @@
 set -o errexit
 set -o nounset
 set -o pipefail
-set -o xtrace
+
+if [[ "${PKGSCR_DEBUG:-}" == "true" ]]; then
+  set -o xtrace
+fi
 
 #######################################
 # Prints a timestamped error message to stderr for runtime errors.
