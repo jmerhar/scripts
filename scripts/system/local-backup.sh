@@ -208,7 +208,14 @@ run_backup() {
 
   log_info "Running rsync..."
   local rsync_exit_code=0
-  rsync -ax --delete \
+  local rsync_opts=(-ax --delete)
+
+  # Show progress when running interactively
+  if [[ -t 1 ]]; then
+    rsync_opts+=(--info=progress2)
+  fi
+
+  rsync "${rsync_opts[@]}" \
     "${rsync_excludes[@]}" \
     "${SOURCE_DIR}/" \
     --link-dest "${latest_link}" \
