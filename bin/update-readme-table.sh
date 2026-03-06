@@ -52,6 +52,12 @@ Arguments:
 EOF
 }
 
+#######################################
+# Regenerates the markdown table in a README from the manifest.
+# Arguments:
+#   readme_file   - Path to the README file to update.
+#   column_header - Header for the first column.
+#######################################
 main() {
   if (( $# != 2 )); then
     log_error "Expected exactly 2 arguments."

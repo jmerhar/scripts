@@ -65,6 +65,11 @@ decrypt_pdf() {
   echo "Done."
 }
 
+#######################################
+# Validates dependencies, prompts for a password, and decrypts the PDF.
+# Arguments:
+#   input_file - Path to the PDF file to decrypt.
+#######################################
 main() {
   check_dependencies
 

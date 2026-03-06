@@ -258,6 +258,13 @@ perform_backup() {
   run_command rsync "${rsync_args[@]}" "${source_dir}/" "${DESTINATION}"
 }
 
+#######################################
+# Loads config, parses CLI options, and runs the photo backup pipeline.
+# Globals:
+#   SOURCES, HOST, DEST_PATH, LOG_FILE, DESTINATION, DRY_RUN_FLAG
+# Arguments:
+#   Command-line arguments passed to the script.
+#######################################
 main() {
   load_config || true  # Config is optional; CLI args can provide everything
   parse_options "$@"

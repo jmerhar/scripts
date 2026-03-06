@@ -34,18 +34,18 @@ readonly SCRIPT_NAME
 _LOG_QUIET="${_LOG_QUIET:-false}"
 IS_DEBUG_MODE="${IS_DEBUG_MODE:-false}"
 
-#######################################
+########################################
 # Enables debug mode (verbose log_debug output).
 # Globals:
 #   IS_DEBUG_MODE
 # Arguments:
 #   None
-#######################################
+########################################
 enable_debug_mode() {
   IS_DEBUG_MODE="true"
 }
 
-#######################################
+########################################
 # Determines the installation prefix of the script (e.g., /usr/local).
 # Globals:
 #   None
@@ -53,7 +53,7 @@ enable_debug_mode() {
 #   None
 # Outputs:
 #   Prints the install prefix to stdout.
-#######################################
+########################################
 get_script_prefix() {
   local script_dir
   script_dir=$(dirname "$0")
@@ -71,7 +71,7 @@ get_script_prefix() {
   fi
 }
 
-#######################################
+########################################
 # Writes a log message to LOG_FILE with an ISO 8601 timestamp.
 # Does nothing if LOG_FILE is unset or empty.
 # Globals:
@@ -79,7 +79,7 @@ get_script_prefix() {
 # Arguments:
 #   level: The log level (e.g., INFO, ERROR).
 #   message: The message to log.
-#######################################
+########################################
 log_message() {
   if [[ -z "${LOG_FILE:-}" ]]; then
     return
@@ -95,14 +95,14 @@ log_message() {
   echo "${msg}" >> "${LOG_FILE}"
 }
 
-#######################################
+########################################
 # Logs an info message to the log file and to stdout (unless _LOG_QUIET).
 # When connected to a terminal, output is colorized.
 # Globals:
 #   _LOG_QUIET, _color_info, _text_bold, _color_reset
 # Arguments:
 #   Message to print.
-#######################################
+########################################
 log_info() {
   log_message "INFO" "$*"
   if [[ "${_LOG_QUIET}" != "true" ]]; then
@@ -114,14 +114,14 @@ log_info() {
   fi
 }
 
-#######################################
+########################################
 # Logs an error message to the log file and to stderr.
 # When connected to a terminal, output is colorized.
 # Globals:
 #   _color_error, _text_bold, _color_reset
 # Arguments:
 #   Message to print.
-#######################################
+########################################
 log_error() {
   log_message "ERROR" "$*"
   if [[ -t 2 ]]; then
@@ -131,14 +131,14 @@ log_error() {
   fi
 }
 
-#######################################
+########################################
 # Logs a debug message if IS_DEBUG_MODE is enabled.
 # Writes to the log file and to stdout when connected to a terminal.
 # Globals:
 #   IS_DEBUG_MODE, _color_debug, _color_reset
 # Arguments:
 #   Message to print.
-#######################################
+########################################
 log_debug() {
   if [[ "${IS_DEBUG_MODE}" == "true" ]]; then
     log_message "DEBUG" "$*"
@@ -150,7 +150,7 @@ log_debug() {
   fi
 }
 
-#######################################
+########################################
 # Finds and sources the configuration file.
 # Search order:
 #   1. Same directory as the script (for standalone/tarball use)
@@ -162,7 +162,7 @@ log_debug() {
 #   None
 # Returns:
 #   0 if config was found and sourced, 1 otherwise.
-#######################################
+########################################
 load_config() {
   local script_dir
   script_dir=$(cd "$(dirname "$0")" && pwd -P)
@@ -197,7 +197,7 @@ load_config() {
   set -o nounset
 }
 
-#######################################
+########################################
 # Validates configuration variables according to type-prefixed rules.
 # Each argument is either "NAME" (non-empty string check) or "TYPE:NAME".
 # Supported types:
@@ -210,7 +210,7 @@ load_config() {
 #   Type-prefixed variable names to check (e.g., "HOST" "int:PORT" "array:DIRS").
 # Returns:
 #   0 if all checks pass, 1 if any fail.
-#######################################
+########################################
 validate_config() {
   local has_errors=false
 

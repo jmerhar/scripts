@@ -157,6 +157,8 @@ build_tarball_url() {
 #   config_path  - Path to the config file (empty if none).
 #   deps_common  - Space-separated common dependencies.
 #   deps_homebrew - Space-separated Homebrew-only dependencies.
+# Outputs:
+#   Writes formula file to HOMEBREW_DIR.
 #######################################
 generate_homebrew_formula() {
   local name="$1"
@@ -242,6 +244,8 @@ EOF
 #   config_path  - Path to the config file (empty if none).
 #   deps_common  - Space-separated common dependencies.
 #   deps_debian  - Space-separated Debian-only dependencies.
+# Returns:
+#   0 on success, 1 on failure.
 #######################################
 generate_deb_package() {
   local name="$1"
@@ -329,6 +333,13 @@ generate_deb_package() {
   fi
 }
 
+#######################################
+# Packages a script registered in scripts.yaml into a tarball, Homebrew
+# formula, and Debian package.
+# Arguments:
+#   name    - Script name as it appears in scripts.yaml.
+#   version - Version string (e.g., "v1.3.0").
+#######################################
 main() {
   if (( $# != 2 )); then
     log_error "Expected exactly 2 arguments: <name> <version>"

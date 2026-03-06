@@ -117,6 +117,12 @@ process_file() {
   fi
 }
 
+#######################################
+# Parses arguments and compiles @include directives in the input file.
+# Arguments:
+#   input_file  - The script to process.
+#   output_file - (Optional) Output path, or -i for in-place.
+#######################################
 main() {
   if (( $# < 1 )); then
     log_error "Missing required input file argument."
