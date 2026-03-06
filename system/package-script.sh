@@ -348,8 +348,9 @@ generate_deb_package() {
   local sorted_keys
   mapfile -t sorted_keys < <(printf '%s\n' "${!metadata[@]}" | sort)
   for key in "${sorted_keys[@]}"; do
-    # Skip mandatory and special fields
-    if [[ "${REQUIRED_FIELDS[*]}" =~ ${key} || "${key}" =~ ^(Dependencies|Homebrew-Dependencies|Debian-Dependencies|ConfigFile|Description|Publish)$ ]]; then
+    # Skip mandatory and special fields (use glob match to avoid
+    # substring false positives, e.g. "NameLong" matching "Name")
+    if [[ " ${REQUIRED_FIELDS[*]} " == *" ${key} "* || "${key}" =~ ^(Dependencies|Homebrew-Dependencies|Debian-Dependencies|ConfigFile|Description|Publish)$ ]]; then
       continue
     fi
     echo "${key}: ${metadata[${key}]}" >> "${control_dir}/control"
