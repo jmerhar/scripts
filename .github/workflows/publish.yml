@@ -123,28 +123,46 @@ jobs:
             echo "commit_message=chore: Republish latest version of all scripts" >> $GITHUB_OUTPUT
           fi
 
-      - name: Move artifacts to repositories
-        if: success() && (steps.package.outputs.commit_message != '')
-        run: |
-          if [ -d "scripts/dist/homebrew" ]; then
-            mv scripts/dist/homebrew/*.rb homebrew-scripts/Formula/
-          fi
-          if [ -d "scripts/dist/debian" ]; then
-            mv scripts/dist/debian/*.deb apt-scripts/pool/main/
-          fi
+      # Fetch-reset-regenerate retry loop:
+      #
+      # When multiple releases are created at once, parallel workflow runs all
+      # push to the same downstream repo. A naive rebase-based retry fails
+      # because generated files (formulas, APT metadata) always conflict.
+      #
+      # Instead, each retry attempt:
+      #   1. Fetches the latest remote state
+      #   2. Hard-resets to origin/main (discards the failed local commit)
+      #   3. Re-copies artifacts from dist/ and regenerates all derived files
+      #   4. Commits and attempts to push
+      #
+      # This always produces a clean, conflict-free commit because the
+      # generated content is derived from the full repo state (pool/ contents,
+      # Formula/ directory) plus our new artifacts — not from a rebase merge.
+      #
+      # We use cp (not mv) so artifacts survive across retries.
 
       - name: Commit and push Homebrew changes
         if: success() && (steps.package.outputs.commit_message != '')
-        working-directory: scripts
+        working-directory: homebrew-scripts
         run: |
-          cd ../homebrew-scripts
-          ../scripts/bin/update-readme-table.sh README.md "Formula"
-          git add .
-          git commit -m "${{ steps.package.outputs.commit_message }}" || echo "No Homebrew changes to commit."
-          for attempt in 1 2 3; do
+          for attempt in $(seq 1 10); do
+            # Reset to the latest remote state so we start clean
+            git fetch origin
+            git reset --hard origin/main
+
+            # Copy formula(s) from the packager output
+            cp ../scripts/dist/homebrew/*.rb Formula/
+
+            # Regenerate README table from the current Formula/ directory
+            ../scripts/bin/update-readme-table.sh README.md "Formula"
+
+            # Commit — if nothing changed (e.g., identical rebuild), stop early
+            git add .
+            git commit -m "${{ steps.package.outputs.commit_message }}" || { echo "No Homebrew changes to commit."; break; }
+
+            # Push — if it succeeds we're done; otherwise loop and retry
             git push && break
-            echo "Push failed (attempt ${attempt}/3), rebasing..."
-            git pull --rebase
+            echo "Push failed (attempt ${attempt}/10), retrying..."
           done
 
       - name: Sign and commit APT repository changes
@@ -152,27 +170,41 @@ jobs:
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        working-directory: scripts
+        working-directory: apt-scripts
         run: |
-          cd ../apt-scripts
-          # Import GPG key
+          # Import GPG key (once, before the retry loop)
           echo "$GPG_PRIVATE_KEY" | gpg --batch --import --passphrase "$GPG_PASSPHRASE"
-          # Generate package files
-          apt-ftparchive packages pool/ > dists/stable/main/binary-all/Packages
-          gzip -c dists/stable/main/binary-all/Packages > dists/stable/main/binary-all/Packages.gz
-          # Generate release file (remove old one first to prevent self-referencing checksum)
-          rm -f dists/stable/Release dists/stable/InRelease
-          apt-ftparchive -c apt-ftparchive.conf release dists/stable/ > dists/stable/Release
-          test -s dists/stable/Release || (echo "::error::Failed to generate valid Release file." && exit 1)
-          # Sign the release file
-          gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --default-key "jmerhar-bot" --clearsign -o dists/stable/InRelease dists/stable/Release
-          # Update README table
-          ../scripts/bin/update-readme-table.sh README.md "Package"
-          # Commit and push
-          git add .
-          git commit -m "${{ steps.package.outputs.commit_message }}" || echo "No APT changes to commit."
-          for attempt in 1 2 3; do
+
+          for attempt in $(seq 1 10); do
+            # Reset to the latest remote state so we start clean
+            git fetch origin
+            git reset --hard origin/main
+
+            # Copy .deb package(s) from the packager output into the pool
+            cp ../scripts/dist/debian/*.deb pool/main/
+
+            # Regenerate APT package index from the full pool contents
+            apt-ftparchive packages pool/ > dists/stable/main/binary-all/Packages
+            gzip -c dists/stable/main/binary-all/Packages > dists/stable/main/binary-all/Packages.gz
+
+            # Generate release file (remove old ones first to prevent
+            # self-referencing checksum)
+            rm -f dists/stable/Release dists/stable/InRelease
+            apt-ftparchive -c apt-ftparchive.conf release dists/stable/ > dists/stable/Release
+            test -s dists/stable/Release || { echo "::error::Failed to generate valid Release file."; exit 1; }
+
+            # Sign the release file
+            gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
+              --default-key "jmerhar-bot" --clearsign -o dists/stable/InRelease dists/stable/Release
+
+            # Regenerate README table from the current pool/ contents
+            ../scripts/bin/update-readme-table.sh README.md "Package"
+
+            # Commit — if nothing changed (e.g., identical rebuild), stop early
+            git add .
+            git commit -m "${{ steps.package.outputs.commit_message }}" || { echo "No APT changes to commit."; break; }
+
+            # Push — if it succeeds we're done; otherwise loop and retry
             git push && break
-            echo "Push failed (attempt ${attempt}/3), rebasing..."
-            git pull --rebase
+            echo "Push failed (attempt ${attempt}/10), retrying..."
           done
