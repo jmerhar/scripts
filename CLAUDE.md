@@ -77,9 +77,14 @@ Requires [yq](https://github.com/mikefarah/yq) to be installed.
 
 ## Shell Script Conventions
 
+All Bash code follows the
+[Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html).
+Key conventions enforced in this repo:
+
 - Shebang: `#!/usr/bin/env bash`
 - Strict mode: `set -o errexit`, `set -o nounset`, `set -o pipefail`
-- Function docs follow Google Shell Style (`#######` block with Globals/Arguments/Outputs)
+- Function doc-blocks: `########################################` delimiter (40 `#`)
+  with Globals, Arguments, Outputs, and Returns fields (include only those that apply)
 - Standard functions in every script: `log_error()`, `show_usage()`, and optionally `log_info()`
 - Timestamped logging: ISO 8601 format `[YYYY-MM-DDTHH:MM:SS+TZ]`
 - Scripts detect their install prefix to locate config files under `<prefix>/etc/`

@@ -25,6 +25,12 @@ scripts/          User-facing scripts, organized by topic
 bin/              Internal CI/CD tooling (not published as packages)
 ```
 
+## Code Style
+
+Bash scripts follow the
+[Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html).
+All code is checked with [ShellCheck](https://www.shellcheck.net/) in CI.
+
 ## Installation
 
 The recommended approach is to use a package manager, which handles dependencies and updates automatically.

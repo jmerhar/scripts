@@ -283,7 +283,11 @@ main() {
   DESTINATION="${HOST}:${DEST_PATH}"
 
   log_info "Starting photo backup operation."
-  log_info "Found ${#SOURCES[@]} source director$( (( ${#SOURCES[@]} == 1 )) && echo "y" || echo "ies" ):"
+  local source_label="directories"
+  if (( ${#SOURCES[@]} == 1 )); then
+    source_label="directory"
+  fi
+  log_info "Found ${#SOURCES[@]} source ${source_label}:"
   for src in "${SOURCES[@]}"; do
     log_info " -> ${src}"
   done
