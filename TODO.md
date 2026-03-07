@@ -59,18 +59,3 @@ Feasibility considerations:
 - **Risk**: the Perl version is well-tested in practice. A rewrite should be
   verified against the same directory trees before replacing it.
 
-## 4. Google Shell Style audit
-
-Do a full-repo review to ensure all Bash scripts follow the
-[Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html).
-Then codify it as an explicit project standard:
-
-- **Audit scope**: all files under `scripts/` and `bin/`. Check function naming
-  (lowercase with underscores), variable quoting, `local` usage, doc-block
-  format, error handling patterns, and shebang lines.
-- **README update**: add a "Code style" or "Contributing" section that
-  references the Google Shell Style Guide as the project's standard.
-- **CLAUDE.md update**: add an explicit line stating that all Bash code must
-  follow Google Shell Style, so Claude Code enforces it in future sessions.
-- **Tooling**: consider adding a `shellcheck` CI step if not already present,
-  and potentially `shfmt` for automated formatting.
