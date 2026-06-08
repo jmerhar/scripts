@@ -8,6 +8,7 @@ A collection of packaged shell and Perl scripts for macOS and Linux, distributed
 
 | Script | Description | Directory |
 |--------|-------------|-----------|
+| [`compare-dirs`](scripts/utility/) | Recursively compare two directories, reporting differences in existence, size, timestamps, and checksums. | `scripts/utility/` |
 | [`local-backup`](scripts/system/) | Incremental rsync backups with automatic pruning and RAID awareness. | `scripts/system/` |
 | [`photo-backup`](scripts/photography/#photo-backupsh) | Multi-source photo backup to a remote server with deletion protection. | `scripts/photography/` |
 | [`remove-sidecars`](scripts/photography/#remove-sidecarspl) | Clean up sidecar JPEG files from RAW+JPEG photo libraries. | `scripts/photography/` |
