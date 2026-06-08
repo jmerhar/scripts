@@ -29,6 +29,9 @@ compare-dirs [OPTIONS] <dir1> <dir2>
 | `-c`, `--checksums` | Also compare file checksums (sha256) |
 | `-i`, `--ignore-case` | Case-insensitive filename matching |
 | `-d`, `--no-dotfiles` | Skip hidden (dot) files and directories |
+| `-x`, `--exclude PAT` | Skip entries matching glob pattern (repeatable) |
+| `--exclude-left PAT` | Suppress LEFT-only reports for matches (repeatable) |
+| `--exclude-right PAT` | Suppress RIGHT-only reports for matches (repeatable) |
 | `-n`, `--no-color` | Disable colored output |
 | `-h`, `--help` | Show usage information |
 

@@ -22,6 +22,9 @@ _opt_checksums=false
 _opt_no_color=false
 _opt_ignore_case=false
 _opt_no_dotfiles=false
+_opt_excludes=()
+_opt_excludes_left=()
+_opt_excludes_right=()
 _dir1=""
 _dir2=""
 _count_left_only=0
@@ -48,12 +51,15 @@ Usage: ${SCRIPT_NAME} [OPTIONS] <dir1> <dir2>
 Recursively compare two directories and report differences.
 
 Options:
-  -t, --timestamps   Also compare file modification times
-  -c, --checksums    Also compare file checksums (sha256)
-  -i, --ignore-case  Case-insensitive filename matching
-  -d, --no-dotfiles  Skip hidden (dot) files and directories
-  -n, --no-color     Disable colored output
-  -h, --help         Show this help message
+  -t, --timestamps         Also compare file modification times
+  -c, --checksums          Also compare file checksums (sha256)
+  -i, --ignore-case        Case-insensitive filename matching
+  -d, --no-dotfiles        Skip hidden (dot) files and directories
+  -x, --exclude PAT        Skip entries matching glob pattern (repeatable)
+      --exclude-left PAT   Suppress LEFT-only reports for matches (repeatable)
+      --exclude-right PAT  Suppress RIGHT-only reports for matches (repeatable)
+  -n, --no-color           Disable colored output
+  -h, --help               Show this help message
 
 Output markers:
   ←  Item exists only in LEFT directory
@@ -68,7 +74,8 @@ EOF
 # Supports long options and combined short options (e.g., -tc).
 # Globals:
 #   _opt_timestamps, _opt_checksums, _opt_no_color, _opt_ignore_case,
-#   _opt_no_dotfiles, _dir1, _dir2
+#   _opt_no_dotfiles, _opt_excludes, _opt_excludes_left, _opt_excludes_right,
+#   _dir1, _dir2
 # Arguments:
 #   Command-line arguments passed to the script.
 ########################################
@@ -93,6 +100,18 @@ parse_options() {
         _opt_no_dotfiles=true
         shift
         ;;
+      -x|--exclude)
+        _opt_excludes+=("$2")
+        shift 2
+        ;;
+      --exclude-left)
+        _opt_excludes_left+=("$2")
+        shift 2
+        ;;
+      --exclude-right)
+        _opt_excludes_right+=("$2")
+        shift 2
+        ;;
       -n|--no-color)
         _opt_no_color=true
         shift
@@ -115,6 +134,15 @@ parse_options() {
             c) _opt_checksums=true ;;
             i) _opt_ignore_case=true ;;
             d) _opt_no_dotfiles=true ;;
+            x)
+              if (( i + 1 < ${#combined} )); then
+                log_error "-x must be last in a combined flag group (requires an argument)"
+                show_usage
+                exit 1
+              fi
+              _opt_excludes+=("$1")
+              shift
+              ;;
             n) _opt_no_color=true ;;
             h) show_usage; exit 0 ;;
             *)
@@ -360,10 +388,32 @@ print_symlink_diff() {
 }
 
 ########################################
+# Tests whether a filename matches any of the given glob patterns.
+# Arguments:
+#   name: The filename to test.
+#   ...: One or more glob patterns.
+# Returns:
+#   0 if any pattern matches, 1 otherwise.
+########################################
+matches_pattern() {
+  local name="$1"
+  shift
+  local pattern
+  for pattern in "$@"; do
+    # shellcheck disable=SC2254,SC2053
+    if [[ "${name}" == ${pattern} ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+########################################
 # Recursively compares two directory trees, printing differences.
 # Uses null-delimited I/O internally to handle arbitrary filenames.
 # Globals:
-#   _opt_timestamps, _opt_checksums, _opt_ignore_case, _opt_no_dotfiles
+#   _opt_timestamps, _opt_checksums, _opt_ignore_case, _opt_no_dotfiles,
+#   _opt_excludes, _opt_excludes_left, _opt_excludes_right,
 #   _count_left_only, _count_right_only, _count_differences
 # Arguments:
 #   prefix: Relative path prefix for display (empty string for top level).
@@ -384,6 +434,7 @@ compare_dirs() {
       local base
       base="$(basename "${entry}")"
       [[ "${_opt_no_dotfiles}" == true && "${base}" == .* ]] && continue
+      [[ ${#_opt_excludes[@]} -gt 0 ]] && matches_pattern "${base}" "${_opt_excludes[@]}" && continue
       left_sorted+=("${base}")
     done < <(find "${left}" -maxdepth 1 -mindepth 1 -print0 | sort -z)
   fi
@@ -393,6 +444,7 @@ compare_dirs() {
       local base
       base="$(basename "${entry}")"
       [[ "${_opt_no_dotfiles}" == true && "${base}" == .* ]] && continue
+      [[ ${#_opt_excludes[@]} -gt 0 ]] && matches_pattern "${base}" "${_opt_excludes[@]}" && continue
       right_sorted+=("${base}")
     done < <(find "${right}" -maxdepth 1 -mindepth 1 -print0 | sort -z)
   fi
@@ -447,6 +499,9 @@ compare_dirs() {
     fi
 
     if [[ -n "${orig_left}" && -z "${orig_right}" ]]; then
+      if [[ ${#_opt_excludes_left[@]} -gt 0 ]] && matches_pattern "${display_name}" "${_opt_excludes_left[@]}"; then
+        continue
+      fi
       local type_l
       type_l="$(get_type "${left}/${orig_left}")"
       if [[ "${type_l}" == "directory" ]]; then
@@ -456,6 +511,9 @@ compare_dirs() {
       fi
 
     elif [[ -z "${orig_left}" && -n "${orig_right}" ]]; then
+      if [[ ${#_opt_excludes_right[@]} -gt 0 ]] && matches_pattern "${display_name}" "${_opt_excludes_right[@]}"; then
+        continue
+      fi
       local type_r
       type_r="$(get_type "${right}/${orig_right}")"
       if [[ "${type_r}" == "directory" ]]; then
