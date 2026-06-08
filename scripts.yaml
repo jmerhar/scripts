@@ -17,11 +17,8 @@ scripts:
       common: [rsync]
 
   remove-sidecars:
-    path: scripts/photography/remove-sidecars.pl
+    path: scripts/photography/remove-sidecars.sh
     description: 'A script to find and delete "sidecar" files when a corresponding RAW photo file exists.'
-    dependencies:
-      common: [perl]
-      debian: [libterm-ansicolor-perl]
 
   compare-dirs:
     path: scripts/utility/compare-dirs.sh

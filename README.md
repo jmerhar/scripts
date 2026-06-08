@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A collection of packaged shell and Perl scripts for macOS and Linux, distributed via [Homebrew](https://brew.sh/) and [APT](https://jmerhar.github.io/apt-scripts/).
+A collection of packaged shell scripts for macOS and Linux, distributed via [Homebrew](https://brew.sh/) and [APT](https://jmerhar.github.io/apt-scripts/).
 
 ## Available Scripts
 
@@ -11,7 +11,7 @@ A collection of packaged shell and Perl scripts for macOS and Linux, distributed
 | [`compare-dirs`](scripts/utility/) | Recursively compare two directories, reporting differences in existence, size, timestamps, and checksums. | `scripts/utility/` |
 | [`local-backup`](scripts/system/) | Incremental rsync backups with automatic pruning and RAID awareness. | `scripts/system/` |
 | [`photo-backup`](scripts/photography/#photo-backupsh) | Multi-source photo backup to a remote server with deletion protection. | `scripts/photography/` |
-| [`remove-sidecars`](scripts/photography/#remove-sidecarspl) | Clean up sidecar JPEG files from RAW+JPEG photo libraries. | `scripts/photography/` |
+| [`remove-sidecars`](scripts/photography/#remove-sidecarssh) | Clean up sidecar JPEG files from RAW+JPEG photo libraries. | `scripts/photography/` |
 | [`unlock-pdf`](scripts/utility/) | Decrypt a password-protected PDF file. | `scripts/utility/` |
 
 ## Repository Structure

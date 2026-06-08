@@ -89,19 +89,25 @@ When shooting in RAW+JPEG mode, you get high-quality RAWs for editing and conven
 * **Safe** — Shows a summary of what will be deleted and asks for confirmation before proceeding.
 * **Informative** — Reports how much disk space was recovered, broken down by RAW type.
 * **Recursive** — Scans the specified directory and all subdirectories.
+* **Dry-Run Mode** — Preview what would be deleted without removing anything.
 
 ### Requirements
 
-* `perl`
-* `Term::ANSIColor` (Debian: `libterm-ansicolor-perl`)
+* `bash` 4.0+
 
 ### Usage
 
 ```bash
-remove-sidecars [DIRECTORY]
+remove-sidecars [OPTIONS] [DIRECTORY]
 ```
 
-If no directory is given, the current directory is used. Use `--help` for usage information.
+If no directory is given, the current directory is used.
+
+| Flag | Description |
+|------|-------------|
+| `-n`, `--dry-run` | Show what would be deleted without actually deleting. |
+| `-C`, `--no-color` | Disable colored output. |
+| `-h`, `--help` | Show help. |
 
 ```
 $ remove-sidecars /path/to/my/photos
@@ -112,18 +118,18 @@ Scanning directory /path/to/my/photos
 Scanning directory /path/to/my/photos/Travel
 Scanning directory /path/to/my/photos/Events
 
-Found sidecars of:
-- 2 RW2 files
-- 3 DNG files
+Found sidecars for the following RAW types:
+- 3 sidecars for DNG files
+- 2 sidecars for RW2 files
 
 Would you like to (d)elete them, (s)ee a list of directories, or (q)uit? [d/s/Q] d
-Deleting /path/to/my/photos/Travel/IMG_174456.jpg (4.76 MB), a sidecar of RW2
-Deleting /path/to/my/photos/Travel/IMG_171458.jpg (4.35 MB), a sidecar of RW2
-Deleting /path/to/my/photos/Events/IMG_175816.jpg (3.75 MB), a sidecar of DNG
-Deleting /path/to/my/photos/Events/IMG_165528.jpg (5.18 MB), a sidecar of DNG
-Deleting /path/to/my/photos/Events/IMG_171956.jpg (4.33 MB), a sidecar of DNG
+Deleting /path/to/my/photos/Events/IMG_175816.jpg (3.75 MB), a sidecar for a DNG file
+Deleting /path/to/my/photos/Events/IMG_165528.jpg (5.18 MB), a sidecar for a DNG file
+Deleting /path/to/my/photos/Events/IMG_171956.jpg (4.33 MB), a sidecar for a DNG file
+Deleting /path/to/my/photos/Travel/IMG_174456.jpg (4.76 MB), a sidecar for a RW2 file
+Deleting /path/to/my/photos/Travel/IMG_171458.jpg (4.35 MB), a sidecar for a RW2 file
 
 In total 22.37 MB of disk space was recovered:
-- 9.11 MB of disk space was recovered from 2 RW2 sidecars (on average 4.56 MB per file).
-- 13.26 MB of disk space was recovered from 3 DNG sidecars (on average 4.42 MB per file).
+- 13.26 MB by deleting 3 sidecars for DNG files (average 4.42 MB per file).
+- 9.11 MB by deleting 2 sidecars for RW2 files (average 4.56 MB per file).
 ```

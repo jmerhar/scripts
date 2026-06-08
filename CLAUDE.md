@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A collection of packaged shell/Perl scripts for macOS and Debian/Ubuntu, distributed via Homebrew and APT. Each script is independently versioned and released.
+A collection of packaged shell scripts for macOS and Debian/Ubuntu, distributed via Homebrew and APT. Each script is independently versioned and released.
 
 ## Architecture
 

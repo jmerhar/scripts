@@ -14,15 +14,14 @@ case-insensitive (e.g., treating `.dng` and `.DNG` the same) since the camera
 distinction (Android vs Lightroom) would be handled by the exclusion list
 rather than relying on extension casing.
 
-## 2. Unit testing for shell and Perl scripts
+## 2. Unit testing for shell scripts
 
 Investigate whether unit testing is practical for this repo's scripts.
 
 Bash has frameworks like [bats-core](https://github.com/bats-core/bats-core)
 (Bash Automated Testing System) that allow writing `.bats` test files with
-`setup`/`teardown` lifecycle hooks and TAP-compliant output. For Perl,
-`Test::More` is part of core and would work out of the box for
-`remove-sidecars.pl`.
+`setup`/`teardown` lifecycle hooks and TAP-compliant output. With every script
+now in Bash, `bats-core` covers the whole repo.
 
 Areas to explore:
 
@@ -35,27 +34,4 @@ Areas to explore:
   down the release workflow.
 - **Scope**: keep tests focused on logic, not on external tools like `rsync` or
   `dpkg-deb`. Mock or stub those at the boundary.
-
-## 3. Rewrite remove-sidecars in Bash
-
-`scripts/photography/remove-sidecars.pl` is the only Perl script in the repo.
-Rewriting it in Bash would bring it in line with every other script and let it
-use `common.sh` for colored output, logging, config loading, and the `@include`
-build pipeline.
-
-Feasibility considerations:
-
-- **File traversal and grouping**: the core logic groups files by base name and
-  checks for RAW/sidecar pairs. Bash can do this with `find` and associative
-  arrays (`declare -A`), though it will be more verbose than Perl's hashes.
-- **Interactive prompts**: already done in other scripts (`read -p`). Color
-  output would come from `common.sh` instead of `Term::ANSIColor`.
-- **Human-readable sizes**: a small `format_size()` helper with `bc` or pure
-  arithmetic is straightforward.
-- **Edge cases**: filenames with spaces/special chars need careful quoting.
-  Perl's `File::Spec` handles this automatically; in Bash it requires
-  discipline but is doable.
-- **Dry-run mode and reporting**: already patterned in other scripts.
-- **Risk**: the Perl version is well-tested in practice. A rewrite should be
-  verified against the same directory trees before replacing it.
 
