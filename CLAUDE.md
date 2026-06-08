@@ -61,6 +61,7 @@ Only scripts registered in `scripts.yaml` are publishable. Scripts under `bin/` 
 ### Release & CI/CD
 
 - **Per-script versioning**: tags follow `script-name-vX.Y.Z` (e.g., `unlock-pdf-v1.5.0`)
+- **Always `git fetch --tags` before creating a new release** to avoid version collisions with existing remote tags.
 - `.github/workflows/publish.yml` packages on release or manual dispatch, then pushes formulas to `jmerhar/homebrew-scripts` and signed `.deb` packages to `jmerhar/apt-scripts`
 - `bin/update-readme-table.sh` regenerates README tables in downstream repos from the manifest
 - **Release notes**: every GitHub Release should include a summary of user-facing changes (new features, fixes, breaking changes). Use markdown headers (`### New features`, `### Fixes`, etc.) for multi-item releases, or a plain bullet list for single-item releases.
