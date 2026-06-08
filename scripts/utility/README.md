@@ -27,6 +27,8 @@ compare-dirs [OPTIONS] <dir1> <dir2>
 |------|-------------|
 | `-t`, `--timestamps` | Also compare file modification times |
 | `-c`, `--checksums` | Also compare file checksums (sha256) |
+| `-i`, `--ignore-case` | Case-insensitive filename matching |
+| `-d`, `--no-dotfiles` | Skip hidden (dot) files and directories |
 | `-n`, `--no-color` | Disable colored output |
 | `-h`, `--help` | Show usage information |
 

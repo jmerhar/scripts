@@ -20,6 +20,8 @@ source "$(cd "$(dirname "$0")" && pwd -P)/../lib/common.sh"
 _opt_timestamps=false
 _opt_checksums=false
 _opt_no_color=false
+_opt_ignore_case=false
+_opt_no_dotfiles=false
 _dir1=""
 _dir2=""
 _count_left_only=0
@@ -48,6 +50,8 @@ Recursively compare two directories and report differences.
 Options:
   -t, --timestamps   Also compare file modification times
   -c, --checksums    Also compare file checksums (sha256)
+  -i, --ignore-case  Case-insensitive filename matching
+  -d, --no-dotfiles  Skip hidden (dot) files and directories
   -n, --no-color     Disable colored output
   -h, --help         Show this help message
 
@@ -63,7 +67,8 @@ EOF
 # Parses command-line arguments into global option flags.
 # Supports long options and combined short options (e.g., -tc).
 # Globals:
-#   _opt_timestamps, _opt_checksums, _opt_no_color, _dir1, _dir2
+#   _opt_timestamps, _opt_checksums, _opt_no_color, _opt_ignore_case,
+#   _opt_no_dotfiles, _dir1, _dir2
 # Arguments:
 #   Command-line arguments passed to the script.
 ########################################
@@ -78,6 +83,14 @@ parse_options() {
         ;;
       -c|--checksums)
         _opt_checksums=true
+        shift
+        ;;
+      -i|--ignore-case)
+        _opt_ignore_case=true
+        shift
+        ;;
+      -d|--no-dotfiles)
+        _opt_no_dotfiles=true
         shift
         ;;
       -n|--no-color)
@@ -100,6 +113,8 @@ parse_options() {
           case "${combined:$i:1}" in
             t) _opt_timestamps=true ;;
             c) _opt_checksums=true ;;
+            i) _opt_ignore_case=true ;;
+            d) _opt_no_dotfiles=true ;;
             n) _opt_no_color=true ;;
             h) show_usage; exit 0 ;;
             *)
@@ -348,16 +363,17 @@ print_symlink_diff() {
 # Recursively compares two directory trees, printing differences.
 # Uses null-delimited I/O internally to handle arbitrary filenames.
 # Globals:
-#   _dir1, _dir2, _opt_timestamps, _opt_checksums
+#   _opt_timestamps, _opt_checksums, _opt_ignore_case, _opt_no_dotfiles
 #   _count_left_only, _count_right_only, _count_differences
 # Arguments:
-#   prefix: Relative path prefix for the current recursion level (empty
-#           string for the top level, "subdir/" for nested levels).
+#   prefix: Relative path prefix for display (empty string for top level).
+#   left:   Absolute path to the left directory being compared.
+#   right:  Absolute path to the right directory being compared.
 ########################################
 compare_dirs() {
   local prefix="$1"
-  local left="${_dir1}/${prefix}"
-  local right="${_dir2}/${prefix}"
+  local left="$2"
+  local right="$3"
 
   # Build sorted lists of entries (null-delimited for filename safety)
   local -a left_sorted=()
@@ -365,58 +381,83 @@ compare_dirs() {
 
   if [[ -d "${left}" ]]; then
     while IFS= read -r -d '' entry; do
-      left_sorted+=("$(basename "${entry}")")
+      local base
+      base="$(basename "${entry}")"
+      [[ "${_opt_no_dotfiles}" == true && "${base}" == .* ]] && continue
+      left_sorted+=("${base}")
     done < <(find "${left}" -maxdepth 1 -mindepth 1 -print0 | sort -z)
   fi
 
   if [[ -d "${right}" ]]; then
     while IFS= read -r -d '' entry; do
-      right_sorted+=("$(basename "${entry}")")
+      local base
+      base="$(basename "${entry}")"
+      [[ "${_opt_no_dotfiles}" == true && "${base}" == .* ]] && continue
+      right_sorted+=("${base}")
     done < <(find "${right}" -maxdepth 1 -mindepth 1 -print0 | sort -z)
   fi
 
-  # Use associative arrays for O(1) set membership tests
+  # Use associative arrays for O(1) set membership tests.
+  # Values store the original filename for path construction.
   local -A left_set=()
   local -A right_set=()
   for e in "${left_sorted[@]+"${left_sorted[@]}"}"; do
-    left_set["${e}"]=1
+    local norm="${e}"
+    [[ "${_opt_ignore_case}" == true ]] && norm="${e,,}"
+    left_set["${norm}"]="${e}"
   done
   for e in "${right_sorted[@]+"${right_sorted[@]}"}"; do
-    right_set["${e}"]=1
+    local norm="${e}"
+    [[ "${_opt_ignore_case}" == true ]] && norm="${e,,}"
+    right_set["${norm}"]="${e}"
   done
 
-  # Compute merged sorted unique list
+  # Compute merged sorted unique list of normalized keys
   local -a all_entries=()
   if [[ ${#left_sorted[@]} -gt 0 || ${#right_sorted[@]} -gt 0 ]]; then
+    local -a norm_left=()
+    local -a norm_right=()
+    for e in "${left_sorted[@]+"${left_sorted[@]}"}"; do
+      local n="${e}"
+      [[ "${_opt_ignore_case}" == true ]] && n="${e,,}"
+      norm_left+=("${n}")
+    done
+    for e in "${right_sorted[@]+"${right_sorted[@]}"}"; do
+      local n="${e}"
+      [[ "${_opt_ignore_case}" == true ]] && n="${e,,}"
+      norm_right+=("${n}")
+    done
     while IFS= read -r -d '' entry; do
       all_entries+=("${entry}")
-    done < <(printf '%s\0' ${left_sorted[@]+"${left_sorted[@]}"} \
-                           ${right_sorted[@]+"${right_sorted[@]}"} | sort -uz)
+    done < <(printf '%s\0' ${norm_left[@]+"${norm_left[@]}"} \
+                           ${norm_right[@]+"${norm_right[@]}"} | sort -uz)
   fi
 
-  for entry in "${all_entries[@]+"${all_entries[@]}"}"; do
+  for norm_entry in "${all_entries[@]+"${all_entries[@]}"}"; do
+    local orig_left="${left_set[${norm_entry}]:-}"
+    local orig_right="${right_set[${norm_entry}]:-}"
+
+    # Use the left original name for display if available, otherwise right
+    local display_name="${orig_left:-${orig_right}}"
     local rel_path
     if [[ -n "${prefix}" ]]; then
-      rel_path="${prefix}${entry}"
+      rel_path="${prefix}${display_name}"
     else
-      rel_path="${entry}"
+      rel_path="${display_name}"
     fi
 
-    local in_left="${left_set[${entry}]:-}"
-    local in_right="${right_set[${entry}]:-}"
-
-    if [[ -n "${in_left}" && -z "${in_right}" ]]; then
+    if [[ -n "${orig_left}" && -z "${orig_right}" ]]; then
       local type_l
-      type_l="$(get_type "${left}${entry}")"
+      type_l="$(get_type "${left}/${orig_left}")"
       if [[ "${type_l}" == "directory" ]]; then
         print_left_only "${rel_path}/"
       else
         print_left_only "${rel_path}"
       fi
 
-    elif [[ -z "${in_left}" && -n "${in_right}" ]]; then
+    elif [[ -z "${orig_left}" && -n "${orig_right}" ]]; then
       local type_r
-      type_r="$(get_type "${right}${entry}")"
+      type_r="$(get_type "${right}/${orig_right}")"
       if [[ "${type_r}" == "directory" ]]; then
         print_right_only "${rel_path}/"
       else
@@ -425,8 +466,8 @@ compare_dirs() {
 
     else
       # Present in both — compare
-      local left_path="${left}${entry}"
-      local right_path="${right}${entry}"
+      local left_path="${left}/${orig_left}"
+      local right_path="${right}/${orig_right}"
       local type_l type_r
       type_l="$(get_type "${left_path}")"
       type_r="$(get_type "${right_path}")"
@@ -434,7 +475,7 @@ compare_dirs() {
       if [[ "${type_l}" != "${type_r}" ]]; then
         print_type_mismatch "${rel_path}" "${type_l}" "${type_r}"
       elif [[ "${type_l}" == "directory" ]]; then
-        compare_dirs "${rel_path}/"
+        compare_dirs "${rel_path}/" "${left_path}" "${right_path}"
       elif [[ "${type_l}" == "symlink" ]]; then
         local target_l target_r
         target_l="$(readlink "${left_path}")"
@@ -489,7 +530,7 @@ main() {
   echo ""
 
   # Run comparison
-  compare_dirs ""
+  compare_dirs "" "${_dir1}" "${_dir2}"
 
   # Print footer
   echo ""
