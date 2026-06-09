@@ -71,6 +71,7 @@ When the *arr apps hard-link a completed download from the torrent temp/seed fol
 * **Extra/Spam Filtering** — Ignores media files that are tiny relative to a torrent's main feature (configurable `MIN_MEDIA_RATIO`), so a leftover deleted-scenes clip or release-group advert can't flag a torrent whose real video is still in Plex.
 * **Torrent Mapping** — Maps each orphaned file back to its torrent through the Deluge Web JSON-RPC API and prompts per torrent, removing the torrent and its data on confirmation.
 * **Hard-Link Safe** — Offers to remove a torrent whenever *any* of its media files are orphaned, but warns and lists exactly which files would be freed vs kept when some are still hard-linked. Removing such a torrent frees only the orphaned copies; files still linked into Plex keep their other hard link and survive.
+* **Stray File Cleanup** — Orphaned files that belong to no torrent at all (e.g. leftovers from a torrent that was already removed) are offered separately for direct deletion, and any folders left empty afterwards are pruned. Files that still belong to a live torrent are never deleted directly.
 * **Interactive or Unattended** — Prompts `(y)es / (n)o / (a)ll / (q)uit` per torrent, with `--yes` to remove everything non-interactively and `--dry-run` to preview without changes.
 * **Optional Path Translation** — Rewrites container-internal paths to local paths when Deluge runs in Docker and reports a different path prefix.
 * **Centralized Configuration** — All settings live in a single config file (`/etc/prune-orphaned-torrents.conf`).

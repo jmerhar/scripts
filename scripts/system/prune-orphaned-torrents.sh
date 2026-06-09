@@ -15,6 +15,9 @@
 # Because the still-wanted files keep their second (Plex) hard link, removing a
 # torrent's data only frees the orphaned temp copies; in-use media survives.
 #
+# Orphaned files that belong to no torrent at all (e.g. leftovers from a torrent
+# that was already removed) are offered separately for direct deletion.
+#
 # All system-specific values (paths, exclusions, Deluge endpoint/password) live
 # in a configuration file discovered next to the script or under <prefix>/etc/.
 #
@@ -72,7 +75,8 @@ show_usage() {
 Usage: ${SCRIPT_NAME} [OPTIONS]
 
 Find orphaned media files left by *arr hard-linking and remove the
-corresponding torrents from Deluge.
+corresponding torrents from Deluge. Orphaned files that belong to no torrent
+are offered for direct deletion.
 
 All settings are read from a configuration file (e.g., /etc/${SCRIPT_NAME}.conf).
 
@@ -213,6 +217,21 @@ format_age() {
   else
     local mins=$(( (secs % 3600) / 60 ))
     printf '%dh %dm' "${hours}" "${mins}"
+  fi
+}
+
+########################################
+# Detects the platform's stat flavor and defines get_size().
+# Globals:
+#   None
+# Arguments:
+#   None
+########################################
+detect_platform() {
+  if stat -c '%s' / &>/dev/null; then
+    get_size() { stat -c '%s' "$1" 2>/dev/null || echo 0; }
+  else
+    get_size() { stat -f '%z' "$1" 2>/dev/null || echo 0; }
   fi
 }
 
@@ -371,8 +390,22 @@ deluge_connect() {
 }
 
 ########################################
-# Queries Deluge for all torrents and emits one compact JSON object per torrent
-# that has at least one orphaned media file.
+# Queries Deluge for the status of all torrents.
+# Globals:
+#   None
+# Arguments:
+#   None
+# Outputs:
+#   The torrents-status JSON object (info-hash -> status) on stdout.
+########################################
+fetch_torrent_status() {
+  deluge_rpc "core.get_torrents_status" \
+    '[{}, ["name", "download_location", "save_path", "total_size", "files", "time_added"]]'
+}
+
+########################################
+# Given the torrents-status JSON, emits one compact JSON object per torrent that
+# has at least one orphaned media file.
 #
 # Each torrent's files are resolved to absolute paths (applying the optional
 # DELUGE_PATH_PREFIX -> LOCAL_PATH_PREFIX rewrite), classified as media or
@@ -388,18 +421,12 @@ deluge_connect() {
 #   _orphans_json, _excludes_json, MIN_MEDIA_RATIO,
 #   DELUGE_PATH_PREFIX, LOCAL_PATH_PREFIX
 # Arguments:
-#   None
+#   status: The torrents-status JSON object.
 # Outputs:
 #   Newline-delimited compact JSON candidate objects on stdout.
 ########################################
-fetch_candidates() {
-  local status
-  status=$(deluge_rpc "core.get_torrents_status" \
-    '[{}, ["name", "download_location", "save_path", "total_size", "files", "time_added"]]') || exit 1
-
-  # Normalise the optional path-translation prefixes by stripping trailing
-  # slashes, so the jq rewrite can append "/rest" without doubling or dropping a
-  # separator regardless of how the user wrote them in the config.
+compute_candidates() {
+  local status="$1"
   local dprefix="${DELUGE_PATH_PREFIX:-}" lprefix="${LOCAL_PATH_PREFIX:-}"
   dprefix="${dprefix%/}"
   lprefix="${lprefix%/}"
@@ -410,6 +437,10 @@ fetch_candidates() {
     --argjson minratio "${MIN_MEDIA_RATIO:-0.1}" \
     --arg dprefix "${dprefix}" \
     --arg lprefix "${lprefix}" '
+    # Rewrite a Deluge-reported absolute path into the local filesystem path.
+    def rewrite:
+      if ($dprefix | length) > 0 and (. == $dprefix or startswith($dprefix + "/"))
+      then $lprefix + .[($dprefix | length):] else . end;
     ($orphans | map({(.): true}) | add // {}) as $set
     | def glob_to_regex($g):
         "^" + ($g
@@ -428,11 +459,7 @@ fetch_candidates() {
       # such a torrent can never own a scanned orphan anyway.
       | (($t.download_location // $t.save_path // "") | rtrimstr("/")) as $base
       | select($base != "")
-      | (($t.files // []) | map(. + {abs:
-          (($base + "/" + .path)
-           | if ($dprefix | length) > 0 and (. == $dprefix or startswith($dprefix + "/"))
-             then $lprefix + .[($dprefix | length):]
-             else . end)})) as $files
+      | (($t.files // []) | map(. + {abs: (($base + "/" + .path) | rewrite)})) as $files
       | ($files | map(select(is_media(.abs)))) as $media
       | (($media | map(.size) | max) // 0) as $maxsize
       | ($media | map(select($set[.abs]))) as $orphaned
@@ -453,6 +480,46 @@ fetch_candidates() {
           linked:   [ $linked[]   | {path: .abs, size: (.size // 0 | floor)} ] } ]
     | sort_by(.time_added)
     | .[]
+  ' <<<"${status}"
+}
+
+########################################
+# Given the torrents-status JSON, prints the orphaned files that belong to NO
+# torrent at all (true strays) as a JSON array of absolute paths. These have no
+# torrent to remove, so they are candidates for direct file deletion.
+#
+# An orphan that belongs to a torrent which compute_candidates filtered out
+# (e.g. a tiny extra in a still-seeding torrent) is intentionally NOT a stray:
+# the file is part of a live torrent and must not be deleted directly.
+# Globals:
+#   _orphans_json, DELUGE_PATH_PREFIX, LOCAL_PATH_PREFIX
+# Arguments:
+#   status: The torrents-status JSON object.
+# Outputs:
+#   A JSON array of absolute stray file paths on stdout.
+########################################
+compute_strays() {
+  local status="$1"
+  local dprefix="${DELUGE_PATH_PREFIX:-}" lprefix="${LOCAL_PATH_PREFIX:-}"
+  dprefix="${dprefix%/}"
+  lprefix="${lprefix%/}"
+
+  jq -c \
+    --argjson orphans "${_orphans_json}" \
+    --arg dprefix "${dprefix}" \
+    --arg lprefix "${lprefix}" '
+    def rewrite:
+      if ($dprefix | length) > 0 and (. == $dprefix or startswith($dprefix + "/"))
+      then $lprefix + .[($dprefix | length):] else . end;
+    # Set of every local path owned by any torrent.
+    ( [ to_entries[]
+        | .value as $t
+        | (($t.download_location // $t.save_path // "") | rtrimstr("/")) as $base
+        | select($base != "")
+        | ($t.files // [])[]
+        | (($base + "/" + .path) | rewrite) ]
+      | map({(.): true}) | add // {} ) as $owned
+    | [ $orphans[] | select($owned[.] | not) ]
   ' <<<"${status}"
 }
 
@@ -620,6 +687,124 @@ print_report() {
 }
 
 ########################################
+# Removes directories that became empty after deleting a stray file, walking up
+# from the given directory but never removing a scan root itself (or anything
+# outside the scan roots). rmdir only removes genuinely empty directories, so a
+# directory that still holds other files stops the walk.
+# Globals:
+#   _scan_dirs
+# Arguments:
+#   dir: The directory to start pruning from (the deleted file's parent).
+########################################
+prune_empty_dirs() {
+  local dir="$1" root under
+  while true; do
+    under=""
+    for root in "${_scan_dirs[@]}"; do
+      if [[ "${dir}" == "${root}/"* ]]; then
+        under="${root}"
+        break
+      fi
+    done
+    # Stop if the directory is not strictly inside a scan root (never remove the
+    # scan root or anything above it).
+    [[ -n "${under}" && "${dir}" != "${under}" ]] || break
+    rmdir "${dir}" 2>/dev/null || break
+    dir=$(dirname "${dir}")
+  done
+}
+
+########################################
+# Iterates over stray orphaned files (those belonging to no torrent), prompting
+# to delete each one directly with rm, then pruning any folders left empty.
+# Globals:
+#   _dry_run, _assume_yes, _C_*
+# Arguments:
+#   strays_json: JSON array of absolute stray file paths.
+########################################
+prompt_and_remove_strays() {
+  local strays_json="$1"
+  local -a strays=()
+  # NUL-delimited read so any filename (spaces/newlines) is handled safely
+  # before an irreversible rm.
+  mapfile -d '' -t strays < <(jq -j '.[] | . + "\u0000"' <<<"${strays_json}")
+
+  printf '\n%s\n' "${_C_BOLD}${_C_CYAN}Stray files (orphaned, not part of any torrent):${_C_RESET}"
+
+  local deleted=0 freed_total=0
+  local assume_yes="${_assume_yes}"
+  local f size
+
+  for f in "${strays[@]}"; do
+    [[ -n "${f}" ]] || continue
+    size=$(get_size "${f}")
+
+    printf '\n%s\n' "${_C_DIM}  ${f} ($(format_size "${size}"))${_C_RESET}"
+
+    if [[ "${_dry_run}" == true ]]; then
+      printf '%s\n' "${_C_MAGENTA}  [dry-run] would delete this file.${_C_RESET}"
+      deleted=$(( deleted + 1 ))
+      freed_total=$(( freed_total + size ))
+      continue
+    fi
+
+    local do_delete=false
+    if [[ "${assume_yes}" == true ]]; then
+      do_delete=true
+    else
+      while true; do
+        printf '%s' "${_C_BOLD}${_C_CYAN}  Delete this file? ${_C_RESET}${_C_DIM}[(y)es/(n)o/(a)ll/(q)uit] ${_C_RESET}"
+        if ! read_answer; then
+          printf '\n%s\n' "${_C_DIM}No more input; quitting.${_C_RESET}"
+          print_stray_report "${deleted}" "${freed_total}"
+          return 0
+        fi
+        case "${_answer,,}" in
+          y) do_delete=true; break ;;
+          n) do_delete=false; break ;;
+          a) assume_yes=true; do_delete=true; break ;;
+          q)
+            printf '%s\n' "${_C_DIM}Quitting.${_C_RESET}"
+            print_stray_report "${deleted}" "${freed_total}"
+            return 0
+            ;;
+        esac
+      done
+    fi
+
+    if [[ "${do_delete}" == true ]]; then
+      if rm -f -- "${f}"; then
+        log_info "Deleted: ${f}"
+        deleted=$(( deleted + 1 ))
+        freed_total=$(( freed_total + size ))
+        prune_empty_dirs "$(dirname "${f}")"
+      else
+        log_error "Failed to delete: ${f}"
+      fi
+    fi
+  done
+
+  print_stray_report "${deleted}" "${freed_total}"
+}
+
+########################################
+# Prints the final summary of stray files deleted and space freed.
+# Globals:
+#   _dry_run, _C_*
+# Arguments:
+#   deleted: Number of files deleted.
+#   freed_total: Total bytes freed.
+########################################
+print_stray_report() {
+  local deleted="$1" freed_total="$2"
+
+  local verb="Deleted"
+  [[ "${_dry_run}" == true ]] && verb="Would delete"
+
+  printf '\n%s\n' "${_C_BOLD}${_C_GREEN}${verb} ${deleted} stray file(s), freeing $(format_size "${freed_total}").${_C_RESET}"
+}
+
+########################################
 # Main entry point.
 # Globals:
 #   Many (via function calls and configuration).
@@ -646,24 +831,45 @@ main() {
 
   log_info "Scanning for orphaned files..."
   find_orphans
-  if [[ "$(jq 'length' <<<"${_orphans_json}")" -eq 0 ]]; then
+  local orphan_count
+  orphan_count=$(jq 'length' <<<"${_orphans_json}")
+  if [[ "${orphan_count}" -eq 0 ]]; then
     printf '%s\n' "${_C_BRIGHT_GREEN}No orphaned files found.${_C_RESET}"
     exit 0
   fi
+  log_info "Found ${orphan_count} orphaned file(s)."
 
   _cookie_jar=$(mktemp)
   trap 'rm -f "${_cookie_jar}"' EXIT
 
   deluge_connect
+  detect_platform
 
-  local candidates
-  candidates=$(fetch_candidates)
-  if [[ -z "${candidates}" ]]; then
-    printf '%s\n' "${_C_BRIGHT_GREEN}Orphaned files found, but none belong to a known Deluge torrent.${_C_RESET}"
+  local status
+  status=$(fetch_torrent_status) || exit 1
+  log_debug "Deluge returned $(jq 'length' <<<"${status}") torrent(s)."
+
+  # Partition the orphans: torrents worth removing (compute_candidates) and
+  # files belonging to no torrent at all (compute_strays). Orphans that belong
+  # to a still-seeding torrent the gate filtered out fall into neither and are
+  # left untouched.
+  local candidates strays n_strays
+  candidates=$(compute_candidates "${status}")
+  strays=$(compute_strays "${status}")
+  n_strays=$(jq 'length' <<<"${strays}")
+
+  if [[ -z "${candidates}" && "${n_strays}" -eq 0 ]]; then
+    printf '%s\n' "${_C_BRIGHT_GREEN}Nothing to prune: every orphaned file belongs to a torrent still seeding wanted media.${_C_RESET}"
     exit 0
   fi
 
-  prompt_and_remove "${candidates}"
+  if [[ -n "${candidates}" ]]; then
+    prompt_and_remove "${candidates}"
+  fi
+
+  if [[ "${n_strays}" -gt 0 ]]; then
+    prompt_and_remove_strays "${strays}"
+  fi
 }
 
 main "$@"
