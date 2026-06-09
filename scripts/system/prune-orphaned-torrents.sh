@@ -150,27 +150,28 @@ setup_colors() {
 }
 
 ########################################
-# Reads a single line of input from the user into the global _answer.
-# The color escapes are written straight to the terminal (not captured) so the
-# user's typed input appears in bright white; the input itself is returned via
-# the _answer global rather than stdout, so callers must not use command
-# substitution (which would capture the escape codes too).
+# Reads a single keypress from the user into the global _answer, without
+# requiring Enter. The key is read silently (-s) and echoed back in bright white
+# so the prompt line stays readable; callers must not use command substitution
+# (which would capture the escape codes too).
 # Globals:
 #   _answer, _C_WHITE, _C_RESET
 # Arguments:
 #   None
 # Returns:
-#   0 if a line was read, non-zero on EOF.
+#   0 if a key was read, non-zero on EOF.
 ########################################
 read_answer() {
-  printf '%s' "${_C_WHITE}"
   _answer=""
   local rc=0
-  # Propagate EOF (e.g. Ctrl-D, or non-interactive/empty stdin) so callers can
-  # stop instead of spinning forever re-prompting. The `|| rc=$?` also keeps
-  # errexit from firing on a non-zero read.
-  read -r _answer || rc=$?
-  printf '%s' "${_C_RESET}"
+  # Read one character with no trailing Enter. Propagate EOF (e.g. Ctrl-D, or
+  # non-interactive/empty stdin) so callers can stop instead of spinning forever
+  # re-prompting. The `|| rc=$?` also keeps errexit from firing on a failed read.
+  read -rsn1 _answer || rc=$?
+  if (( rc == 0 )); then
+    # read -s suppresses the terminal echo, so print the key ourselves.
+    printf '%s%s%s\n' "${_C_WHITE}" "${_answer}" "${_C_RESET}"
+  fi
   return "${rc}"
 }
 
@@ -575,10 +576,10 @@ prompt_and_remove() {
           return 0
         fi
         case "${_answer,,}" in
-          y|yes) do_remove=true; break ;;
-          n|no) do_remove=false; break ;;
-          a|all) assume_yes=true; do_remove=true; break ;;
-          q|quit)
+          y) do_remove=true; break ;;
+          n) do_remove=false; break ;;
+          a) assume_yes=true; do_remove=true; break ;;
+          q)
             printf '%s\n' "${_C_DIM}Quitting.${_C_RESET}"
             print_report "${removed}" "${freed_total}"
             return 0
