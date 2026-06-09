@@ -10,6 +10,12 @@ scripts:
     dependencies:
       common: [rsync]
 
+  prune-orphaned-torrents:
+    path: scripts/system/prune-orphaned-torrents.sh
+    description: "Finds orphaned media files left by *arr hard-linking and interactively removes the corresponding torrents from Deluge."
+    dependencies:
+      common: [curl, jq]
+
   photo-backup:
     path: scripts/photography/photo-backup.sh
     description: "A robust script for backing up photo collections from multiple sources to a remote server using rsync."
