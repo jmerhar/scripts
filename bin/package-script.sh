@@ -113,9 +113,11 @@ create_tarball() {
 
   mkdir -p "${staging_path}"
   cp "${script_path}" "${staging_path}/"
+  chmod 0755 "${staging_path}/$(basename "${script_path}")"
 
   if [[ -n "${config_path}" ]]; then
     cp "${config_path}" "${staging_path}/"
+    chmod 0644 "${staging_path}/$(basename "${config_path}")"
   fi
 
   mkdir -p "${TARBALL_DIR}"
@@ -312,17 +314,24 @@ generate_deb_package() {
   fi
 
   cp "${script_path}" "${bin_dir}/${name}"
-  chmod +x "${bin_dir}/${name}"
+  # Set an explicit mode: the source may be 0600 (e.g. a freshly compiled
+  # @include file), and `chmod +x` on that would yield 0711 — leaving the
+  # script non-readable, so its interpreter cannot execute it after install.
+  chmod 0755 "${bin_dir}/${name}"
 
   if [[ -n "${config_path}" ]]; then
     local config_filename
     config_filename=$(basename "${config_path}")
     mkdir -p "${etc_dir}"
     cp "${config_path}" "${etc_dir}/${config_filename}"
+    chmod 0644 "${etc_dir}/${config_filename}"
   fi
 
   log_info "Building .deb package..."
-  dpkg-deb --build "${package_dir}" "${deb_file}"
+  # --root-owner-group forces files to be owned by root:root in the package;
+  # without it dpkg-deb bakes in the build user's uid/gid (e.g. the CI runner's),
+  # which surfaces as a stray owner like "git" on the installed system.
+  dpkg-deb --root-owner-group --build "${package_dir}" "${deb_file}"
   rm -rf "${package_dir}"
 
   if [[ -f "${deb_file}" ]]; then

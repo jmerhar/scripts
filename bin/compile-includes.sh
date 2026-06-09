@@ -161,7 +161,12 @@ main() {
     local tmp_file
     tmp_file=$(mktemp)
     process_file "${input_file}" "${base_dir}" > "${tmp_file}"
-    mv "${tmp_file}" "${input_file}"
+    # Overwrite the file's contents in place (rather than `mv`-ing the temp file
+    # over it) so the original mode and ownership are preserved. `mktemp` creates
+    # 0600 files, and a `mv` would leave the compiled script non-readable, which
+    # later breaks execution once it is packaged and installed.
+    cat "${tmp_file}" > "${input_file}"
+    rm -f "${tmp_file}"
   elif [[ -n "${output_file}" ]]; then
     mkdir -p "$(dirname "${output_file}")"
     process_file "${input_file}" "${base_dir}" > "${output_file}"
