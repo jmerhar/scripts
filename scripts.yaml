@@ -30,6 +30,12 @@ scripts:
     path: scripts/utility/compare-dirs.sh
     description: "Recursively compares two directories and reports differences in existence, size, timestamps, and checksums."
 
+  subtitle-report:
+    path: scripts/utility/subtitle-report.sh
+    description: "Reports on subtitle coverage for a media library, detecting embedded tracks and sidecar files and breaking down counts by language and source."
+    dependencies:
+      common: [ffmpeg]
+
   unlock-pdf:
     path: scripts/utility/unlock-pdf.sh
     description: "Decrypts a password-protected PDF file using the 'qpdf' command-line tool."
