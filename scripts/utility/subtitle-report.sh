@@ -26,10 +26,11 @@ source "$(cd "$(dirname "$0")" && pwd -P)/../lib/common.sh"
 _no_color=false
 _no_embedded=false
 _no_sidecars=false
+_und_as_english=false
 _do_list=false
 _do_missing=false
-_lang=""           # Raw --lang argument, if any.
-_lang_norm=""      # Normalized form of _lang, used for matching.
+_langs=()          # Requested languages (raw), accumulated from --lang.
+_langs_norm=()     # Normalized, de-duplicated requested languages (for matching).
 _target_dir="."
 
 # Media and subtitle extensions. Defaults below may be overridden by a config
@@ -95,14 +96,21 @@ Report on subtitle coverage for media files in a directory tree.
 Options:
   -l, --list           List every media file and the subtitles it has.
   -m, --missing        List media files that have no subtitles at all.
-  -g, --lang LANG      Scope the report to one language (e.g. en, eng, english).
-                       With --missing: list files missing LANG specifically.
-                       With --list:    annotate each file's LANG status.
-                       Alone:          implies a "missing LANG" listing.
+  -g, --lang LANG      Scope the report to one or more languages. Repeatable,
+                       and/or comma-separated (e.g. --lang en,und). A file is
+                       considered covered if it has ANY of the listed languages.
+                       With --missing: list files missing ALL of them.
+                       With --list:    annotate which of them each file has.
+                       Languages are matched loosely (en = eng = english).
       --no-embedded    Skip embedded-track inspection (sidecars only; fast).
       --no-sidecars    Skip sidecar files (embedded tracks only). Useful for
                        finding media that lacks an embedded subtitle track,
                        regardless of any sidecar files alongside it.
+      --und-as-english Treat undetermined ('und') subtitles as English. Many
+                       English releases ship an untagged subtitle that is in
+                       fact English; this folds 'und' into 'en' everywhere.
+                       (Note: in multi-language subtitle packs an 'und' track
+                       may be a genuinely non-English sub, so use with care.)
   -C, --no-color       Disable colored output.
   -h, --help           Show this help message.
 
@@ -116,13 +124,15 @@ EOF
 ########################################
 # Parses command-line arguments into global option flags.
 # Globals:
-#   _no_color, _no_embedded, _no_sidecars, _do_list, _do_missing, _lang,
-#   _target_dir
+#   _no_color, _no_embedded, _no_sidecars, _und_as_english, _do_list,
+#   _do_missing, _langs, _target_dir
 # Arguments:
 #   Command-line arguments passed to the script.
 ########################################
 parse_options() {
   local positional=()
+  local -a lang_parts
+  local part
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -139,7 +149,12 @@ parse_options() {
           log_error "Option '$1' requires a language argument."
           exit 1
         fi
-        _lang="$2"
+        # Accept comma-separated values; the flag may also be repeated.
+        IFS=',' read -ra lang_parts <<<"$2"
+        for part in "${lang_parts[@]}"; do
+          part="${part//[[:space:]]/}"
+          [[ -n "${part}" ]] && _langs+=("${part}")
+        done
         shift 2
         ;;
       --no-embedded)
@@ -148,6 +163,10 @@ parse_options() {
         ;;
       --no-sidecars)
         _no_sidecars=true
+        shift
+        ;;
+      --und-as-english)
+        _und_as_english=true
         shift
         ;;
       -C|--no-color)
@@ -468,9 +487,9 @@ EOF
 # forms compare equal (e.g. en == eng == english). Recognized languages
 # canonicalize to their ISO 639-1 code via the lookup table; unrecognized input
 # is returned lowercased and whitespace-stripped, and empty or explicitly
-# undetermined input becomes "und".
+# undetermined input becomes "und" (or "en" when --und-as-english is set).
 # Globals:
-#   _lang_canon
+#   _lang_canon, _und_as_english
 # Arguments:
 #   raw: A language tag, code, or name (any case).
 # Outputs:
@@ -480,10 +499,14 @@ normalize_lang() {
   init_lang_map
   local raw="${1,,}"
   raw="${raw//[[:space:]]/}"
-  [[ -z "${raw}" || "${raw}" == "und" || "${raw}" == "undetermined" ]] && {
-    printf 'und'
+  if [[ -z "${raw}" || "${raw}" == "und" || "${raw}" == "undetermined" ]]; then
+    if [[ "${_und_as_english}" == true ]]; then
+      printf 'en'
+    else
+      printf 'und'
+    fi
     return
-  }
+  fi
   printf '%s' "${_lang_canon["${raw}"]:-${raw}}"
 }
 
@@ -518,6 +541,58 @@ lang_from_tokens() {
   done
 
   normalize_lang "${lang}"
+}
+
+########################################
+# Tests whether a file's subtitle token string contains at least one of the
+# requested (normalized) languages.
+# Globals:
+#   _langs_norm
+# Arguments:
+#   subs: The space-separated "lang:source" token string.
+# Returns:
+#   0 if any requested language is present, 1 otherwise.
+########################################
+file_has_requested_lang() {
+  local subs=" $1 " l
+  for l in "${_langs_norm[@]}"; do
+    [[ "${subs}" == *" ${l}:"* ]] && return 0
+  done
+  return 1
+}
+
+########################################
+# Lists which of the requested languages are present in a file's token string.
+# Globals:
+#   _langs_norm
+# Arguments:
+#   subs: The space-separated "lang:source" token string.
+# Outputs:
+#   The present requested languages, comma-separated (empty if none).
+########################################
+present_requested_langs() {
+  local subs=" $1 " l out=""
+  for l in "${_langs_norm[@]}"; do
+    [[ "${subs}" == *" ${l}:"* ]] && out+="${out:+,}${l}"
+  done
+  printf '%s' "${out}"
+}
+
+########################################
+# Joins the requested normalized languages into a display string ("en, und").
+# Globals:
+#   _langs_norm
+# Arguments:
+#   None
+# Outputs:
+#   The comma-and-space-joined language list on stdout.
+########################################
+requested_langs_display() {
+  local l out=""
+  for l in "${_langs_norm[@]}"; do
+    out+="${out:+, }${l}"
+  done
+  printf '%s' "${out}"
 }
 
 ########################################
@@ -706,10 +781,11 @@ sorted_langs() {
 ########################################
 # Prints the always-on summary: totals, per-language coverage (split by source),
 # and a by-source breakdown. When --lang is given, the per-language section is
-# reduced to that single language with a "missing it" count.
+# reduced to the requested languages, with a combined "have at least one /
+# missing all" count.
 # Globals:
-#   _target_dir, _total, _with_subs, _lang_norm, _lang, _lang_files, _lang_emb,
-#   _lang_side, _emb_only, _side_only, _both, and color globals.
+#   _target_dir, _total, _with_subs, _media_subs, _langs_norm, _lang_files,
+#   _lang_emb, _lang_side, _emb_only, _side_only, _both, and color globals.
 # Arguments:
 #   None
 ########################################
@@ -727,12 +803,22 @@ print_summary() {
 
   printf '%s\n' "${_C_BOLD}${_C_GREEN}${_with_subs} files (${pct}%) have subtitles · ${none} have none.${_C_RESET}"
 
-  if [[ -n "${_lang_norm}" ]]; then
-    local have="${_lang_files["${_lang_norm}"]:-0}"
-    local miss=$(( _total - have ))
-    printf '\n%s\n' "${_C_BOLD}${_C_GREEN}Language '${_lang}' (${_lang_norm}):${_C_RESET}"
-    printf '%s\n' "${_C_CYAN}$(printf '  %d files have it (%d embedded, %d sidecar) · %d missing it.' \
-      "${have}" "${_lang_emb["${_lang_norm}"]:-0}" "${_lang_side["${_lang_norm}"]:-0}" "${miss}")${_C_RESET}"
+  if (( ${#_langs_norm[@]} > 0 )); then
+    # Count files covered by at least one requested language.
+    local have_any=0 idx
+    for idx in "${!_media_subs[@]}"; do
+      file_has_requested_lang "${_media_subs[idx]}" && have_any=$(( have_any + 1 ))
+    done
+    local miss_all=$(( _total - have_any ))
+
+    printf '\n%s\n' "${_C_BOLD}${_C_GREEN}Requested language(s): $(requested_langs_display)${_C_RESET}"
+    local lang
+    for lang in "${_langs_norm[@]}"; do
+      printf '%s\n' "${_C_CYAN}$(printf '  %-5s %4d files   (%4d embedded, %4d sidecar)' \
+        "${lang}" "${_lang_files["${lang}"]:-0}" "${_lang_emb["${lang}"]:-0}" "${_lang_side["${lang}"]:-0}")${_C_RESET}"
+    done
+    printf '%s\n' "${_C_BOLD}${_C_GREEN}$(printf '  %d files have at least one · %d missing all.' \
+      "${have_any}" "${miss_all}")${_C_RESET}"
   else
     printf '\n%s\n' "${_C_BOLD}${_C_GREEN}By language:${_C_RESET}"
     local lang
@@ -776,16 +862,17 @@ format_subs() {
 
 ########################################
 # Lists every media file with its detected subtitles, grouped by directory.
-# When --lang is set, each file is annotated as having or missing that language.
+# When --lang is set, each file is annotated with which requested languages it
+# has (or MISSING when it has none of them).
 # Globals:
-#   _media_paths, _media_subs, _lang_norm, _lang, and color globals.
+#   _media_paths, _media_subs, _langs_norm, and color globals.
 # Arguments:
 #   None
 ########################################
 print_list() {
   printf '\n%s\n' "${_C_BOLD}${_C_GREEN}Per-file subtitle listing:${_C_RESET}"
 
-  local dir last_dir="" i path subs label
+  local dir last_dir="" i path subs label present
   while IFS= read -r i; do
     path="${_media_paths[i]}"
     subs="${_media_subs[i]}"
@@ -796,11 +883,12 @@ print_list() {
       last_dir="${dir}"
     fi
 
-    if [[ -n "${_lang_norm}" ]]; then
-      if [[ " ${subs} " == *" ${_lang_norm}:"* ]]; then
-        label="${_C_GREEN}has ${_lang}${_C_RESET}"
+    if (( ${#_langs_norm[@]} > 0 )); then
+      present="$(present_requested_langs "${subs}")"
+      if [[ -n "${present}" ]]; then
+        label="${_C_GREEN}has ${present}${_C_RESET}"
       else
-        label="${_C_MAGENTA}MISSING ${_lang}${_C_RESET}"
+        label="${_C_MAGENTA}MISSING${_C_RESET}"
       fi
       printf '  %s  %s\n' "$(basename "${path}")" "${label}"
     elif [[ -n "${subs}" ]]; then
@@ -817,16 +905,17 @@ print_list() {
 
 ########################################
 # Lists media files missing subtitles, sorted by path. With --lang, lists files
-# lacking that language; otherwise lists files with no subtitles at all.
+# that have NONE of the requested languages; otherwise lists files with no
+# subtitles at all.
 # Globals:
-#   _media_paths, _media_subs, _lang_norm, _lang, and color globals.
+#   _media_paths, _media_subs, _langs_norm, and color globals.
 # Arguments:
 #   None
 ########################################
 print_missing() {
   local heading count=0 i path subs
-  if [[ -n "${_lang_norm}" ]]; then
-    heading="Media files missing '${_lang}' subtitles:"
+  if (( ${#_langs_norm[@]} > 0 )); then
+    heading="Media files missing all of: $(requested_langs_display)"
   else
     heading="Media files with no subtitles:"
   fi
@@ -835,8 +924,8 @@ print_missing() {
   while IFS= read -r i; do
     path="${_media_paths[i]}"
     subs="${_media_subs[i]}"
-    if [[ -n "${_lang_norm}" ]]; then
-      [[ " ${subs} " == *" ${_lang_norm}:"* ]] && continue
+    if (( ${#_langs_norm[@]} > 0 )); then
+      file_has_requested_lang "${subs}" && continue
     else
       [[ -n "${subs}" ]] && continue
     fi
@@ -869,7 +958,7 @@ sorted_file_indices() {
 ########################################
 # Main entry point.
 # Globals:
-#   _lang, _lang_norm, _target_dir, _do_list, _do_missing, and others.
+#   _langs, _langs_norm, _target_dir, _do_list, _do_missing, and others.
 # Arguments:
 #   Command-line arguments.
 ########################################
@@ -890,7 +979,18 @@ main() {
   # command-substitution calls to normalize_lang inherit the populated array.
   init_lang_map
 
-  [[ -n "${_lang}" ]] && _lang_norm="$(normalize_lang "${_lang}")"
+  # Normalize and de-duplicate the requested languages (preserving order).
+  if (( ${#_langs[@]} > 0 )); then
+    local l n
+    declare -A seen_lang=()
+    for l in "${_langs[@]}"; do
+      n="$(normalize_lang "${l}")"
+      if [[ -z "${seen_lang["${n}"]:-}" ]]; then
+        _langs_norm+=("${n}")
+        seen_lang["${n}"]=1
+      fi
+    done
+  fi
 
   traverse_tree "${_target_dir}"
 
