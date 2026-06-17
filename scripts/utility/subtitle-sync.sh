@@ -70,6 +70,14 @@ _sidecar_flags=(forced sdh cc hi default foreign full)
 _n_synced=0
 _n_skipped=0
 _n_failed=0
+_n_videos_worked=0     # videos that actually transcribed/aligned (for averages)
+
+# Timing in epoch seconds; populated per-step and per-video.
+_batch_start=0
+_t_extract=0           # last audio-extraction seconds
+_t_transcribe=0        # last transcription seconds (0 when the reference was cached)
+_t_align_total=0       # accumulated alass alignment seconds for the current video
+_ref_cached=false      # whether the current video's reference came from cache
 
 # Scratch directory for transient files (audio, intermediate SRTs); cleaned up
 # on exit.
@@ -336,6 +344,33 @@ EOF
 _lower() { printf '%s' "${1,,}"; }
 
 ########################################
+# Prints the current time in epoch seconds.
+# Outputs:
+#   Integer seconds on stdout.
+########################################
+_now() { date +%s; }
+
+########################################
+# Formats a duration in seconds as a compact human-readable string
+# (e.g. "42s", "5m 20s", "1h 03m 12s").
+# Arguments:
+#   seconds: A non-negative integer.
+# Outputs:
+#   The formatted duration on stdout.
+########################################
+_fmt_dur() {
+  local s="$1" h m
+  (( h = s / 3600, m = (s % 3600) / 60, s = s % 60 ))
+  if (( h > 0 )); then
+    printf '%dh %02dm %02ds' "${h}" "${m}" "${s}"
+  elif (( m > 0 )); then
+    printf '%dm %02ds' "${m}" "${s}"
+  else
+    printf '%ds' "${s}"
+  fi
+}
+
+########################################
 # Normalizes a language code or English name to an ISO 639-1 code for the common
 # languages, so equivalent forms compare equal (en == eng == english). Unknown
 # input is returned lowercased; empty input becomes "und".
@@ -498,22 +533,27 @@ build_reference() {
   local video="$1" out_ref="$2" key cached
   key="$(cache_key "${video}")"
   cached="${_cache_dir}/${key}.srt"
+  _ref_cached=false; _t_extract=0; _t_transcribe=0
 
   if [[ "${_use_cache}" == true && -s "${cached}" ]]; then
     log_debug "Using cached reference: ${cached}"
     cp "${cached}" "${out_ref}"
+    _ref_cached=true
     return 0
   fi
 
-  local wav="${_workdir}/audio.wav"
+  local wav="${_workdir}/audio.wav" t0
   log_info "Transcribing audio (${_model}) — this is the slow step..."
+  t0=$(_now)
   if ! extract_audio "${video}" "${wav}"; then
     log_error "Failed to extract audio from: ${video}"
     return 1
   fi
+  _t_extract=$(( $(_now) - t0 ))
 
   local tdir="${_workdir}/whisper"
   rm -rf "${tdir}"; mkdir -p "${tdir}"
+  t0=$(_now)
   if ! "${_whisper_bin}" \
       --model "${_model}" \
       --device "${_device}" \
@@ -531,6 +571,7 @@ build_reference() {
     rm -f "${wav}"
     return 1
   fi
+  _t_transcribe=$(( $(_now) - t0 ))
   rm -f "${wav}"
 
   local produced; produced="$(find "${tdir}" -name '*.srt' | head -1)"
@@ -538,6 +579,7 @@ build_reference() {
     log_error "Transcription produced no subtitles for: ${video}"
     return 1
   fi
+  log_info "Transcribed in $(_fmt_dur "${_t_transcribe}")."
 
   cp "${produced}" "${out_ref}"
   if [[ "${_use_cache}" == true ]]; then
@@ -558,14 +600,16 @@ build_reference() {
 #   0 on success, non-zero on alass failure.
 ########################################
 run_alass() {
-  local ref="$1" sub="$2" out="$3"
+  local ref="$1" sub="$2" out="$3" t0
   local -a args=(--split-penalty "${_split_penalty}")
   [[ "${_fps_guess}" == true ]] || args+=(-g)
+  t0=$(_now)
   if ! "${_alass_bin}" "${args[@]}" "${ref}" "${sub}" "${out}" \
       >"${_workdir}/alass.log" 2>&1; then
     log_error "alass failed: $(tail -n 3 "${_workdir}/alass.log" | tr '\n' ' ')"
     return 1
   fi
+  _t_align_total=$(( _t_align_total + $(_now) - t0 ))
 }
 
 ########################################
@@ -829,16 +873,49 @@ matching_sidecars() {
 }
 
 ########################################
+# Logs the per-episode timing line (total wall time + step breakdown), but only
+# outside dry-run and only when the video actually did work (synced or failed).
+# Globals:
+#   _dry_run, _n_synced, _n_failed, _ref_cached, _t_extract, _t_transcribe,
+#   _t_align_total, _n_videos_worked
+# Arguments:
+#   video:  The video file path.
+#   start:  Epoch seconds captured when processing began.
+#   before: _n_synced + _n_failed captured before processing.
+########################################
+log_episode_timing() {
+  local video="$1" start="$2" before="$3"
+  [[ "${_dry_run}" == true ]] && return 0
+  (( _n_synced + _n_failed > before )) || return 0
+
+  local total ref_part
+  total=$(( $(_now) - start ))
+  if [[ "${_ref_cached}" == true ]]; then
+    ref_part="reference cached"
+  else
+    ref_part="extract $(_fmt_dur "${_t_extract}"), transcribe $(_fmt_dur "${_t_transcribe}")"
+  fi
+  log_info "$(basename "${video}") took $(_fmt_dur "${total}") (${ref_part}, align $(_fmt_dur "${_t_align_total}"))"
+  _n_videos_worked=$(( _n_videos_worked + 1 ))
+  return 0
+}
+
+########################################
 # Processes a single video: prepares one reference, then syncs its matching
 # sidecars and (when --embedded) its matching embedded track. The reference is
 # built lazily and only once per video, and never in dry-run mode.
 # Globals:
-#   _embedded, _dry_run, _workdir, _n_*
+#   _embedded, _dry_run, _workdir, _n_*, timing globals
 # Arguments:
 #   video: The video file path.
 ########################################
 process_video() {
   local video="$1"
+  local v_start before
+  v_start=$(_now)
+  _t_align_total=0; _t_extract=0; _t_transcribe=0; _ref_cached=false
+  before=$(( _n_synced + _n_failed ))
+
   local -a sidecars=()
   local s
   while IFS= read -r s; do [[ -n "${s}" ]] && sidecars+=("${s}"); done < <(matching_sidecars "${video}")
@@ -871,6 +948,8 @@ process_video() {
     sync_sidecar "${video}" "${s}" "${ref}"
   done
   [[ "${_embedded}" == true ]] && sync_embedded "${video}" "${ref}"
+
+  log_episode_timing "${video}" "${v_start}" "${before}"
   return 0
 }
 
@@ -899,6 +978,10 @@ process_directory() {
 ########################################
 process_lone_subtitle() {
   local sub="$1" video="${_video}"
+  local v_start before
+  v_start=$(_now)
+  _t_align_total=0; _t_extract=0; _t_transcribe=0; _ref_cached=false
+  before=$(( _n_synced + _n_failed ))
 
   if [[ -z "${video}" ]]; then
     local dir base stem entry
@@ -930,6 +1013,7 @@ process_lone_subtitle() {
   fi
   build_reference "${video}" "${ref}" || { _n_failed=$(( _n_failed + 1 )); return 0; }
   sync_sidecar "${video}" "${sub}" "${ref}"
+  log_episode_timing "${video}" "${v_start}" "${before}"
   return 0
 }
 
@@ -942,7 +1026,12 @@ print_summary() {
   if [[ "${_dry_run}" == true ]]; then
     log_info "Dry run complete: ${_n_skipped} subtitle(s) would be processed."
   else
-    log_info "Done: ${_n_synced} synced, ${_n_skipped} skipped, ${_n_failed} failed."
+    local batch extra=""
+    batch=$(( $(_now) - _batch_start ))
+    if (( _n_videos_worked > 0 )); then
+      extra=" · avg $(_fmt_dur $(( batch / _n_videos_worked )))/episode over ${_n_videos_worked}"
+    fi
+    log_info "Done: ${_n_synced} synced, ${_n_skipped} skipped, ${_n_failed} failed in $(_fmt_dur "${batch}").${extra}"
   fi
   (( _n_failed > 0 )) && return 1 || return 0
 }
@@ -960,6 +1049,8 @@ main() {
   apply_config_flag_defaults
   setup_runtime
   check_deps
+
+  _batch_start=$(_now)
 
   if [[ -d "${_target}" ]]; then
     process_directory "${_target}"

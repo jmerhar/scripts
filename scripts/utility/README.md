@@ -78,6 +78,7 @@ This handles the hard case that simple tools (ffsubsync, Bazarr) cannot: **segme
 * **Sidecars and embedded** — Syncs external `.srt`/`.ass`/`.ssa`/`.vtt` sidecars in place (backing up the original); optionally extracts and syncs embedded tracks (`--embedded`), as a sidecar or remuxed into a container copy (`--remux`).
 * **Language-aware** — Targets one language (English by default); only matching subtitles are synced.
 * **Cached & idempotent** — Caches the (expensive) Whisper reference per video; skips already-synced files unless `--force`.
+* **Timing stats** — Reports per-step (extract / transcribe / align), per-episode, and whole-batch durations, plus an average per episode — handy for estimating a large backlog.
 * **Safe** — `--dry-run` previews the work; originals are backed up before being overwritten.
 
 ### Requirements
@@ -140,8 +141,10 @@ $ subtitle-sync --dry-run "/media/tv/Taskmaster/Season 3"
 $ subtitle-sync "/media/tv/Taskmaster/Season 3/Taskmaster.S03E01...mkv"
 [INFO]: Video: .../Taskmaster.S03E01...mkv
 [INFO]: Transcribing audio (base.en) — this is the slow step...
+[INFO]: Transcribed in 15m 02s.
 [INFO]: Synced: .../Taskmaster.S03E01...en.srt
-[INFO]: Done: 1 synced, 0 skipped, 0 failed.
+[INFO]: Taskmaster.S03E01...mkv took 15m 09s (extract 6s, transcribe 15m 02s, align 1s)
+[INFO]: Done: 1 synced, 0 skipped, 0 failed in 15m 09s. · avg 15m 09s/episode over 1
 ```
 
 ### Exit Codes
