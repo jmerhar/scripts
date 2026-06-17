@@ -513,7 +513,9 @@ cache_key() {
 ########################################
 extract_audio() {
   local video="$1" out_wav="$2"
-  ffmpeg -v error -y -i "${video}" -vn -ar 16000 -ac 1 -c:a pcm_s16le "${out_wav}"
+  ffmpeg -nostdin -hide_banner -loglevel error -y -i "${video}" \
+    -vn -ar 16000 -ac 1 -c:a pcm_s16le "${out_wav}" \
+    >"${_workdir}/audio_extract.log" 2>&1
 }
 
 ########################################
@@ -547,6 +549,7 @@ build_reference() {
   t0=$(_now)
   if ! extract_audio "${video}" "${wav}"; then
     log_error "Failed to extract audio from: ${video}"
+    log_debug "$(tail -n 5 "${_workdir}/audio_extract.log" 2>/dev/null)"
     return 1
   fi
   _t_extract=$(( $(_now) - t0 ))
@@ -797,7 +800,7 @@ sync_embedded() {
   fi
 
   local extracted="${_workdir}/embedded.srt"
-  if ! ffmpeg -v error -y -i "${video}" -map "0:${chosen_index}" -f srt "${extracted}" 2>"${_workdir}/extract.log"; then
+  if ! ffmpeg -nostdin -hide_banner -loglevel error -y -i "${video}" -map "0:${chosen_index}" -f srt "${extracted}" 2>"${_workdir}/extract.log"; then
     log_error "Failed to extract embedded track ${chosen_index} from: ${video}"
     _n_failed=$(( _n_failed + 1 )); return 0
   fi
@@ -823,7 +826,7 @@ sync_embedded() {
     local n_subs
     n_subs="$(ffprobe -v error -select_streams s -show_entries stream=index \
       -of csv=p=0 -- "${video}" 2>/dev/null | grep -c .)"
-    if ! ffmpeg -v error -y -i "${video}" -i "${final}" \
+    if ! ffmpeg -nostdin -hide_banner -loglevel error -y -i "${video}" -i "${final}" \
         -map 0 -map 1:0 -c copy -c:s:"${n_subs}" srt \
         -metadata:s:s:"${n_subs}" language="${target_lang}" \
         -disposition:s:s:"${n_subs}" default \
