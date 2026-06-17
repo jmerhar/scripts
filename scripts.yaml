@@ -36,6 +36,12 @@ scripts:
     dependencies:
       common: [ffmpeg]
 
+  subtitle-sync:
+    path: scripts/utility/subtitle-sync.sh
+    description: "Resynchronizes drifting subtitles to a video's speech using a Whisper transcript as reference and alass for segment-aware alignment (handles ad-break, global-offset, and speed drift). Requires the external tools 'alass' and 'whisper-ctranslate2' on PATH."
+    dependencies:
+      common: [ffmpeg]
+
   unlock-pdf:
     path: scripts/utility/unlock-pdf.sh
     description: "Decrypts a password-protected PDF file using the 'qpdf' command-line tool."
