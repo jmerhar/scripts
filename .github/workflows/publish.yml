@@ -150,8 +150,11 @@ jobs:
             git fetch origin
             git reset --hard origin/main
 
-            # Copy formula(s) from the packager output
-            cp ../scripts/dist/homebrew/*.rb Formula/
+            # Copy formula(s) from the packager output (a Debian-only release
+            # produces none — skip the copy so the step doesn't abort).
+            if compgen -G "../scripts/dist/homebrew/*.rb" > /dev/null; then
+              cp ../scripts/dist/homebrew/*.rb Formula/
+            fi
 
             # Regenerate README table from the current Formula/ directory
             ../scripts/bin/update-readme-table.sh README.md "Formula"
@@ -180,8 +183,11 @@ jobs:
             git fetch origin
             git reset --hard origin/main
 
-            # Copy .deb package(s) from the packager output into the pool
-            cp ../scripts/dist/debian/*.deb pool/main/
+            # Copy .deb package(s) from the packager output into the pool (a
+            # Homebrew-only release produces none — skip so the step won't abort).
+            if compgen -G "../scripts/dist/debian/*.deb" > /dev/null; then
+              cp ../scripts/dist/debian/*.deb pool/main/
+            fi
 
             # Regenerate APT package index from the full pool contents
             apt-ftparchive packages pool/ > dists/stable/main/binary-all/Packages

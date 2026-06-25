@@ -406,6 +406,11 @@ main() {
   local deps_debian
   deps_debian=$(read_manifest "(.scripts.\"${name}\".dependencies.debian // []) | join(\" \")")
 
+  # Target platforms (default: both). Lets a platform-specific script — e.g. a
+  # systemd/sudoers tool that only makes sense on Linux — opt out of one channel.
+  local platforms
+  platforms=$(read_manifest "(.scripts.\"${name}\".platforms // [\"homebrew\", \"debian\"]) | join(\" \")")
+
   # Find config file by convention
   local script_dir
   script_dir=$(dirname "${full_script_path}")
@@ -437,16 +442,24 @@ main() {
   tarball_url=$(build_tarball_url "${homepage}" "${name}" "${version}")
 
   # Generate Homebrew formula
-  generate_homebrew_formula \
-    "${name}" "${version}" "${description}" "${homepage}" \
-    "${tarball_url}" "${sha256}" "${full_script_path}" "${config_path}" \
-    "${deps_common}" "${deps_homebrew}" "${license}"
+  if [[ " ${platforms} " == *" homebrew "* ]]; then
+    generate_homebrew_formula \
+      "${name}" "${version}" "${description}" "${homepage}" \
+      "${tarball_url}" "${sha256}" "${full_script_path}" "${config_path}" \
+      "${deps_common}" "${deps_homebrew}" "${license}"
+  else
+    log_info "Skipping Homebrew formula (platforms: ${platforms})."
+  fi
 
   # Generate Debian package
-  generate_deb_package \
-    "${name}" "${version}" "${description}" "${author}" "${homepage}" \
-    "${license}" "${full_script_path}" "${config_path}" \
-    "${deps_common}" "${deps_debian}"
+  if [[ " ${platforms} " == *" debian "* ]]; then
+    generate_deb_package \
+      "${name}" "${version}" "${description}" "${author}" "${homepage}" \
+      "${license}" "${full_script_path}" "${config_path}" \
+      "${deps_common}" "${deps_debian}"
+  else
+    log_info "Skipping Debian package (platforms: ${platforms})."
+  fi
 
   log_info "Done packaging ${name} ${version}."
 }
