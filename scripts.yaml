@@ -16,6 +16,13 @@ scripts:
     dependencies:
       common: [curl, jq]
 
+  nopasswd-sudo:
+    path: scripts/system/nopasswd-sudo.sh
+    description: "Toggles temporary passwordless sudo for a user, with an in-session auto-revoke timer and a boot-time safety net so it never stays enabled by accident."
+    platforms: [debian]   # systemd/sudoers tool — not applicable to Homebrew/macOS
+    dependencies:
+      debian: [sudo]
+
   photo-backup:
     path: scripts/photography/photo-backup.sh
     description: "A robust script for backing up photo collections from multiple sources to a remote server using rsync."

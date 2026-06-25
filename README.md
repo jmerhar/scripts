@@ -10,6 +10,7 @@ A collection of packaged shell scripts for macOS and Linux, distributed via [Hom
 |--------|-------------|-----------|
 | [`compare-dirs`](scripts/utility/) | Recursively compare two directories, reporting differences in existence, size, timestamps, and checksums. | `scripts/utility/` |
 | [`local-backup`](scripts/system/) | Incremental rsync backups with automatic pruning and RAID awareness. | `scripts/system/` |
+| [`nopasswd-sudo`](scripts/system/) | Toggle temporary passwordless sudo with auto-revoke and a boot-time safety net. _(Linux only)_ | `scripts/system/` |
 | [`photo-backup`](scripts/photography/#photo-backupsh) | Multi-source photo backup to a remote server with deletion protection. | `scripts/photography/` |
 | [`remove-sidecars`](scripts/photography/#remove-sidecarssh) | Clean up sidecar JPEG files from RAW+JPEG photo libraries. | `scripts/photography/` |
 | [`unlock-pdf`](scripts/utility/) | Decrypt a password-protected PDF file. | `scripts/utility/` |
