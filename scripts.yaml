@@ -37,6 +37,13 @@ scripts:
     path: scripts/utility/compare-dirs.sh
     description: "Recursively compares two directories and reports differences in existence, size, timestamps, and checksums."
 
+  dmarc-report:
+    path: scripts/utility/dmarc-report.sh
+    description: "Aggregates a folder of DMARC RUA reports (.xml.gz/.zip) into one overall report, tracking policy changes over time and flagging unenforced domains, unaligned senders, DNS/DKIM errors, and spoofing."
+    dependencies:
+      homebrew: [libxml2]           # provides xmllint (unzip/gzip ship with macOS)
+      debian: [libxml2-utils, unzip]
+
   subtitle-report:
     path: scripts/utility/subtitle-report.sh
     description: "Reports on subtitle coverage for a media library, detecting embedded tracks and sidecar files and breaking down counts by language and source."
