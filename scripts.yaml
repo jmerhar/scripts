@@ -39,8 +39,9 @@ scripts:
 
   dmarc-report:
     path: scripts/utility/dmarc-report.sh
-    description: "Aggregates a folder of DMARC RUA reports (.xml.gz/.zip) into one overall report, tracking policy changes over time and flagging unenforced domains, unaligned senders, DNS/DKIM errors, and spoofing."
+    description: "Aggregates a folder of DMARC RUA reports (.xml.gz/.zip) into one overall report, tracking policy changes over time and flagging unenforced domains, unaligned senders, DNS/DKIM errors, and spoofing (grouped into subnets with per-range country lookup)."
     dependencies:
+      common: [curl, jq]            # curl+jq: best-effort country lookup for failing ranges
       homebrew: [libxml2]           # provides xmllint (unzip/gzip ship with macOS)
       debian: [libxml2-utils, unzip]
 

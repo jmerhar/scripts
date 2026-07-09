@@ -16,7 +16,8 @@
 #     but did not ALIGN (a legit sender needing configuration, or ESP abuse),
 #     SPF/DKIM temperror/permerror (DNS/config faults), aligned mail that was
 #     nonetheless quarantined/rejected, and the volume/top sources of outright
-#     spoofing (unauthenticated forgeries the policy is rejecting).
+#     spoofing (unauthenticated forgeries the policy is rejecting), grouped into
+#     subnets and annotated with a best-effort country per range.
 #
 # The distinction the report leans on throughout:
 #   - "aligned pass"  = the receiver's policy_evaluated dkim OR spf is "pass"
@@ -90,7 +91,7 @@ Aggregate a folder of DMARC RUA reports (.xml.gz, .zip, or .xml) into one
 overall report and flag anything potentially problematic.
 
 Options:
-  -a, --all             List every failing source IP, not just the top ${_top_n}.
+  -a, --all             List every failing source range, not just the top ${_top_n}.
   -w, --warn-rate PCT   Annotate the summary when the DMARC fail rate reaches
                         PCT percent (0-100; default ${_warn_rate}). Informational only.
   -C, --no-color        Disable colored output.
@@ -682,8 +683,48 @@ analyze_flags() {
 }
 
 ########################################
+# Best-effort reverse-geolocation of IPv4/IPv6 addresses to country names via the
+# free ip-api.com batch endpoint. Requires curl and jq; if either is missing, the
+# network is unavailable, or the service errors, it simply returns nothing so the
+# caller can render ranges without a country. Addresses are queried in batches of
+# 100 (the endpoint's per-request limit).
+# Globals:
+#   None
+# Arguments:
+#   One or more IP addresses.
+# Outputs:
+#   "ip<TAB>country" lines for the addresses it could resolve (order not
+#   guaranteed; unresolved addresses are simply omitted).
+########################################
+geolocate_ips() {
+  command -v curl &>/dev/null && command -v jq &>/dev/null || return 0
+  (( $# > 0 )) || return 0
+
+  local -a ips=("$@")
+  local total=${#ips[@]} start=0
+  while (( start < total )); do
+    local -a chunk=("${ips[@]:start:100}")
+    start=$(( start + 100 ))
+
+    local request response
+    request=$(printf '%s\n' "${chunk[@]}" \
+      | jq -R -s -c 'split("\n") | map(select(length > 0))' 2>/dev/null || true)
+    [[ -n "${request}" ]] || continue
+
+    # ip-api.com's free tier is HTTP-only; the payload is just IPs → country.
+    response=$(curl -fsS --max-time 15 -H 'Content-Type: application/json' \
+      -d "${request}" 'http://ip-api.com/batch?fields=status,country,query' 2>/dev/null || true)
+    [[ -n "${response}" ]] || continue
+
+    printf '%s' "${response}" \
+      | jq -r '.[] | select(.status == "success" and .country != "") | "\(.query)\t\(.country)"' \
+        2>/dev/null || true
+  done
+}
+
+########################################
 # Renders the flags section from the accumulated flag lines, grouped by
-# category, and prints the top failing source IPs.
+# category, and prints the top failing source ranges with their country.
 # Globals:
 #   _flags_file, _records_tsv, _show_all, _top_n, colors.
 # Arguments:
@@ -717,25 +758,59 @@ print_flags() {
     done
   fi
 
-  # Top failing source IPs (spoofing pressure / offenders).
-  local n_ips
-  n_ips=$(awk -F'\t' '$12 == 0' "${_records_tsv}" | wc -l | tr -d ' ')
-  if (( n_ips > 0 )); then
+  # Failing source ranges (spoofing pressure / offenders), grouped into subnets
+  # (/24 for IPv4, /64 for IPv6) so a provider's block reads as one line, each
+  # annotated with a best-effort country for its busiest address.
+  local n_fail
+  n_fail=$(awk -F'\t' '$12 == 0' "${_records_tsv}" | wc -l | tr -d ' ')
+  if (( n_fail > 0 )); then
     local limit_label="top ${_top_n}"
     [[ "${_show_all}" == true ]] && limit_label="all"
-    heading "Failing source IPs (${limit_label})"
-    printf '  %s%8s  %s%s\n' "${_C_DIM}" "messages" "source IP" "${_C_RESET}"
-    local ranked
-    ranked=$(awk -F'\t' '$12 == 0 {ip[$4] += $5} END {for (i in ip) printf "%d\t%s\n", ip[i], i}' \
-      "${_records_tsv}" | sort -rn)
-    if [[ "${_show_all}" != true ]]; then
-      ranked=$(head -n "${_top_n}" <<<"${ranked}")
+    heading "Failing source ranges (${limit_label})"
+
+    # msgs <tab> subnet <tab> representative-ip (the busiest IP in the subnet),
+    # sorted by message volume. The representative is a real, routable address so
+    # geolocation is accurate rather than querying a synthetic network address.
+    local grouped
+    grouped=$(awk -F'\t' '
+        function subnet(ip,   a) {
+          if (index(ip, ":")) { split(ip, a, ":"); return a[1] ":" a[2] ":" a[3] ":" a[4] "::/64" }
+          split(ip, a, "."); return a[1] "." a[2] "." a[3] ".0/24"
+        }
+        $12 == 0 && $4 != "" {
+          s = subnet($4); msgs[s] += $5
+          if ($5 >= repmax[s]) { repmax[s] = $5; rep[s] = $4 }
+        }
+        END { for (s in msgs) printf "%d\t%s\t%s\n", msgs[s], s, rep[s] }' \
+      "${_records_tsv}" | sort -t$'\t' -k1,1nr)
+    [[ "${_show_all}" != true ]] && grouped=$(head -n "${_top_n}" <<<"${grouped}")
+
+    # Collect the representative IPs and resolve them to countries in one batch.
+    local -a reps=()
+    local msgs subnet rep
+    while IFS=$'\t' read -r msgs subnet rep; do
+      [[ -n "${rep}" ]] && reps+=("${rep}")
+    done <<<"${grouped}"
+
+    local -A country=()
+    if (( ${#reps[@]} > 0 )); then
+      local ip name
+      while IFS=$'\t' read -r ip name; do
+        [[ -n "${ip}" ]] && country["${ip}"]="${name}"
+      done < <(geolocate_ips "${reps[@]}")
     fi
-    local c ip
-    while IFS=$'\t' read -r c ip; do
-      [[ -n "${ip}" ]] || continue
-      printf '  %s%8d%s  %s\n' "${_C_YELLOW}" "${c}" "${_C_RESET}" "${ip}"
-    done <<<"${ranked}"
+
+    printf '  %s%8s  %-20s %s%s\n' "${_C_DIM}" "messages" "range" "country" "${_C_RESET}"
+    while IFS=$'\t' read -r msgs subnet rep; do
+      [[ -n "${subnet}" ]] || continue
+      printf '  %s%8d%s  %-20s %s\n' \
+        "${_C_YELLOW}" "${msgs}" "${_C_RESET}" "${subnet}" "${country["${rep}"]:-unknown}"
+    done <<<"${grouped}"
+
+    if (( ${#reps[@]} > 0 && ${#country[@]} == 0 )); then
+      printf '  %sCountry lookup unavailable (offline, or curl/jq missing).%s\n' \
+        "${_C_DIM}" "${_C_RESET}"
+    fi
   fi
 
   # Only actionable categories drive a nonzero exit.
