@@ -64,6 +64,92 @@ Summary: 1 only in LEFT, 1 only in RIGHT, 2 differences
 
 ---
 
+## `dmarc-report`
+
+Aggregates a folder of DMARC RUA (aggregate) reports into one overall report, flagging anything worth a human's attention: domains not yet enforcing, sampling (`pct` < 100), senders that authenticated but did not align, SPF/DKIM DNS/config errors, aligned mail that was still quarantined or rejected, and the volume and top sources of outright spoofing (grouped into subnets with a best-effort country per range).
+
+### Features
+
+* **One combined view** — Reads every `.xml.gz` / `.zip` / `.xml` report in a directory and merges them, tracking how each domain's published policy changed over time.
+* **Alignment-aware** — Distinguishes DMARC-enforced "aligned pass" from merely "authenticated", surfacing authenticated-but-unaligned senders as the interesting middle ground.
+* **Spoofing breakdown** — Groups failing sources into subnets and annotates each range with a best-effort country lookup.
+* **Actionable exit status** — Exits `2` when a policy, alignment, or config flag is raised (handy for monitoring); spoofing and info flags do not affect the exit status.
+* **Colored output** — Auto-disables when piped.
+
+### Requirements
+
+* `xmllint` — `libxml2` on Homebrew, `libxml2-utils` on Debian.
+* `unzip` — to read `.zip` reports.
+* `curl` and `jq` — optional; best-effort country lookup for failing ranges.
+
+### Usage
+
+```bash
+dmarc-report [OPTIONS] [DIRECTORY]
+```
+
+If no directory is given, the current directory is used.
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `-a`, `--all` | List every failing source range, not just the top ones. |
+| `-w`, `--warn-rate PCT` | Annotate the summary when the DMARC fail rate reaches PCT percent (0–100). Informational only. |
+| `-C`, `--no-color` | Disable colored output. |
+| `-h`, `--help` | Show usage information. |
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Clean run (no actionable flags). |
+| `2` | An actionable policy, alignment, or config flag was raised. |
+
+---
+
+## `subtitle-report`
+
+Reports on subtitle coverage for a media library. For every media file it detects subtitles from two sources — embedded tracks inside the container (via `ffprobe`) and external sidecar files sharing the base name — and summarizes how many files have subtitles and in which languages, broken down by source.
+
+### Features
+
+* **Two sources** — Counts both embedded tracks and sidecar files, and can restrict to either.
+* **Language breakdown** — Summarizes coverage by language, matched loosely (`en` = `eng` = `english`).
+* **Coverage or gaps** — `--list` shows every file and its subtitles; `--missing` lists files lacking subtitles (or a specific language).
+* **`und` handling** — `--und-as-english` folds undetermined tracks into English, for releases that ship an untagged English subtitle.
+* **Configurable extensions** — Media and subtitle extensions can be overridden via a config file.
+* **Colored output** — Auto-disables when piped.
+
+### Requirements
+
+* [`ffmpeg`](https://ffmpeg.org/) / `ffprobe`
+
+### Usage
+
+```bash
+subtitle-report [OPTIONS] [DIRECTORY]
+```
+
+If no directory is given, the current directory is used. The summary is always printed; `--list` / `--missing` add a detailed section.
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `-l`, `--list` | List every media file and the subtitles it has. |
+| `-m`, `--missing` | List media files that have no subtitles at all. |
+| `-g`, `--lang LANG` | Scope to one or more languages (repeatable and/or comma-separated, e.g. `en,und`). |
+| `--no-embedded` | Skip embedded-track inspection (sidecars only; fast). |
+| `--no-sidecars` | Skip sidecar files (embedded tracks only). |
+| `--und-as-english` | Treat undetermined (`und`) subtitles as English. |
+| `-C`, `--no-color` | Disable colored output. |
+| `-h`, `--help` | Show usage information. |
+
+> `--list` and `--missing` are mutually exclusive, as are `--no-embedded` and `--no-sidecars`.
+
+---
+
 ## `subtitle-sync`
 
 Resynchronizes drifting subtitles to a video's actual speech. It transcribes the audio with [Whisper](https://github.com/openai/whisper) (via [`whisper-ctranslate2`](https://github.com/Softcatala/whisper-ctranslate2)) to build a speech-accurate reference, then aligns the drifted subtitle to it with [`alass`](https://github.com/kaegi/alass), which can apply a **different offset to each segment**. A final "anchor" pass cancels Whisper's small word-onset bias.
