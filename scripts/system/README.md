@@ -4,7 +4,7 @@ User-facing scripts for system administration tasks. For installation instructio
 
 ## `local-backup`
 
-A script to create and automatically prune incremental rsync-based system backups. Designed to run unattended via `cron`.
+Creates and automatically prunes incremental rsync-based system backups. Designed to run unattended via `cron`.
 
 ### Features
 
@@ -26,7 +26,7 @@ A script to create and automatically prune incremental rsync-based system backup
 
 The script takes no arguments. All settings come from the configuration file.
 
-**1. Configure** — Create `/etc/local-backup.conf` (a [template](../../conf/system/local-backup.conf) is included):
+**1. Configure** — Create `/etc/local-backup.conf` (a [template](local-backup.conf) is included):
 
 ```bash
 SOURCE_DIR="/"
@@ -57,6 +57,8 @@ sudo local-backup
 ```
 5 4 * * * /usr/local/bin/local-backup
 ```
+
+---
 
 ## `mdcheck-progress`
 
@@ -105,6 +107,8 @@ md0 (raid5) — monthly check
   est. finish  Tue 2026-08-04 02:13 CEST  (1 more window)
 ```
 
+---
+
 ## `nopasswd-sudo`
 
 Toggles temporary passwordless `sudo` for a user during a maintenance session, with two independent safety nets so it can never be left enabled by accident. Handy when driving many non-interactive `sudo` commands over SSH.
@@ -141,6 +145,8 @@ sudo nopasswd-sudo status        # show current state
 | `off` | Revoke the grant now and cancel the auto-revoke timer. |
 | `status` | Show whether the grant and safety nets are active. |
 | `-h`, `--help` | Show the help message. |
+
+---
 
 ## `prune-orphaned-torrents`
 

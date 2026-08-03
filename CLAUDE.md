@@ -20,6 +20,13 @@ A collection of packaged shell scripts for macOS and Debian/Ubuntu, distributed 
 
 Config files (`.conf`) live next to their scripts (e.g., `scripts/system/local-backup.conf`). They are discovered by convention — no metadata field needed.
 
+### Documentation (READMEs)
+
+- The root `README.md` has an **Available Scripts** table — one row per script, kept alphabetical, with a short description and a link into that script's section (`scripts/<topic>/#<script-name>`).
+- Each `scripts/<topic>/README.md` documents its scripts in detail, one `##` section per script, in this order (include only the parts that apply): description → `### Features` → `### Requirements` → `### Usage` → `### Options` → `### Example` → `### Exit Codes`, with `---` between sections.
+
+**Keep the docs in sync with the code.** Whenever you add a script, or change one in a way that affects its description, options, requirements, or behaviour, update `scripts.yaml`, the root README table row, and the script's per-topic README section in the same change.
+
 ### Manifest (`scripts.yaml`)
 
 All publishable scripts are registered in `scripts.yaml`. The manifest contains repo-level defaults (author, homepage, license) and per-script entries with path, description, and dependencies.
@@ -34,11 +41,14 @@ scripts:
   script-name:
     path: scripts/topic/script-name.sh
     description: "One-line description."
+    platforms: [debian]          # Optional; omit to publish to both (see below)
     dependencies:
       common: [dep1, dep2]       # All platforms
       homebrew: [macos-only-dep] # Homebrew only
       debian: [debian-only-dep]  # Debian only
 ```
+
+The optional `platforms:` list restricts which package targets are built; valid values are `homebrew` and `debian`. Omit it to publish to both (the default). Set `[debian]` for a Linux-only tool (skips the Homebrew formula) or `[homebrew]` for a macOS-only one (skips the `.deb`).
 
 ### Shared Library (`@include`)
 

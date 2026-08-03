@@ -15,6 +15,11 @@ Recursively compares two directories and reports differences in existence, size,
 * **Symlink-aware** — Compares symlink targets rather than following them.
 * **Type mismatch detection** — Reports when the same name is a file in one tree and a directory in the other.
 
+### Requirements
+
+* `bash` (macOS and Linux)
+* `stat`, `date`, and a SHA-256 tool (`shasum` or `sha256sum`) — auto-detected per platform
+
 ### Usage
 
 ```bash
@@ -264,6 +269,8 @@ Decrypts a password-protected PDF file using [`qpdf`](https://github.com/qpdf/qp
 ```bash
 unlock-pdf <input.pdf>
 ```
+
+### Example
 
 The script prompts for the password interactively:
 

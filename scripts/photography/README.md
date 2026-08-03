@@ -4,7 +4,7 @@ Utilities for managing photography workflows — intelligent backups and library
 
 ## `photo-backup`
 
-A robust backup solution for photographers managing multiple storage devices. It safely merges content from multiple sources into a consolidated backup on a remote server while preserving unique files from all sources.
+Backs up photo collections from multiple storage devices to a remote server, safely merging content from all sources into one consolidated backup while preserving files unique to each.
 
 ### Features
 
@@ -50,6 +50,8 @@ photo-backup \
   -p /mnt/storage/photos
 ```
 
+### Options
+
 | Flag | Description |
 |------|-------------|
 | `-s PATH` | Source path (can be used multiple times). |
@@ -60,7 +62,7 @@ photo-backup \
 | `-l FILE` | Log all output to a file. |
 | `-h` | Show help. |
 
-**Sample Output:**
+### Example
 
 ```
 [INFO]: Starting photo backup operation.
@@ -103,11 +105,15 @@ remove-sidecars [OPTIONS] [DIRECTORY]
 
 If no directory is given, the current directory is used.
 
+### Options
+
 | Flag | Description |
 |------|-------------|
 | `-n`, `--dry-run` | Show what would be deleted without actually deleting. |
 | `-C`, `--no-color` | Disable colored output. |
 | `-h`, `--help` | Show help. |
+
+### Example
 
 ```
 $ remove-sidecars /path/to/my/photos
