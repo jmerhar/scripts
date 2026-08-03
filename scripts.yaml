@@ -23,6 +23,13 @@ scripts:
     dependencies:
       debian: [sudo]
 
+  mdcheck-progress:
+    path: scripts/system/mdcheck-progress.sh
+    description: "Reports the progress of an MD RAID check (Debian's monthly mdcheck scrub), including while it is paused between nightly windows, with a schedule-aware estimate of when it will finish."
+    platforms: [debian]   # reads MD sysfs + mdadm's mdcheck systemd units — Linux-only
+    dependencies:
+      debian: [mdadm]
+
   photo-backup:
     path: scripts/photography/photo-backup.sh
     description: "A robust script for backing up photo collections from multiple sources to a remote server using rsync."
