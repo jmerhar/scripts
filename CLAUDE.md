@@ -22,7 +22,7 @@ Config files (`.conf`) live next to their scripts (e.g., `scripts/system/local-b
 
 ### Documentation (READMEs)
 
-- The root `README.md` has an **Available Scripts** table — one row per script, kept alphabetical, with a short description and a link into that script's section (`scripts/<topic>/#<script-name>`).
+- The root `README.md` has an **Available Scripts** table — one row per script, kept alphabetical, with a short description and a link into that script's section (`scripts/<topic>/README.md#<script-name>` — link to the README file, not the directory, or GitHub's directory redirect drops the fragment).
 - Each `scripts/<topic>/README.md` documents its scripts in detail, one `##` section per script, in this order (include only the parts that apply): description → `### Features` → `### Requirements` → `### Usage` → `### Options` → `### Example` → `### Exit Codes`, with `---` between sections.
 
 **Keep the docs in sync with the code.** Whenever you add a script, or change one in a way that affects its description, options, requirements, or behaviour, update `scripts.yaml`, the root README table row, and the script's per-topic README section in the same change.

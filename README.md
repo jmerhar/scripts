@@ -8,17 +8,17 @@ A collection of packaged shell scripts for macOS and Linux, distributed via [Hom
 
 | Script | Description | Directory |
 |--------|-------------|-----------|
-| [`compare-dirs`](scripts/utility/#compare-dirs) | Recursively compare two directories, reporting differences in existence, size, timestamps, and checksums. | `scripts/utility/` |
-| [`dmarc-report`](scripts/utility/#dmarc-report) | Aggregate a folder of DMARC reports into one summary, flagging unenforced domains, unaligned senders, and spoofing. | `scripts/utility/` |
-| [`local-backup`](scripts/system/#local-backup) | Incremental rsync backups with automatic pruning and RAID awareness. | `scripts/system/` |
-| [`mdcheck-progress`](scripts/system/#mdcheck-progress) | Report MD RAID scrub (`check`) progress and estimated finish time, even while paused between nightly windows. _(Linux only)_ | `scripts/system/` |
-| [`nopasswd-sudo`](scripts/system/#nopasswd-sudo) | Toggle temporary passwordless sudo with auto-revoke and a boot-time safety net. _(Linux only)_ | `scripts/system/` |
-| [`photo-backup`](scripts/photography/#photo-backup) | Multi-source photo backup to a remote server with deletion protection. | `scripts/photography/` |
-| [`prune-orphaned-torrents`](scripts/system/#prune-orphaned-torrents) | Find orphaned media left by \*arr hard-linking and interactively remove the matching Deluge torrents. | `scripts/system/` |
-| [`remove-sidecars`](scripts/photography/#remove-sidecars) | Clean up sidecar JPEG files from RAW+JPEG photo libraries. | `scripts/photography/` |
-| [`subtitle-report`](scripts/utility/#subtitle-report) | Report subtitle coverage for a media library, by language and source (embedded tracks + sidecars). | `scripts/utility/` |
-| [`subtitle-sync`](scripts/utility/#subtitle-sync) | Resynchronize drifting subtitles to a video's speech using Whisper and `alass`. | `scripts/utility/` |
-| [`unlock-pdf`](scripts/utility/#unlock-pdf) | Decrypt a password-protected PDF file. | `scripts/utility/` |
+| [`compare-dirs`](scripts/utility/README.md#compare-dirs) | Recursively compare two directories, reporting differences in existence, size, timestamps, and checksums. | `scripts/utility/` |
+| [`dmarc-report`](scripts/utility/README.md#dmarc-report) | Aggregate a folder of DMARC reports into one summary, flagging unenforced domains, unaligned senders, and spoofing. | `scripts/utility/` |
+| [`local-backup`](scripts/system/README.md#local-backup) | Incremental rsync backups with automatic pruning and RAID awareness. | `scripts/system/` |
+| [`mdcheck-progress`](scripts/system/README.md#mdcheck-progress) | Report MD RAID scrub (`check`) progress and estimated finish time, even while paused between nightly windows. _(Linux only)_ | `scripts/system/` |
+| [`nopasswd-sudo`](scripts/system/README.md#nopasswd-sudo) | Toggle temporary passwordless sudo with auto-revoke and a boot-time safety net. _(Linux only)_ | `scripts/system/` |
+| [`photo-backup`](scripts/photography/README.md#photo-backup) | Multi-source photo backup to a remote server with deletion protection. | `scripts/photography/` |
+| [`prune-orphaned-torrents`](scripts/system/README.md#prune-orphaned-torrents) | Find orphaned media left by \*arr hard-linking and interactively remove the matching Deluge torrents. | `scripts/system/` |
+| [`remove-sidecars`](scripts/photography/README.md#remove-sidecars) | Clean up sidecar JPEG files from RAW+JPEG photo libraries. | `scripts/photography/` |
+| [`subtitle-report`](scripts/utility/README.md#subtitle-report) | Report subtitle coverage for a media library, by language and source (embedded tracks + sidecars). | `scripts/utility/` |
+| [`subtitle-sync`](scripts/utility/README.md#subtitle-sync) | Resynchronize drifting subtitles to a video's speech using Whisper and `alass`. | `scripts/utility/` |
+| [`unlock-pdf`](scripts/utility/README.md#unlock-pdf) | Decrypt a password-protected PDF file. | `scripts/utility/` |
 
 ## Repository Structure
 
