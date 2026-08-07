@@ -28,9 +28,26 @@ daemon, an `ffmpeg` that yields a subtitle track. Best split one pull request pe
 topic directory. See [`test/README.md`](test/README.md).
 
 Coverage measurement is deliberately absent until the shared
-[jmerhar/coverage](https://github.com/jmerhar/coverage) setup is reworked. Two
-findings from measuring kcov against this repo, worth keeping for then: `.conf`
-files get instrumented (they are sourced) and need excluding, and
-`--include-path` only discovers unexecuted files in directories kcov has already
-seen, so the denominator is only complete once the suite touches every one.
+[jmerhar/coverage](https://github.com/jmerhar/coverage) setup is reworked.
+Findings from measuring kcov against this repo, worth keeping for then:
+
+- `.conf` files get instrumented, because `load_config` sources them, and need
+  excluding or they land in the report.
+- `--include-path` only discovers unexecuted files in directories kcov has
+  already seen, so the denominator is only complete once the suite touches every
+  one of them.
+- Publishing is narrow: `kcov-merged/` alone loses the line highlighting, whose
+  per-file pages reference `../data/bcov.css`, while the whole output tree
+  carries dangling symlinks and `.so` helpers that break the shared site's Pages
+  deploy. Publish the tree and strip those two.
+- Bash attributes a multi-line command to its final line, so the first line of
+  each `\` continuation reads as never executed and the continuation lines are
+  not instrumented at all; the closing brace of a redirected group
+  (`} >> "$file"`) is never reported either. Reshape those statements rather than
+  trying to test them — argument arrays and named variables for the long
+  invocations, a function for the redirected group. This repo has 114
+  continuations, concentrated in `dmarc-report`, `subtitle-sync` and
+  `prune-orphaned-torrents`, and one redirected group in `bin/package-script.sh`.
+  The suite asserts behaviour rather than layout, so it stays valid across that
+  reshaping and protects it.
 
