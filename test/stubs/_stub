@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+#
+# Test double for every external command the scripts shell out to. Each stubbed command name in this
+# directory is a symlink to this file, and the stub decides what to do from $0 — one implementation
+# to audit rather than a dozen near-identical files.
+#
+# test/test_helper.bash puts this directory first on PATH for every test. That is a safety
+# mechanism, not a convenience: the scripts under test delete files, run rsync and drive a torrent
+# daemon, using settings read from the repo's own committed .conf files, so on a developer machine a
+# test can be handed real paths. Nothing here may touch anything outside $BATS_TEST_TMPDIR.
+#
+# Every invocation is appended to $STUB_CALLS as "<command> <argv…>", which is what suites assert
+# on — a sharper claim about what the script tried to do than any observable side effect, and safe.
+#
+# Behaviour is steered by files in $STUB_FIXTURES, all optional:
+#
+#   <command>.fail      exit with the status held in this file (default 1) instead of succeeding
+#   <command>.stdout    print this file's contents on stdout
+#   <command>.stderr    print this file's contents on stderr
+#
+# A command that needs to fabricate output files (qpdf, dpkg-deb) is special-cased at the bottom;
+# anything else simply records the call and succeeds, which is what the scripts expect from a tool
+# that did its job.
+set -uo pipefail
+
+command_name=$(basename "$0")
+fixtures=${STUB_FIXTURES:?STUB_FIXTURES must be set — is setup_common being called?}
+calls=${STUB_CALLS:-/dev/null}
+
+printf '%s %s\n' "${command_name}" "$*" >> "${calls}"
+
+if [[ -f "${fixtures}/${command_name}.stdout" ]]; then
+  cat "${fixtures}/${command_name}.stdout"
+fi
+
+if [[ -f "${fixtures}/${command_name}.stderr" ]]; then
+  cat "${fixtures}/${command_name}.stderr" >&2
+fi
+
+if [[ -f "${fixtures}/${command_name}.fail" ]]; then
+  exit "$(cat "${fixtures}/${command_name}.fail")"
+fi
+
+#######################################
+# Returns the last argument, which for the commands below is the output path.
+# Arguments:
+#   The full argument list.
+# Outputs:
+#   Prints the final argument.
+#######################################
+last_arg() {
+  printf '%s' "${!#}"
+}
+
+case "${command_name}" in
+  qpdf)
+    # unlock-pdf.sh checks that qpdf produced a readable file, so a bare exit 0 is not enough.
+    # `qpdf --decrypt --password=… <in> <out>` — the output path is last.
+    if (( $# >= 2 )); then
+      out=$(last_arg "$@")
+      case "${out}" in
+        -*) ;;
+        *) printf '%%PDF-1.4 stub\n' > "${out}" ;;
+      esac
+    fi
+    ;;
+
+  dpkg-deb)
+    # `dpkg-deb --root-owner-group --build <dir> <deb>` — the artefact path is last. package-script.sh
+    # builds the tree itself and only needs the artefact to exist afterwards.
+    #
+    # Stubbed rather than delegated to the real tool because dpkg-deb is absent on macOS, and
+    # package-script.sh silently skips .deb generation when it cannot find it. Without a stub the
+    # packaging suite would quietly test nothing on a Mac and everything on Linux.
+    if (( $# >= 2 )); then
+      printf 'stub deb\n' > "$(last_arg "$@")"
+    fi
+    ;;
+esac
+
+exit 0
