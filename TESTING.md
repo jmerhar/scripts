@@ -44,13 +44,18 @@ assertions are unaffected) and leaves **stdout clean** (so `$output` assertions 
 
 ### Publishing the HTML report
 
-Publish **only `kcov-merged/`**. It is self-contained — its own `data/`, stylesheet, and per-file
-pages. The output *root* additionally holds kcov's runtime helpers: two `.so` files and **absolute
-symlinks into the directory kcov ran from**. Those symlinks dangle once copied anywhere else, and
-`upload-pages-artifact` cannot tar a dangling symlink — so publishing the whole directory breaks the
-deployment of the *shared* coverage site, for every project at once. Assert in `collect-coverage.sh`
-that the upload contains no symlinks and no `.so` files, so a future kcov change fails locally rather
-than in the shared repository.
+Publish the **whole** kcov output tree, but strip two kinds of file kcov leaves in its root:
+
+- **absolute symlinks into the directory kcov ran from** — they dangle once copied anywhere else, and
+  `upload-pages-artifact` cannot tar a dangling symlink, so they break the deployment of the *shared*
+  coverage site for every project at once;
+- **`.so` runtime helpers**, which have no business on a static site.
+
+Do not reduce the upload to `kcov-merged/` alone, tempting as it looks: its per-file pages reference
+`../data/bcov.css` — one level *above* themselves — so dropping the parent `data/` silently costs the
+covered/uncovered line highlighting. Assert in `collect-coverage.sh` that the upload has no symlinks,
+no `.so` files, and that `data/bcov.css` exists, so any future kcov change fails locally instead of in
+the shared repository.
 
 ### CI has no kcov package
 
