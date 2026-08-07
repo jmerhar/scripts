@@ -14,24 +14,23 @@ case-insensitive (e.g., treating `.dng` and `.DNG` the same) since the camera
 distinction (Android vs Lightroom) would be handled by the exclusion list
 rather than relying on extension casing.
 
-## 2. Unit testing for shell scripts
+## 2. Extend the test suite to the data-touching scripts
 
-Investigate whether unit testing is practical for this repo's scripts.
+`test/` covers the shared library, the pure helpers, every script's command-line
+contract and the `bin/` release tooling. What is left is the behaviour of the
+scripts that move or delete data: `local-backup`, `photo-backup`,
+`remove-sidecars`, `prune-orphaned-torrents`, `subtitle-sync`, `subtitle-report`,
+`compare-dirs`, `dmarc-report` and `mdcheck-progress`.
 
-Bash has frameworks like [bats-core](https://github.com/bats-core/bats-core)
-(Bash Automated Testing System) that allow writing `.bats` test files with
-`setup`/`teardown` lifecycle hooks and TAP-compliant output. With every script
-now in Bash, `bats-core` covers the whole repo.
+Those need stubs driven from fixtures rather than the log-and-succeed defaults —
+an `exiftool` that reports a camera model, a `curl` that answers as a Deluge
+daemon, an `ffmpeg` that yields a subtitle track. Best split one pull request per
+topic directory. See [`test/README.md`](test/README.md).
 
-Areas to explore:
-
-- **What to test**: pure functions in `scripts/lib/common.sh` are the best
-  starting point (`validate_config`, `load_config`, `get_script_prefix`).
-  `bin/compile-includes.sh` is also a good candidate since its `process_file`
-  function has well-defined input/output behavior.
-- **CI integration**: bats-core can run in GitHub Actions (`setup-bats-action`
-  or a plain `npm install -g bats`). Tests could gate merges without slowing
-  down the release workflow.
-- **Scope**: keep tests focused on logic, not on external tools like `rsync` or
-  `dpkg-deb`. Mock or stub those at the boundary.
+Coverage measurement is deliberately absent until the shared
+[jmerhar/coverage](https://github.com/jmerhar/coverage) setup is reworked. Two
+findings from measuring kcov against this repo, worth keeping for then: `.conf`
+files get instrumented (they are sourced) and need excluding, and
+`--include-path` only discovers unexecuted files in directories kcov has already
+seen, so the denominator is only complete once the suite touches every one.
 

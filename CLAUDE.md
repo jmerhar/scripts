@@ -76,13 +76,30 @@ Only scripts registered in `scripts.yaml` are publishable. Scripts under `bin/` 
 - `bin/update-readme-table.sh` regenerates README tables in downstream repos from the manifest
 - **Release notes**: every GitHub Release should include a summary of user-facing changes (new features, fixes, breaking changes). Use markdown headers (`### New features`, `### Fixes`, etc.) for multi-item releases, or a plain bullet list for single-item releases.
 
-### Automated Tests & Coverage
+### Automated Tests
 
-There is no test suite yet. [`TESTING.md`](TESTING.md) is the handover for adding one: it covers the
-toolchain (bats + kcov), the kcov traps that silently produce wrong numbers, how to test these
-particular scripts (subprocess runs with stubbed commands; `common.sh` sourced directly), and how to
-wire the coverage gate, Codecov and the shared jmerhar/coverage site. **Read it before writing tests
-or touching coverage** — `jmerhar/gh-maintenance` is the working reference implementation to copy from.
+[bats-core](https://github.com/bats-core/bats-core) suites live in `test/`, one per area, and run on
+Linux and macOS via `.github/workflows/ci.yml`. See [`test/README.md`](test/README.md) before writing
+one — it covers the three ways a test reaches the code, the safety rules, and how the stubs work.
+
+```bash
+make test     # the suite
+make lint     # ShellCheck, including the helper and stubs
+make check    # both; gate a commit on this
+```
+
+Two rules matter most:
+
+- **Code under test is reached only through `run_script`, `run_func` or `run_snippet`.** All three run
+  it in a subprocess with `$0` set to the script's own path, because every script derives its library
+  include, `SCRIPT_NAME`, install prefix, config search path and usage text from `$0`.
+- **`test/stubs` must stay first on `PATH`** — `setup_common` fails the test otherwise. `load_config`
+  resolves its config path from `$0` and honours no override, so the scripts read the repo's own
+  committed `.conf` files, which on a real machine can name real volumes. Assert on stub call logs,
+  never on side effects, and write nothing outside `$BATS_TEST_TMPDIR`.
+
+Coverage measurement is not wired up yet; it arrives once the shared
+[jmerhar/coverage](https://github.com/jmerhar/coverage) setup is reworked.
 
 ### Testing Locally
 

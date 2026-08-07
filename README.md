@@ -30,6 +30,7 @@ scripts/          User-facing scripts, organized by topic
   photography/      Photography workflow automation
   lib/              Shared library (sourced at dev time, inlined at build time)
 bin/              Internal CI/CD tooling (not published as packages)
+test/             bats test suites, command stubs and the shared test helper
 ```
 
 ## Code Style
@@ -37,6 +38,20 @@ bin/              Internal CI/CD tooling (not published as packages)
 Bash scripts follow the
 [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html).
 All code is checked with [ShellCheck](https://www.shellcheck.net/) in CI.
+
+## Tests
+
+[bats-core](https://github.com/bats-core/bats-core) suites in `test/`, run against
+Linux and macOS in CI:
+
+```bash
+make install   # brew install bats-core
+make test      # run the suite
+make check     # ShellCheck + tests
+```
+
+See [`test/README.md`](test/README.md) for how the suites are structured and how to
+add one.
 
 ## Installation
 
@@ -83,6 +98,7 @@ Scripts that ship with a config file will include it in the same directory, so t
 ## Contributing
 
 Contributions are welcome. Open an issue to discuss changes or submit a pull request.
+Please run `make check` first, and register any new script in `scripts.yaml`.
 
 ## License
 
