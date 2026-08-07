@@ -76,6 +76,14 @@ Only scripts registered in `scripts.yaml` are publishable. Scripts under `bin/` 
 - `bin/update-readme-table.sh` regenerates README tables in downstream repos from the manifest
 - **Release notes**: every GitHub Release should include a summary of user-facing changes (new features, fixes, breaking changes). Use markdown headers (`### New features`, `### Fixes`, etc.) for multi-item releases, or a plain bullet list for single-item releases.
 
+### Automated Tests & Coverage
+
+There is no test suite yet. [`TESTING.md`](TESTING.md) is the handover for adding one: it covers the
+toolchain (bats + kcov), the kcov traps that silently produce wrong numbers, how to test these
+particular scripts (subprocess runs with stubbed commands; `common.sh` sourced directly), and how to
+wire the coverage gate, Codecov and the shared jmerhar/coverage site. **Read it before writing tests
+or touching coverage** — `jmerhar/gh-maintenance` is the working reference implementation to copy from.
+
 ### Testing Locally
 
 Run the packager directly:
