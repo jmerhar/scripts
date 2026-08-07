@@ -44,8 +44,13 @@ assertions are unaffected) and leaves **stdout clean** (so `$output` assertions 
 
 ### Publishing the HTML report
 
-Copy the **whole** kcov output directory, not just `kcov-merged/` — kcov keeps the report's CSS and
-images at the output root, so publishing the merged subdirectory alone loses its styling.
+Publish **only `kcov-merged/`**. It is self-contained — its own `data/`, stylesheet, and per-file
+pages. The output *root* additionally holds kcov's runtime helpers: two `.so` files and **absolute
+symlinks into the directory kcov ran from**. Those symlinks dangle once copied anywhere else, and
+`upload-pages-artifact` cannot tar a dangling symlink — so publishing the whole directory breaks the
+deployment of the *shared* coverage site, for every project at once. Assert in `collect-coverage.sh`
+that the upload contains no symlinks and no `.so` files, so a future kcov change fails locally rather
+than in the shared repository.
 
 ### CI has no kcov package
 
