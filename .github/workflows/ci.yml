@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Both platforms are reported: a failure on one is not a reason to hide the other.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+
+      # These scripts are published for both Homebrew and APT, and several helpers branch on which
+      # coreutils are present — GNU `date -d` against BSD `date -r`, `stat -c` against `stat -f`.
+      # Running the suite on both platforms is what exercises each side of those branches; tests that
+      # need a tool the platform lacks skip themselves and say so.
+      - name: Install bats and yq (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bats
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.52.4/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      # bash is installed explicitly: macOS ships 3.2, while six of these scripts use case conversion,
+      # namerefs or associative arrays, all of which need 4+. Without it the result would depend on
+      # whatever the runner image happens to carry.
+      - name: Install bats and yq (macOS)
+        if: runner.os == 'macOS'
+        run: brew install bats-core yq bash
+
+      # lint.yml's ShellCheck job finds files by a *.sh glob, which the test helper and the stubs do
+      # not match: a stub has to be named exactly as the command it shadows, and the helper is loaded
+      # by bats rather than executed. They are linted here instead, next to the suite that uses them.
+      # Linux only — the findings are platform-independent, and shellcheck is not preinstalled on the
+      # macOS image.
+      - name: ShellCheck the test helper and stubs
+        if: runner.os == 'Linux'
+        run: shellcheck --severity=warning test/test_helper.bash test/stubs/_stub
+
+      - name: Run the bats suite
+        run: bats --print-output-on-failure test/

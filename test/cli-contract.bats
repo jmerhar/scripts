@@ -225,20 +225,31 @@ setup() {
   [[ "$output" == *"{on|off|status}"* ]]
 }
 
+########################################
+# Skips the calling test when the suite is running as root.
+# The two assertions below are about what a non-root caller is refused. Run as root — in a container,
+# or under sudo — nopasswd-sudo would instead proceed to change the real sudoers configuration, so
+# skipping is both the accurate result and the safe one.
+########################################
+require_non_root() {
+  [ "${EUID:-$(id -u)}" -ne 0 ] || skip "asserts the non-root refusal; this run is root"
+}
+
 # Root is checked before the command is validated, so a non-root caller is turned away even for a
 # nonsense command and never learns it was nonsense. That ordering is deliberate — nothing about the
-# request is acted on until privilege is established — and the "unknown command" status is reachable
-# only as root, which this suite never is.
+# request is acted on until privilege is established — which also means the "unknown command" status
+# is reachable only as root.
 @test "nopasswd-sudo checks for root before it validates the command" {
+  require_non_root
   run_script "$NOPASSWD" sideways
   [ "$status" -eq 1 ]
   [[ "$output" == *"must run as root"* ]]
   [[ "$output" != *"unknown command"* ]]
 }
 
-# The suite never runs as root, which is exactly the case worth asserting: every state-changing
-# command must refuse rather than half-apply.
+# Every command must refuse outright rather than half-apply when it cannot do the job.
 @test "nopasswd-sudo refuses to act without root" {
+  require_non_root
   for cmd in on off status; do
     run_script "$NOPASSWD" "$cmd"
     [ "$status" -eq 1 ] || { echo "$cmd did not refuse" >&2; return 1; }
