@@ -11,7 +11,7 @@ jobs:
     name: ShellCheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Run ShellCheck on all shell scripts
         run: |
@@ -22,7 +22,7 @@ jobs:
     name: Validate scripts.yaml manifest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install yq
         run: |
@@ -54,7 +54,7 @@ jobs:
     name: Packaging smoke test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install yq
         run: |
