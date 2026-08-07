@@ -125,5 +125,9 @@ setup() { setup_common; }
 Name tests as the behaviour being asserted, not the function being called — `refuses a negative
 timeout` rather than `test parse_options 3`.
 
+`harness.bats` covers the helper itself — the three seams, `$0` fidelity, the `PATH` guarantee and
+every stub control. Change `test_helper.bash` or `_stub` and that suite is what tells you whether the
+guarantees the other suites rely on still hold.
+
 Coverage measurement is not wired up yet; it arrives once the shared
 [jmerhar/coverage](https://github.com/jmerhar/coverage) setup is reworked.
