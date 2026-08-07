@@ -233,5 +233,8 @@ main() {
   run_prune
 }
 
-# Execute the main function with all script arguments.
-main "$@"
+# Only run when executed, not when sourced — the test suite sources this file to exercise its
+# individual functions.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

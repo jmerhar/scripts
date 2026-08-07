@@ -90,10 +90,25 @@ run_script() {
 }
 
 ########################################
+# Spells a path so that it names the same file as its argument while comparing unequal to it.
+# Scripts end in the idiomatic `[[ "${BASH_SOURCE[0]}" == "${0}" ]]` guard, and the suites need $0 to
+# be the script's own path for fidelity — but then both sides of that comparison are identical and
+# main would run on source. Bash offers no other signal: under `bash -c 'source "$0"'` a sourced
+# script is indistinguishable from an executed one, down to the length of BASH_SOURCE.
+# Inserting a `/./` gives the `source` argument a different spelling of the same file, so the guard
+# is false while every $0-derived path still resolves exactly as it does in production. Nothing in
+# these scripts reads BASH_SOURCE other than the guard itself.
+# Arguments:
+#   path: Path to respell.
+# Outputs:
+#   Prints the path with a `/./` inserted before its final component.
+########################################
+_sourceable_path() {
+  printf '%s/./%s' "$(dirname "$1")" "$(basename "$1")"
+}
+
+########################################
 # Calls one function from a script or library, without running its main.
-# The script is sourced with $0 set to its own path, so $0-derived behaviour matches a real run.
-# This requires the script's trailing `main "$@"` to be guarded; an unguarded script would run to
-# completion on source.
 # Arguments:
 #   script: Absolute path of the script to source.
 #   func: Name of the function to call.
@@ -104,7 +119,8 @@ run_script() {
 run_func() {
   local script="$1" func="$2"
   shift 2
-  run bash -c 'source "$0"; "$@"' "${script}" "${func}" "$@"
+  run bash -c 'source "$1"; shift; "$@"' \
+    "${script}" "$(_sourceable_path "${script}")" "${func}" "$@"
 }
 
 ########################################
@@ -119,7 +135,8 @@ run_func() {
 ########################################
 run_snippet() {
   local script="$1" snippet="$2"
-  run bash -c 'source "$0"; eval "$1"' "${script}" "${snippet}"
+  run bash -c 'source "$1"; shift; eval "$1"' \
+    "${script}" "$(_sourceable_path "${script}")" "${snippet}"
 }
 
 ########################################
