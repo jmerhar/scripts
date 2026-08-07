@@ -51,3 +51,69 @@ Findings from measuring kcov against this repo, worth keeping for then:
   The suite asserts behaviour rather than layout, so it stays valid across that
   reshaping and protects it.
 
+## 3. Declare the bash 4+ dependency for the scripts that need it
+
+Eight scripts use features that do not exist in bash 3.2, which is what macOS
+ships as `/bin/bash`. None of them declares a `bash` dependency in
+`scripts.yaml`, so `brew install` on a stock Mac produces a script whose
+`#!/usr/bin/env bash` resolves to 3.2 and fails at run time.
+
+| Script | Feature | Needs |
+|---|---|---|
+| `compare-dirs` | `${var,,}`, `declare -A` | 4.0 |
+| `dmarc-report` | `declare -A` | 4.0 |
+| `local-backup` | `mapfile` | 4.0 |
+| `prune-orphaned-torrents` | `${var,,}`, `mapfile` | 4.0 |
+| `remove-sidecars` | `${var,,}`, `declare -A` | 4.0 |
+| `subtitle-report` | `${var,,}`, `declare -A` | 4.0 |
+| `subtitle-sync` | `local -n` | 4.3 |
+| `mdcheck-progress` | `mapfile` | 4.0 |
+
+Seven of those are published to Homebrew and so are exposed; `mdcheck-progress`
+is Debian-only, and every supported Debian release ships bash 5, so it is
+unaffected in practice.
+
+Adding `homebrew: [bash]` to each affected entry is the fix. Note that this
+changes the shebang problem only if the formula's `bash` precedes `/bin/bash` on
+the user's `PATH`, which is what Homebrew's own setup does; the alternative is
+rewriting the affected constructs to work under 3.2, which is considerably more
+work and would lose the associative arrays entirely.
+
+CI installs bash explicitly on the macOS runner for this reason, so the suite
+does not silently depend on whichever version the image happens to carry.
+
+## 4. subtitle-report: normalize_lang never matches a multi-word language name
+
+`normalize_lang` strips all whitespace from its input before looking it up:
+
+```bash
+raw="${raw//[[:space:]]/}"
+```
+
+but `init_lang_map` registers the multi-word names with their spaces intact
+(`modern greek`, `church slavonic`, `haitian creole`, `northern sami`, …). Those
+keys are therefore unreachable: `Modern Greek` becomes `moderngreek`, misses the
+map, and is passed through as a language code. Seventeen of the table's names are
+affected, among them `modern greek`, `haitian creole`, `northern sami`,
+`western frisian` and `south ndebele`.
+
+Either strip the spaces from the keys as they are registered, or collapse runs of
+whitespace to a single space instead of removing it. `test/helpers-format.bats`
+covers the single-word cases already, so the fix wants a case asserting
+`normalize_lang "Modern Greek"` yields `el`.
+
+## 5. validate_config's array check accepts a plain string
+
+```bash
+if ! declare -p "${var_name}" &>/dev/null || eval "(( \${#${var_name}[@]} == 0 ))"
+```
+
+For a scalar, `${#var[@]}` is 1, so `array:NAME` passes for any non-empty string
+and only catches an unset or genuinely empty variable. A config that set
+`EXCLUDES="*.tmp"` instead of `EXCLUDES=(*.tmp)` would validate and then behave
+as a one-element array, which is not what the caller asked to check.
+
+`declare -p` output can be tested for the `-a`/`-A` attribute to distinguish the
+two. `test/lib-common.bats` covers the array cases that do work; the fix wants
+one asserting a scalar is rejected.
+
