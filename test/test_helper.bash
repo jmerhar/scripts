@@ -140,6 +140,29 @@ run_snippet() {
 }
 
 ########################################
+# Copies one bin/ tool into a self-contained fake repository under the test's temp directory and
+# prints the path of the copy.
+# The bin/ tools locate the manifest and their output directories relative to $0 and honour no
+# override, so testing them against the real repository would read the real manifest and write into
+# the real dist/. They source nothing, so a lone copy in a fixture tree works unmodified: it reads
+# the fixture manifest and writes only inside the test's own directory.
+# Sets FAKE_REPO and FAKE_TOOL rather than printing the path: a command substitution would run in a
+# subshell, leaving FAKE_REPO unset in the caller and every fixture path resolving against the
+# filesystem root.
+# Globals:
+#   REPO_ROOT, BATS_TEST_TMPDIR; sets FAKE_REPO and FAKE_TOOL.
+# Arguments:
+#   tool: Filename of the tool in bin/, e.g. package-script.sh.
+########################################
+fake_repo_tool() {
+  FAKE_REPO="$BATS_TEST_TMPDIR/repo"
+  FAKE_TOOL="$FAKE_REPO/bin/$1"
+  export FAKE_REPO FAKE_TOOL
+  mkdir -p "$FAKE_REPO/bin"
+  cp "$REPO_ROOT/bin/$1" "$FAKE_TOOL"
+}
+
+########################################
 # Asserts a stub recorded a call whose argv matches a pattern.
 # Globals:
 #   STUB_CALLS

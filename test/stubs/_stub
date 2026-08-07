@@ -72,6 +72,19 @@ case "${command_name}" in
     # Stubbed rather than delegated to the real tool because dpkg-deb is absent on macOS, and
     # package-script.sh silently skips .deb generation when it cannot find it. Without a stub the
     # packaging suite would quietly test nothing on a Mac and everything on Linux.
+    #
+    # The caller deletes the staging tree as soon as the build returns, so the control metadata is
+    # copied out here — it is the package's user-visible metadata and the point of the exercise.
+    for arg in "$@"; do
+      if [[ -f "${arg}/DEBIAN/control" ]]; then
+        cp "${arg}/DEBIAN/control" "${fixtures}/dpkg-deb.control"
+        if [[ -f "${arg}/DEBIAN/conffiles" ]]; then
+          cp "${arg}/DEBIAN/conffiles" "${fixtures}/dpkg-deb.conffiles"
+        fi
+        ( cd "${arg}" && find . -type f | sort ) > "${fixtures}/dpkg-deb.contents"
+        break
+      fi
+    done
     if (( $# >= 2 )); then
       printf 'stub deb\n' > "$(last_arg "$@")"
     fi
