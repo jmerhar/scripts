@@ -292,6 +292,10 @@ init_lang_map() {
     if [[ -n "${names}" ]]; then
       IFS=',' read -ra name_list <<<"${names}"
       for key in "${name_list[@]}"; do
+        # Registered without whitespace, because normalize_lang strips it from what it looks up:
+        # a multi-word name has to be keyed the same way on both sides to be reachable at all.
+        # This also makes "modern greek", "Modern Greek" and "moderngreek" equivalent.
+        key="${key//[[:space:]]/}"
         [[ -n "${key}" ]] && _lang_canon["${key}"]="${a2}"
       done
     fi

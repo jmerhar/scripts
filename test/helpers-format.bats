@@ -404,6 +404,66 @@ require_gnu_date() {
   [ "$output" = "qqq" ]
 }
 
+# normalize_lang strips whitespace from what it looks up, so the table's multi-word names have to be
+# keyed the same way or they can never match — they were previously registered with their spaces
+# intact, leaving all seventeen of them unreachable and returned as if they were language codes.
+@test "subtitle-report normalize_lang resolves a multi-word language name" {
+  run_func "$SUBREPORT" normalize_lang "Modern Greek"
+  [ "$output" = "el" ]
+}
+
+@test "subtitle-report normalize_lang resolves multi-word names regardless of spacing or case" {
+  run_func "$SUBREPORT" normalize_lang "modern greek"
+  [ "$output" = "el" ]
+  run_func "$SUBREPORT" normalize_lang "MODERN GREEK"
+  [ "$output" = "el" ]
+  run_func "$SUBREPORT" normalize_lang "  Modern   Greek  "
+  [ "$output" = "el" ]
+  run_func "$SUBREPORT" normalize_lang "moderngreek"
+  [ "$output" = "el" ]
+}
+
+@test "subtitle-report normalize_lang resolves every multi-word name in the table" {
+  # One per affected entry, spanning the different shapes: two words, three, and a hyphenated one
+  # whose hyphen must survive.
+  local -A expected=(
+    ["Modern Greek"]=el
+    ["Haitian Creole"]=ht
+    ["Northern Sami"]=se
+    ["Western Frisian"]=fy
+    ["South Ndebele"]=nr
+    ["North Ndebele"]=nd
+    ["Central Khmer"]=km
+    ["Church Slavonic"]=cu
+    ["Old Church Slavonic"]=cu
+    ["Hiri Motu"]=ho
+    ["Sichuan Yi"]=ii
+    ["Scottish Gaelic"]=gd
+    ["Norwegian Bokmål"]=nb
+    ["Norwegian Nynorsk"]=nn
+    ["luba-katanga"]=lu
+  )
+  local name
+  for name in "${!expected[@]}"; do
+    run_func "$SUBREPORT" normalize_lang "$name"
+    [ "$output" = "${expected[$name]}" ] || {
+      echo "normalize_lang '$name' gave '$output', wanted '${expected[$name]}'" >&2
+      return 1
+    }
+  done
+}
+
+@test "subtitle-report normalize_lang still resolves single-word names and codes" {
+  run_func "$SUBREPORT" normalize_lang greek
+  [ "$output" = "el" ]
+  run_func "$SUBREPORT" normalize_lang ell
+  [ "$output" = "el" ]
+  run_func "$SUBREPORT" normalize_lang gre
+  [ "$output" = "el" ]
+  run_func "$SUBREPORT" normalize_lang el
+  [ "$output" = "el" ]
+}
+
 @test "lang_from_tokens takes the language from a bare token" {
   run_func "$SUBREPORT" lang_from_tokens en
   [ "$output" = "en" ]
