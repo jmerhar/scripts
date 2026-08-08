@@ -16,6 +16,7 @@ A collection of packaged shell scripts for macOS and Debian/Ubuntu, distributed 
   - `scripts/photography/` — Photography workflow automation
   - `scripts/lib/` — Shared library sourced by other scripts (not published as a package)
 - `bin/` — Internal CI/CD tooling (packaging, dependency installation). Not published as packages.
+- `test/` — bats suites, the shared test helper, and the command stubs. Not published as packages.
 - `scripts.yaml` — Central manifest defining all publishable scripts, their metadata, and dependencies.
 
 Config files (`.conf`) live next to their scripts (e.g., `scripts/system/local-backup.conf`). They are discovered by convention — no metadata field needed.
@@ -75,6 +76,31 @@ Only scripts registered in `scripts.yaml` are publishable. Scripts under `bin/` 
 - `.github/workflows/publish.yml` packages on release or manual dispatch, then pushes formulas to `jmerhar/homebrew-scripts` and signed `.deb` packages to `jmerhar/apt-scripts`
 - `bin/update-readme-table.sh` regenerates README tables in downstream repos from the manifest
 - **Release notes**: every GitHub Release should include a summary of user-facing changes (new features, fixes, breaking changes). Use markdown headers (`### New features`, `### Fixes`, etc.) for multi-item releases, or a plain bullet list for single-item releases.
+
+### Automated Tests
+
+[bats-core](https://github.com/bats-core/bats-core) suites live in `test/`, one per area, and run on
+Linux and macOS via `.github/workflows/ci.yml`. See [`test/README.md`](test/README.md) before writing
+one — it covers the three ways a test reaches the code, the safety rules, and how the stubs work.
+
+```bash
+make test     # the suite
+make lint     # ShellCheck, including the helper and stubs
+make check    # both; gate a commit on this
+```
+
+Two rules matter most:
+
+- **Code under test is reached only through `run_script`, `run_func` or `run_snippet`.** All three run
+  it in a subprocess with `$0` set to the script's own path, because every script derives its library
+  include, `SCRIPT_NAME`, install prefix, config search path and usage text from `$0`.
+- **`test/stubs` must stay first on `PATH`** — `setup_common` fails the test otherwise. `load_config`
+  resolves its config path from `$0` and honours no override, so the scripts read the repo's own
+  committed `.conf` files, which on a real machine can name real volumes. Assert on stub call logs,
+  never on side effects, and write nothing outside `$BATS_TEST_TMPDIR`.
+
+Coverage measurement is not wired up yet; it arrives once the shared
+[jmerhar/coverage](https://github.com/jmerhar/coverage) setup is reworked.
 
 ### Testing Locally
 

@@ -92,4 +92,8 @@ main() {
   decrypt_pdf "${password}" "${input_file}"
 }
 
-main "$@"
+# Only run when executed, not when sourced — the test suite sources this file to exercise its
+# individual functions.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi

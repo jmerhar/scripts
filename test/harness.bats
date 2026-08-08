@@ -1,0 +1,232 @@
+#!/usr/bin/env bats
+#
+# Tests the test harness itself.
+#
+# Every other suite trusts test_helper.bash to run the right file, with the right $0, under a PATH
+# where nothing real can be reached. A fault there does not announce itself: it makes suites pass
+# while exercising something other than what they name, or — worse — lets a script reach a real
+# rsync. These assertions are what keep the rest of the suite meaningful, so they check the harness's
+# guarantees rather than any script's behaviour.
+
+load test_helper
+
+setup() {
+  setup_common
+
+  # A stand-in for a real script: the same guard, and enough reporting to show what the harness did.
+  FIXTURE="$BATS_TEST_TMPDIR/fixture-tool.sh"
+  cat > "$FIXTURE" <<'EOF'
+#!/usr/bin/env bash
+set -o errexit
+set -o nounset
+set -o pipefail
+
+VALUE="from the fixture"
+
+report_dollar_zero() { printf '%s' "$0"; }
+double() { printf '%s' "$(( $1 * 2 ))"; }
+fail_with() { return "$1"; }
+
+main() {
+  printf 'main ran with [%s]' "$*"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi
+EOF
+  chmod +x "$FIXTURE"
+}
+
+# --- The three seams ---------------------------------------------------------------------------
+
+@test "run_script runs the script's main" {
+  run_script "$FIXTURE" alpha beta
+  [ "$status" -eq 0 ]
+  [ "$output" = "main ran with [alpha beta]" ]
+}
+
+@test "run_func calls one function and leaves main alone" {
+  run_func "$FIXTURE" double 21
+  [ "$status" -eq 0 ]
+  [ "$output" = "42" ]
+}
+
+@test "run_snippet evaluates bash against the sourced script's state" {
+  run_snippet "$FIXTURE" 'printf "%s" "$VALUE"'
+  [ "$status" -eq 0 ]
+  [ "$output" = "from the fixture" ]
+}
+
+@test "run_func propagates a function's exit status" {
+  run_func "$FIXTURE" fail_with 3
+  [ "$status" -eq 3 ]
+}
+
+@test "run_script propagates a script's exit status" {
+  run_script "$REPO_ROOT/scripts/utility/unlock-pdf.sh"
+  [ "$status" -eq 1 ]
+}
+
+# --- $0 fidelity, which everything $0-derived depends on ---------------------------------------
+
+@test "run_script sets \$0 to the script's own path" {
+  run_snippet "$FIXTURE" 'printf "%s" "$0"'
+  [ "$output" = "$FIXTURE" ]
+}
+
+@test "run_func sets \$0 to the script's own path" {
+  run_func "$FIXTURE" report_dollar_zero
+  [ "$output" = "$FIXTURE" ]
+}
+
+# The whole reason run_func can source a guarded script: the path handed to `source` names the same
+# file as $0 but is spelled differently, so the guard is false. If these ever became equal, every
+# run_func call would silently start running main instead of the function asked for.
+@test "_sourceable_path names the same file as its argument" {
+  local respelled
+  respelled=$(_sourceable_path "$FIXTURE")
+  [ "$respelled" != "$FIXTURE" ]
+  [ "$(cat "$respelled")" = "$(cat "$FIXTURE")" ]
+}
+
+@test "sourcing through the respelled path does not trigger the guard" {
+  run_snippet "$FIXTURE" 'printf "no main"'
+  [ "$output" = "no main" ]
+  [[ "$output" != *"main ran"* ]]
+}
+
+# --- The PATH guarantee ------------------------------------------------------------------------
+
+@test "the stub directory is first on PATH" {
+  [ "${PATH%%:*}" = "$BATS_TEST_DIRNAME/stubs" ]
+}
+
+@test "a stubbed command resolves to the stub, not the real binary" {
+  run command -v rsync
+  [ "$output" = "$BATS_TEST_DIRNAME/stubs/rsync" ]
+}
+
+@test "the PATH assertion fails when the stubs are not first" {
+  PATH="/usr/bin:$PATH"
+  run _assert_stubs_first
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"stub directory is not first on PATH"* ]]
+}
+
+# --- Stub behaviour ----------------------------------------------------------------------------
+
+@test "a stub records its argv and succeeds" {
+  run rsync -a --delete /from /to
+  [ "$status" -eq 0 ]
+  [ "$(cat "$STUB_CALLS")" = "rsync -a --delete /from /to" ]
+}
+
+@test "each stub records under its own command name" {
+  exiftool -Model x.jpg
+  ffmpeg -i in.mkv
+  run cat "$STUB_CALLS"
+  [[ "$output" == *"exiftool -Model x.jpg"* ]]
+  [[ "$output" == *"ffmpeg -i in.mkv"* ]]
+}
+
+@test "stub_called matches a recorded call" {
+  rsync -a --delete /from /to
+  stub_called 'rsync .*--delete'
+  run stub_called 'rsync .*--dry-run'
+  [ "$status" -ne 0 ]
+}
+
+@test "stub_calls counts invocations, including none" {
+  [ "$(stub_calls rsync)" -eq 0 ]
+  rsync one
+  rsync two
+  [ "$(stub_calls rsync)" -eq 2 ]
+}
+
+@test "stub_fails makes a stub exit non-zero" {
+  stub_fails rsync
+  run rsync -a x y
+  [ "$status" -eq 1 ]
+}
+
+@test "stub_fails can name the exit status" {
+  stub_fails rsync 23
+  run rsync -a x y
+  [ "$status" -eq 23 ]
+  # The call is still recorded, so a test can assert on what was attempted.
+  stub_called 'rsync -a x y'
+}
+
+@test "stub_outputs gives a stub canned stdout" {
+  stub_outputs exiftool <<< 'FUJIFILM X100V'
+  run exiftool -Model photo.raf
+  [ "$status" -eq 0 ]
+  [ "$output" = "FUJIFILM X100V" ]
+}
+
+@test "a stub with no fixtures prints nothing" {
+  run rsync -a x y
+  [ -z "$output" ]
+}
+
+@test "the qpdf stub leaves an output file, which its caller checks for" {
+  run qpdf --decrypt --password=x "$BATS_TEST_TMPDIR/in.pdf" "$BATS_TEST_TMPDIR/out.pdf"
+  [ "$status" -eq 0 ]
+  [ -f "$BATS_TEST_TMPDIR/out.pdf" ]
+}
+
+# --- Isolation ---------------------------------------------------------------------------------
+
+@test "the call log starts empty in every test" {
+  [ -f "$STUB_CALLS" ]
+  [ ! -s "$STUB_CALLS" ]
+}
+
+@test "the temp directory is this test's own and is writable" {
+  [ -d "$BATS_TEST_TMPDIR" ]
+  touch "$BATS_TEST_TMPDIR/probe"
+  [ -f "$BATS_TEST_TMPDIR/probe" ]
+}
+
+@test "the environment is pinned so results cannot vary by machine" {
+  [ "$TZ" = "UTC" ]
+  [ "$LC_ALL" = "C" ]
+}
+
+@test "logging variables inherited from the developer's shell are cleared" {
+  [ -z "${LOG_FILE:-}" ]
+  [ -z "${IS_DEBUG_MODE:-}" ]
+  [ -z "${_LOG_QUIET:-}" ]
+  [ -z "${SCRIPT_NAME:-}" ]
+}
+
+# --- fake_repo_tool ----------------------------------------------------------------------------
+
+# Sets its variables rather than printing a path: a command substitution would run it in a subshell
+# and leave FAKE_REPO unset in the caller, which resolves every fixture path against the filesystem
+# root instead of the test's own directory.
+@test "fake_repo_tool sets both of its variables in the caller" {
+  fake_repo_tool package-script.sh
+  [ -n "$FAKE_REPO" ]
+  [ -n "$FAKE_TOOL" ]
+  [ "$FAKE_REPO" = "$BATS_TEST_TMPDIR/repo" ]
+  [ "$FAKE_TOOL" = "$FAKE_REPO/bin/package-script.sh" ]
+}
+
+@test "fake_repo_tool copies a working tool into the fake repository" {
+  fake_repo_tool package-script.sh
+  [ -f "$FAKE_TOOL" ]
+  run_script "$FAKE_TOOL"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Expected exactly 2 arguments"* ]]
+}
+
+@test "the copied tool reads the fake repository's manifest, not the real one" {
+  fake_repo_tool package-script.sh
+  run_script "$FAKE_TOOL" unlock-pdf v1.0.0
+  [ "$status" -eq 1 ]
+  # unlock-pdf exists in the real manifest; the fake repository has none at all.
+  [[ "$output" == *"Manifest not found:"* ]]
+  [[ "$output" == *"$BATS_TEST_TMPDIR"* ]]
+}
