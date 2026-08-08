@@ -155,7 +155,14 @@ require_gnu_date() {
   [ "$output" = "1d 1h" ]
 }
 
+# A clock skew can hand this a negative age. The value has to be at least an hour past zero to pin the
+# clamp: integer division truncates toward zero, so a small negative renders as "0h 0m" with or
+# without it, and an assertion using one would pass even if the clamp were deleted.
 @test "prune format_age treats a negative age as zero" {
+  run_func "$PRUNE" format_age -3600
+  [ "$output" = "0h 0m" ]
+  run_func "$PRUNE" format_age -90000
+  [ "$output" = "0h 0m" ]
   run_func "$PRUNE" format_age -5
   [ "$output" = "0h 0m" ]
 }
