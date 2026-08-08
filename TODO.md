@@ -81,39 +81,3 @@ Note that until a script is re-released, its currently published version still
 carries no guard. The failure there is at least loud — under `errexit` a missing
 `mapfile` exits 127 and a nameref exits 2 — but the message names the construct,
 not the cause.
-
-## 4. subtitle-report: normalize_lang never matches a multi-word language name
-
-`normalize_lang` strips all whitespace from its input before looking it up:
-
-```bash
-raw="${raw//[[:space:]]/}"
-```
-
-but `init_lang_map` registers the multi-word names with their spaces intact
-(`modern greek`, `church slavonic`, `haitian creole`, `northern sami`, …). Those
-keys are therefore unreachable: `Modern Greek` becomes `moderngreek`, misses the
-map, and is passed through as a language code. Seventeen of the table's names are
-affected, among them `modern greek`, `haitian creole`, `northern sami`,
-`western frisian` and `south ndebele`.
-
-Either strip the spaces from the keys as they are registered, or collapse runs of
-whitespace to a single space instead of removing it. `test/helpers-format.bats`
-covers the single-word cases already, so the fix wants a case asserting
-`normalize_lang "Modern Greek"` yields `el`.
-
-## 5. validate_config's array check accepts a plain string
-
-```bash
-if ! declare -p "${var_name}" &>/dev/null || eval "(( \${#${var_name}[@]} == 0 ))"
-```
-
-For a scalar, `${#var[@]}` is 1, so `array:NAME` passes for any non-empty string
-and only catches an unset or genuinely empty variable. A config that set
-`EXCLUDES="*.tmp"` instead of `EXCLUDES=(*.tmp)` would validate and then behave
-as a one-element array, which is not what the caller asked to check.
-
-`declare -p` output can be tested for the `-a`/`-A` attribute to distinguish the
-two. `test/lib-common.bats` covers the array cases that do work; the fix wants
-one asserting a scalar is rejected.
-
