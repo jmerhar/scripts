@@ -50,34 +50,3 @@ Findings from measuring kcov against this repo, worth keeping for then:
   `prune-orphaned-torrents`, and one redirected group in `bin/package-script.sh`.
   The suite asserts behaviour rather than layout, so it stays valid across that
   reshaping and protects it.
-
-## 3. Release the bash-version declarations
-
-`min_bash` in `scripts.yaml` now states the version each script needs, and
-`bin/package-script.sh` turns it into a guard compiled into the published script,
-a versioned `Depends: bash (>= X)` for the `.deb`, and `depends_on "bash"` plus a
-shebang rewrite for the formula. `bin/check-bash-version.sh` re-derives the
-requirement from the source so the field cannot drift.
-
-What remains is shipping it: the declarations only reach users on the next
-release of each affected script.
-
-| Script | Feature | `min_bash` |
-|---|---|---|
-| `compare-dirs` | `${var,,}`, `declare -A` | 4.0 |
-| `dmarc-report` | `declare -A` | 4.0 |
-| `local-backup` | `mapfile` | 4.0 |
-| `mdcheck-progress` | `mapfile` | 4.0 |
-| `prune-orphaned-torrents` | `${var,,}`, `mapfile` | 4.0 |
-| `remove-sidecars` | `${var,,}`, `declare -A` | 4.0 |
-| `subtitle-report` | `${var,,}`, `declare -A` | 4.0 |
-| `subtitle-sync` | `local -n` | 4.3 |
-
-Seven are published to Homebrew and so were exposed to macOS's bash 3.2;
-`mdcheck-progress` is Debian-only and every supported Debian release ships bash 5,
-so its declaration is documentation rather than a fix.
-
-Note that until a script is re-released, its currently published version still
-carries no guard. The failure there is at least loud — under `errexit` a missing
-`mapfile` exits 127 and a nameref exits 2 — but the message names the construct,
-not the cause.
