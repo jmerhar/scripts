@@ -42,6 +42,7 @@ scripts:
   script-name:
     path: scripts/topic/script-name.sh
     description: "One-line description."
+    min_bash: "4.3"              # Optional; omit when only baseline features are used
     platforms: [debian]          # Optional; omit to publish to both (see below)
     dependencies:
       common: [dep1, dep2]       # All platforms
@@ -50,6 +51,25 @@ scripts:
 ```
 
 The optional `platforms:` list restricts which package targets are built; valid values are `homebrew` and `debian`. Omit it to publish to both (the default). Set `[debian]` for a Linux-only tool (skips the Homebrew formula) or `[homebrew]` for a macOS-only one (skips the `.deb`).
+
+### Minimum bash version (`min_bash`)
+
+macOS ships bash 3.2 as `/bin/bash`, so any script using a later feature — `${var,,}`, `declare -A`,
+`mapfile`, `local -n` — must say so. `min_bash` is stated once and drives three things:
+
+- a version guard compiled into the **published** script, right after the shebang, written in bash 3.x
+  syntax so it runs on the versions it rejects. The development copy in `scripts/` has no guard.
+- `Depends: bash (>= X)` in the `.deb`. A versioned dependency is required here: `bash` is Essential,
+  so naming it without a version is a Lintian warning.
+- `depends_on "bash"` in the formula, plus an `inreplace` repointing the shebang at the brewed bash.
+  Homebrew has no version constraints and no versioned bash formula, so the guard is what asserts the
+  version; the shebang rewrite is what makes the dependency effective under cron and launchd, where
+  `env bash` would otherwise find `/bin/bash`.
+
+`bin/check-bash-version.sh` re-derives the requirement from each script's source and fails if the
+declaration is missing or too low. It runs in `make lint` and in CI, so the field cannot drift — **add
+a pattern there when adopting a newer construct**, since an undetected feature means an under-declared
+minimum and a package that installs but cannot run.
 
 ### Shared Library (`@include`)
 

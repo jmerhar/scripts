@@ -51,36 +51,36 @@ Findings from measuring kcov against this repo, worth keeping for then:
   The suite asserts behaviour rather than layout, so it stays valid across that
   reshaping and protects it.
 
-## 3. Declare the bash 4+ dependency for the scripts that need it
+## 3. Release the bash-version declarations
 
-Eight scripts use features that do not exist in bash 3.2, which is what macOS
-ships as `/bin/bash`. None of them declares a `bash` dependency in
-`scripts.yaml`, so `brew install` on a stock Mac produces a script whose
-`#!/usr/bin/env bash` resolves to 3.2 and fails at run time.
+`min_bash` in `scripts.yaml` now states the version each script needs, and
+`bin/package-script.sh` turns it into a guard compiled into the published script,
+a versioned `Depends: bash (>= X)` for the `.deb`, and `depends_on "bash"` plus a
+shebang rewrite for the formula. `bin/check-bash-version.sh` re-derives the
+requirement from the source so the field cannot drift.
 
-| Script | Feature | Needs |
+What remains is shipping it: the declarations only reach users on the next
+release of each affected script.
+
+| Script | Feature | `min_bash` |
 |---|---|---|
 | `compare-dirs` | `${var,,}`, `declare -A` | 4.0 |
 | `dmarc-report` | `declare -A` | 4.0 |
 | `local-backup` | `mapfile` | 4.0 |
+| `mdcheck-progress` | `mapfile` | 4.0 |
 | `prune-orphaned-torrents` | `${var,,}`, `mapfile` | 4.0 |
 | `remove-sidecars` | `${var,,}`, `declare -A` | 4.0 |
 | `subtitle-report` | `${var,,}`, `declare -A` | 4.0 |
 | `subtitle-sync` | `local -n` | 4.3 |
-| `mdcheck-progress` | `mapfile` | 4.0 |
 
-Seven of those are published to Homebrew and so are exposed; `mdcheck-progress`
-is Debian-only, and every supported Debian release ships bash 5, so it is
-unaffected in practice.
+Seven are published to Homebrew and so were exposed to macOS's bash 3.2;
+`mdcheck-progress` is Debian-only and every supported Debian release ships bash 5,
+so its declaration is documentation rather than a fix.
 
-Adding `homebrew: [bash]` to each affected entry is the fix. Note that this
-changes the shebang problem only if the formula's `bash` precedes `/bin/bash` on
-the user's `PATH`, which is what Homebrew's own setup does; the alternative is
-rewriting the affected constructs to work under 3.2, which is considerably more
-work and would lose the associative arrays entirely.
-
-CI installs bash explicitly on the macOS runner for this reason, so the suite
-does not silently depend on whichever version the image happens to carry.
+Note that until a script is re-released, its currently published version still
+carries no guard. The failure there is at least loud — under `errexit` a missing
+`mapfile` exits 127 and a nameref exits 2 — but the message names the construct,
+not the cause.
 
 ## 4. subtitle-report: normalize_lang never matches a multi-word language name
 

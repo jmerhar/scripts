@@ -57,6 +57,11 @@ add one.
 
 The recommended approach is to use a package manager, which handles dependencies and updates automatically.
 
+Most of these scripts need **bash 4.0 or newer** (one needs 4.3). Both package managers install a
+suitable bash and point the script at it, so there is nothing extra to do — this matters mainly on
+macOS, which still ships bash 3.2 as `/bin/bash`. A script installed from a plain tarball checks the
+version itself and says so rather than failing obscurely.
+
 ### macOS (Homebrew)
 
 ```bash
