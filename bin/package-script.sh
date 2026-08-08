@@ -91,6 +91,72 @@ find_config_file() {
 }
 
 #######################################
+# Writes the published form of a script — the source, preceded by a bash-version guard when the
+# manifest declares one — and prints its path.
+#
+# The guard is generated here rather than kept in the source so that the required version is stated
+# once, in scripts.yaml, alongside the dependency metadata derived from it; the two cannot then
+# disagree. It sits immediately after the shebang, ahead of anything that a older bash would choke
+# on, and is written in bash 3.x syntax so that it is reachable on the very versions it rejects.
+#
+# The result is used for every channel, so the tarball, the .deb and the Homebrew bottle all carry
+# byte-identical content.
+# Arguments:
+#   script_path - Path to the development form of the script.
+#   min_bash    - Required version as major.minor, or empty for no requirement.
+# Outputs:
+#   Prints the path of the prepared script, which keeps the original basename.
+# Returns:
+#   1 if the script does not begin with a shebang.
+#######################################
+prepare_script() {
+  local script_path="$1"
+  local min_bash="$2"
+
+  local prepared_dir
+  prepared_dir="$(mktemp -d)"
+  local script_filename
+  script_filename="$(basename "${script_path}")"
+  # Keeping the original basename matters: it becomes the name inside the tarball and the one the
+  # formula's bin.install refers to.
+  local prepared="${prepared_dir}/${script_filename}"
+
+  if [[ -z "${min_bash}" ]]; then
+    cat "${script_path}" > "${prepared}"
+    echo "${prepared}"
+    return
+  fi
+
+  if [[ "$(head -n 1 "${script_path}")" != '#!'* ]]; then
+    log_error "Cannot add a bash-version guard: ${script_path} does not start with a shebang."
+    return 1
+  fi
+
+  local major="${min_bash%%.*}"
+  local minor="${min_bash#*.}"
+  if [[ "${minor}" == "${min_bash}" ]]; then
+    minor=0
+  fi
+
+  {
+    head -n 1 "${script_path}"
+    cat <<GUARD
+
+# Requires bash ${min_bash}: this script uses features that earlier releases lack. Deliberately
+# written in bash 3.x syntax, so that it still runs — and explains itself — on a version it rejects.
+if (( BASH_VERSINFO[0] < ${major} || (BASH_VERSINFO[0] == ${major} && BASH_VERSINFO[1] < ${minor}) )); then
+  echo "Error: \$(basename "\$0") requires bash ${min_bash} or newer (running \${BASH_VERSION})." >&2
+  exit 1
+fi
+
+GUARD
+    tail -n +2 "${script_path}"
+  } > "${prepared}"
+
+  echo "${prepared}"
+}
+
+#######################################
 # Creates a flat tarball containing the script and optional config file.
 # Arguments:
 #   name        - Script name.
@@ -174,6 +240,7 @@ generate_homebrew_formula() {
   local deps_common="$9"
   local deps_homebrew="${10}"
   local license="${11}"
+  local min_bash="${12}"
 
   # Strip v prefix for the version field
   local clean_version="${version#v}"
@@ -202,8 +269,20 @@ generate_homebrew_formula() {
     install_lines+=$'\n'"    etc.install \"${config_filename}\" => \"${config_filename}\""
   fi
 
-  # Build depends_on lines
+  # Point the shebang at the dependency rather than leaving `env bash` to search PATH. macOS ships
+  # bash 3.2 as /bin/bash, and a launchd or cron invocation has no Homebrew directory on its PATH, so
+  # `env bash` there finds the version this script cannot run on.
+  if [[ -n "${min_bash}" ]]; then
+    install_lines+=$'\n'"    inreplace bin/\"${name}\", %r{^#!/usr/bin/env bash\$}, \"#!#{Formula[\"bash\"].opt_bin}/bash\""
+  fi
+
+  # Build depends_on lines. Homebrew has no version constraints and no versioned bash formula, so the
+  # requirement is expressed as a plain dependency; the guard compiled into the script is what
+  # actually asserts the version.
   local depends_lines=""
+  if [[ -n "${min_bash}" ]]; then
+    depends_lines+="  depends_on \"bash\""$'\n'
+  fi
   for dep in ${deps_common}; do
     depends_lines+="  depends_on \"${dep}\""$'\n'
   done
@@ -260,6 +339,7 @@ generate_deb_package() {
   local config_path="$8"
   local deps_common="$9"
   local deps_debian="${10}"
+  local min_bash="${11}"
 
   if ! command -v dpkg-deb &> /dev/null; then
     log_info "'dpkg-deb' not found. Skipping .deb package generation."
@@ -270,8 +350,13 @@ generate_deb_package() {
 
   local deb_version="${version#v}"
 
-  # Build dependency string
+  # Build dependency string. bash is Essential, so Debian Policy wants it named only when a specific
+  # version is needed — which is exactly this case, and a versioned dependency is the form apt can
+  # enforce. A bare `Depends: bash` would instead be a Lintian warning.
   local deb_dependencies=""
+  if [[ -n "${min_bash}" ]]; then
+    deb_dependencies="bash (>= ${min_bash})"
+  fi
   for dep in ${deps_common}; do
     if [[ -n "${deb_dependencies}" ]]; then deb_dependencies+=", "; fi
     deb_dependencies+="${dep}"
@@ -411,6 +496,12 @@ main() {
   local platforms
   platforms=$(read_manifest "(.scripts.\"${name}\".platforms // [\"homebrew\", \"debian\"]) | join(\" \")")
 
+  # Minimum bash version, for scripts using features that older releases lack. Drives three things:
+  # the guard compiled into the published script, the versioned Debian dependency, and the Homebrew
+  # dependency plus shebang rewrite.
+  local min_bash
+  min_bash=$(read_manifest "(.scripts.\"${name}\".min_bash // \"\")")
+
   # Find config file by convention
   local script_dir
   script_dir=$(dirname "${full_script_path}")
@@ -423,9 +514,20 @@ main() {
 
   log_info "Packaging ${name} ${version}..."
 
+  # Every channel ships this one prepared copy, so their contents cannot diverge.
+  local published_script
+  published_script=$(prepare_script "${full_script_path}" "${min_bash}")
+  local prepared_dir
+  prepared_dir=$(dirname "${published_script}")
+  # shellcheck disable=SC2064  # expand prepared_dir now; it must not depend on later state
+  trap "rm -rf '${prepared_dir}'" EXIT
+  if [[ -n "${min_bash}" ]]; then
+    log_info "Requires bash ${min_bash}; compiling a version guard into the published script."
+  fi
+
   # Create tarball
   local tarball_path
-  tarball_path=$(create_tarball "${name}" "${version}" "${full_script_path}" "${config_path}")
+  tarball_path=$(create_tarball "${name}" "${version}" "${published_script}" "${config_path}")
   log_info "Tarball created: ${tarball_path}"
 
   # Compute SHA256
@@ -445,8 +547,8 @@ main() {
   if [[ " ${platforms} " == *" homebrew "* ]]; then
     generate_homebrew_formula \
       "${name}" "${version}" "${description}" "${homepage}" \
-      "${tarball_url}" "${sha256}" "${full_script_path}" "${config_path}" \
-      "${deps_common}" "${deps_homebrew}" "${license}"
+      "${tarball_url}" "${sha256}" "${published_script}" "${config_path}" \
+      "${deps_common}" "${deps_homebrew}" "${license}" "${min_bash}"
   else
     log_info "Skipping Homebrew formula (platforms: ${platforms})."
   fi
@@ -455,8 +557,8 @@ main() {
   if [[ " ${platforms} " == *" debian "* ]]; then
     generate_deb_package \
       "${name}" "${version}" "${description}" "${author}" "${homepage}" \
-      "${license}" "${full_script_path}" "${config_path}" \
-      "${deps_common}" "${deps_debian}"
+      "${license}" "${published_script}" "${config_path}" \
+      "${deps_common}" "${deps_debian}" "${min_bash}"
   else
     log_info "Skipping Debian package (platforms: ${platforms})."
   fi

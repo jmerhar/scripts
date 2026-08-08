@@ -306,6 +306,144 @@ EOF
   [ "$(stub_calls dpkg-deb)" -eq 0 ]
 }
 
+# --- The minimum bash version ------------------------------------------------------------------
+
+# The manifest value drives three separate things, and the point of deriving them from one field is
+# that they cannot disagree: the guard compiled into the script, the versioned Debian dependency, and
+# the Homebrew dependency plus shebang rewrite.
+
+@test "a script with no min_bash gets no guard and no bash dependency" {
+  default_manifest
+  run_script "$TOOL" my-tool v1.0.0
+  [ "$status" -eq 0 ]
+  run tar -xzOf "$FAKE_REPO/dist/tarballs/scripts-my-tool-v1.0.0.tar.gz" scripts-my-tool-v1.0.0/my-tool.sh
+  [[ "$output" != *"BASH_VERSINFO"* ]]
+  run cat "$FAKE_REPO/dist/homebrew/my-tool.rb"
+  [[ "$output" != *'depends_on "bash"'* ]]
+  [[ "$output" != *"inreplace"* ]]
+  run cat "$STUB_FIXTURES/dpkg-deb.control"
+  [[ "$output" != *"bash"* ]]
+}
+
+@test "min_bash compiles a version guard into the published script" {
+  default_manifest '    min_bash: "4.3"'
+  run_script "$TOOL" my-tool v1.0.0
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"compiling a version guard"* ]]
+  run tar -xzOf "$FAKE_REPO/dist/tarballs/scripts-my-tool-v1.0.0.tar.gz" scripts-my-tool-v1.0.0/my-tool.sh
+  [[ "$output" == *"BASH_VERSINFO[0] < 4"* ]]
+  [[ "$output" == *"BASH_VERSINFO[1] < 3"* ]]
+  [[ "$output" == *"requires bash 4.3 or newer"* ]]
+}
+
+# Asserted against the file's real line numbers rather than bats' `lines` array, which drops blank
+# lines and so cannot express "directly after the shebang".
+@test "the guard sits directly after the shebang, ahead of anything it must protect" {
+  default_manifest '    min_bash: "4.0"'
+  run_script "$TOOL" my-tool v1.0.0
+  local published="$BATS_TEST_TMPDIR/published.sh"
+  tar -xzOf "$FAKE_REPO/dist/tarballs/scripts-my-tool-v1.0.0.tar.gz" \
+    scripts-my-tool-v1.0.0/my-tool.sh > "$published"
+  [ "$(sed -n '1p' "$published")" = "#!/usr/bin/env bash" ]
+  [[ "$(sed -n '3p' "$published")" == "# Requires bash 4.0"* ]]
+  [[ "$(sed -n '5p' "$published")" == "if (( BASH_VERSINFO"* ]]
+}
+
+# A guard written with bash 4 syntax could not run on the versions it exists to reject.
+@test "the guard is parseable by the oldest bash it must run on" {
+  default_manifest '    min_bash: "4.0"'
+  run_script "$TOOL" my-tool v1.0.0
+  tar -xzOf "$FAKE_REPO/dist/tarballs/scripts-my-tool-v1.0.0.tar.gz" \
+    scripts-my-tool-v1.0.0/my-tool.sh > "$BATS_TEST_TMPDIR/published.sh"
+  run bash -n "$BATS_TEST_TMPDIR/published.sh"
+  [ "$status" -eq 0 ]
+  # /bin/bash is 3.2 on macOS, which is the case the guard exists for.
+  if [[ "$(/bin/bash -c 'echo ${BASH_VERSINFO[0]}')" -lt 4 ]]; then
+    run /bin/bash "$BATS_TEST_TMPDIR/published.sh"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"requires bash 4.0 or newer"* ]]
+  fi
+}
+
+@test "every channel ships the same guarded content" {
+  default_manifest '    min_bash: "4.0"'
+  run_script "$TOOL" my-tool v1.0.0
+  tar -xzOf "$FAKE_REPO/dist/tarballs/scripts-my-tool-v1.0.0.tar.gz" \
+    scripts-my-tool-v1.0.0/my-tool.sh > "$BATS_TEST_TMPDIR/from-tarball"
+  # The deb stub records the staging tree, so the installed copy can be compared against it.
+  run grep -c 'usr/local/bin/my-tool' "$STUB_FIXTURES/dpkg-deb.contents"
+  [ "$output" -eq 1 ]
+  run grep -c 'BASH_VERSINFO' "$BATS_TEST_TMPDIR/from-tarball"
+  [ "$output" -eq 1 ]
+}
+
+@test "min_bash becomes a versioned Debian dependency" {
+  default_manifest '    min_bash: "4.3"'
+  run_script "$TOOL" my-tool v1.0.0
+  run cat "$STUB_FIXTURES/dpkg-deb.control"
+  [[ "$output" == *"Depends: bash (>= 4.3)"* ]]
+}
+
+@test "the bash dependency merges with the script's own Debian dependencies" {
+  default_manifest '    min_bash: "4.0"' '    dependencies:' '      common: [jq]' '      debian: [libjq1]'
+  run_script "$TOOL" my-tool v1.0.0
+  run cat "$STUB_FIXTURES/dpkg-deb.control"
+  [[ "$output" == *"Depends: bash (>= 4.0), jq, libjq1"* ]]
+}
+
+@test "min_bash becomes a plain Homebrew dependency, since it has no version constraints" {
+  default_manifest '    min_bash: "4.3"'
+  run_script "$TOOL" my-tool v1.0.0
+  run cat "$FAKE_REPO/dist/homebrew/my-tool.rb"
+  [[ "$output" == *'depends_on "bash"'* ]]
+  # There is no versioned bash formula to point at, so the version must not appear here.
+  [[ "$output" != *'depends_on "bash@'* ]]
+}
+
+# env bash resolves through PATH, and a launchd or cron job has no Homebrew directory on its PATH —
+# so on macOS it would find the 3.2 in /bin. The rewrite is what makes the dependency effective.
+@test "the formula repoints the shebang at the brewed bash" {
+  default_manifest '    min_bash: "4.0"'
+  run_script "$TOOL" my-tool v1.0.0
+  run cat "$FAKE_REPO/dist/homebrew/my-tool.rb"
+  [[ "$output" == *'inreplace bin/"my-tool"'* ]]
+  [[ "$output" == *'%r{^#!/usr/bin/env bash$}'* ]]
+  [[ "$output" == *'"#!#{Formula["bash"].opt_bin}/bash"'* ]]
+}
+
+@test "the generated formula is valid Ruby" {
+  default_manifest '    min_bash: "4.0"' '    dependencies:' '      common: [jq]'
+  run_script "$TOOL" my-tool v1.0.0
+  if ! command -v ruby >/dev/null 2>&1; then
+    skip "ruby not available to syntax-check the formula"
+  fi
+  run ruby -c "$FAKE_REPO/dist/homebrew/my-tool.rb"
+  [ "$status" -eq 0 ]
+}
+
+@test "a major-only min_bash is treated as major.0" {
+  default_manifest '    min_bash: "5"'
+  run_script "$TOOL" my-tool v1.0.0
+  [ "$status" -eq 0 ]
+  run tar -xzOf "$FAKE_REPO/dist/tarballs/scripts-my-tool-v1.0.0.tar.gz" scripts-my-tool-v1.0.0/my-tool.sh
+  [[ "$output" == *"BASH_VERSINFO[0] < 5"* ]]
+  [[ "$output" == *"BASH_VERSINFO[1] < 0"* ]]
+}
+
+@test "prepare_script refuses a file with no shebang, rather than guarding the wrong line" {
+  printf 'echo no shebang here\n' > "$FAKE_REPO/scripts/utility/headless.sh"
+  run_func "$TOOL" prepare_script "$FAKE_REPO/scripts/utility/headless.sh" "4.0"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"does not start with a shebang"* ]]
+}
+
+@test "prepare_script copies a script through untouched when nothing is required" {
+  run_func "$TOOL" prepare_script "$FAKE_REPO/scripts/utility/my-tool.sh" ""
+  [ "$status" -eq 0 ]
+  run diff "$output" "$FAKE_REPO/scripts/utility/my-tool.sh"
+  [ "$status" -eq 0 ]
+}
+
 # --- Pieces worth checking directly ------------------------------------------------------------
 
 @test "find_config_file reports an adjacent config and nothing otherwise" {
@@ -320,3 +458,4 @@ EOF
   run_func "$TOOL" build_tarball_url "https://example.com/repo" my-tool v2.0.0
   [ "$output" = "https://example.com/repo/releases/download/my-tool-v2.0.0/scripts-my-tool-v2.0.0.tar.gz" ]
 }
+
