@@ -41,6 +41,12 @@ jobs:
           done < <(yq eval '.scripts | keys | .[]' scripts.yaml)
           ${ok}
 
+      # min_bash drives the guard compiled into published scripts and the dependency metadata for
+      # both channels. Declared by hand it would drift, so the requirement is re-derived from the
+      # source here and the build fails if a script has outgrown what it declares.
+      - name: Check declared bash versions cover the features used
+        run: ./bin/check-bash-version.sh
+
       - name: Warn about unregistered scripts
         run: |
           while IFS= read -r -d '' script; do
