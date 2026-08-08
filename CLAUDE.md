@@ -16,6 +16,7 @@ A collection of packaged shell scripts for macOS and Debian/Ubuntu, distributed 
   - `scripts/photography/` — Photography workflow automation
   - `scripts/lib/` — Shared library sourced by other scripts (not published as a package)
 - `bin/` — Internal CI/CD tooling (packaging, dependency installation). Not published as packages.
+- `test/` — bats suites, the shared test helper, and the command stubs. Not published as packages.
 - `scripts.yaml` — Central manifest defining all publishable scripts, their metadata, and dependencies.
 
 Config files (`.conf`) live next to their scripts (e.g., `scripts/system/local-backup.conf`). They are discovered by convention — no metadata field needed.
