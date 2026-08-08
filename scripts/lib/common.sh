@@ -237,7 +237,21 @@ validate_config() {
         fi
         ;;
       array)
-        if ! declare -p "${var_name}" &>/dev/null || eval "(( \${#${var_name}[@]} == 0 ))"; then
+        # The declared attributes distinguish an array from a plain string: ${#var[@]} is 1 for a
+        # scalar, so a length check alone accepts any non-empty value and the type is never verified.
+        local declaration="" attributes=""
+        if declaration=$(declare -p "${var_name}" 2>/dev/null); then
+          attributes="${declaration#declare -}"
+          attributes="${attributes%% *}"
+        fi
+
+        if [[ -z "${declaration}" ]]; then
+          log_error "Required setting '${var_name}' is missing or empty."
+          has_errors=true
+        elif [[ "${attributes}" != *[aA]* ]]; then
+          log_error "Required setting '${var_name}' must be an array, e.g. ${var_name}=(one two)."
+          has_errors=true
+        elif eval "(( \${#${var_name}[@]} == 0 ))"; then
           log_error "Required setting '${var_name}' is missing or empty."
           has_errors=true
         fi

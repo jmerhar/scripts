@@ -227,6 +227,51 @@ lib_copy() {
   [[ "$output" == *"Required setting 'DIRS' is missing or empty."* ]]
 }
 
+# ${#scalar[@]} is 1, so a length check alone accepts any non-empty string as an array and never
+# verifies the type. A config writing DIRS="/one /two" instead of DIRS=(/one /two) would have passed
+# validation and then been treated as a single path.
+@test "validate_config rejects a plain string given as an array" {
+  run_snippet "$LIB" 'DIRS="/one /two"; validate_config array:DIRS'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"must be an array"* ]]
+}
+
+@test "validate_config rejects other scalar types given as an array" {
+  run_snippet "$LIB" 'declare -i DIRS=5; validate_config array:DIRS'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"must be an array"* ]]
+  run_snippet "$LIB" 'declare -x DIRS=exported; validate_config array:DIRS'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"must be an array"* ]]
+}
+
+@test "validate_config tells a wrong type apart from a missing value" {
+  # The two failures are distinct problems and get distinct messages, so the report says which it is.
+  run_snippet "$LIB" 'DIRS="single"; validate_config array:DIRS'
+  [[ "$output" == *"must be an array"* ]]
+  [[ "$output" != *"missing or empty"* ]]
+
+  run_snippet "$LIB" 'DIRS=(); validate_config array:DIRS'
+  [[ "$output" == *"missing or empty"* ]]
+  [[ "$output" != *"must be an array"* ]]
+}
+
+@test "validate_config accepts an associative array" {
+  run_snippet "$LIB" 'declare -A MAP=([k]=v); validate_config array:MAP'
+  [ "$status" -eq 0 ]
+}
+
+@test "validate_config accepts an array carrying extra attributes" {
+  run_snippet "$LIB" 'declare -ar DIRS=(one two); validate_config array:DIRS'
+  [ "$status" -eq 0 ]
+}
+
+@test "validate_config accepts an array whose single element is empty" {
+  # One empty element is still a populated array; the check is on length, not content.
+  run_snippet "$LIB" 'DIRS=(""); validate_config array:DIRS'
+  [ "$status" -eq 0 ]
+}
+
 @test "validate_config rejects an unknown type" {
   run_snippet "$LIB" 'V=x; validate_config bogus:V'
   [ "$status" -eq 1 ]
