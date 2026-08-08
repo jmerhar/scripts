@@ -203,9 +203,9 @@ EOF
 
 # --- fake_repo_tool ----------------------------------------------------------------------------
 
-# Sets its variables rather than printing a path, because a command substitution would run it in a
-# subshell and leave FAKE_REPO unset — which made every fixture path resolve against the filesystem
-# root the first time this was written.
+# Sets its variables rather than printing a path: a command substitution would run it in a subshell
+# and leave FAKE_REPO unset in the caller, which resolves every fixture path against the filesystem
+# root instead of the test's own directory.
 @test "fake_repo_tool sets both of its variables in the caller" {
   fake_repo_tool package-script.sh
   [ -n "$FAKE_REPO" ]
