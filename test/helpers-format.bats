@@ -404,9 +404,10 @@ require_gnu_date() {
   [ "$output" = "qqq" ]
 }
 
-# normalize_lang strips whitespace from what it looks up, so the table's multi-word names have to be
-# keyed the same way or they can never match — they were previously registered with their spaces
-# intact, leaving all seventeen of them unreachable and returned as if they were language codes.
+# normalize_lang strips whitespace from what it looks up, so the table's multi-word names must be keyed
+# the same way to be reachable at all. A name keyed with its spaces intact can never match: it falls
+# through and is returned unchanged, as though the name itself were a language code. Seventeen of the
+# table's names are multi-word, so this covers a real share of it.
 @test "subtitle-report normalize_lang resolves a multi-word language name" {
   run_func "$SUBREPORT" normalize_lang "Modern Greek"
   [ "$output" = "el" ]
