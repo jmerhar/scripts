@@ -431,8 +431,10 @@ delete_files() {
       file="${_del_paths[i]}"
       size="$(get_size "${file}" 2>/dev/null || echo 0)"
 
-      printf '%s\n' "${_C_MAGENTA}$(printf '%s %s (%s), a sidecar for a %s file' \
-        "${verb}" "${file}" "$(format_size "${size}")" "${raw_ext}")${_C_RESET}"
+      local human message
+      human="$(format_size "${size}")"
+      message="${verb} ${file} (${human}), a sidecar for a ${raw_ext} file"
+      printf '%s\n' "${_C_MAGENTA}${message}${_C_RESET}"
 
       total_size=$((total_size + size))
       _ext_size["${raw_ext}"]=$(( ${_ext_size["${raw_ext}"]:-0} + size ))
@@ -462,13 +464,17 @@ print_report() {
 
   printf '\n%s\n' "${_C_BOLD}${_C_GREEN}In total $(format_size "${total_size}") of disk space ${recovered_phrase}:${_C_RESET}"
 
-  local raw_ext count avg
+  local raw_ext count avg bytes human_bytes human_avg message
   while IFS= read -r raw_ext; do
     count="$(count_for_ext "${raw_ext}")"
     [[ "${count}" -gt 0 ]] || continue
-    avg="$(awk -v b="${_ext_size["${raw_ext}"]}" -v c="${count}" 'BEGIN { print b / c }')"
-    printf '%s\n' "${_C_BOLD}${_C_GREEN}$(printf -- '- %s by deleting %d sidecars for %s files (average %s per file).' \
-      "$(format_size "${_ext_size["${raw_ext}"]}")" "${count}" "${raw_ext}" "$(format_size "${avg}")")${_C_RESET}"
+    bytes="${_ext_size["${raw_ext}"]}"
+    avg="$(awk -v b="${bytes}" -v c="${count}" 'BEGIN { print b / c }')"
+    human_bytes="$(format_size "${bytes}")"
+    human_avg="$(format_size "${avg}")"
+    message="- ${human_bytes} by deleting ${count} sidecars for ${raw_ext} files"
+    message+=" (average ${human_avg} per file)."
+    printf '%s\n' "${_C_BOLD}${_C_GREEN}${message}${_C_RESET}"
   done < <(queued_raw_exts)
 }
 
