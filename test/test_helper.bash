@@ -242,12 +242,18 @@ run_snippet() {
 }
 
 ########################################
-# Copies one bin/ tool into a self-contained fake repository under the test's temp directory and
-# prints the path of the copy.
-# The bin/ tools locate the manifest and their output directories relative to $0 and honour no
-# override, so testing them against the real repository would read the real manifest and write into
-# the real dist/. They source nothing, so a lone copy in a fixture tree works unmodified: it reads
-# the fixture manifest and writes only inside the test's own directory.
+# Places one bin/ tool in a self-contained fake repository under the test's temp directory.
+#
+# The bin/ tools locate the manifest and their output directories relative to $0 and honour no override,
+# so testing them against the real repository would read the real manifest and write into the real
+# dist/. They source nothing, so a lone entry in a fixture tree works unmodified: it reads the fixture
+# manifest and writes only inside the test's own directory.
+#
+# Symlinked rather than copied, so that coverage is credited to the tool in bin/ and not to a path
+# under the temp directory that nothing measures — a copy makes these suites exercise the real logic
+# while reporting nothing for it. Fidelity is unaffected: the tools resolve their repo root as
+# "$(cd "$(dirname "$0")" && pwd -P)", and pwd -P resolves the *directory*, which is the fixture's.
+#
 # Sets FAKE_REPO and FAKE_TOOL rather than printing the path: a command substitution would run in a
 # subshell, leaving FAKE_REPO unset in the caller and every fixture path resolving against the
 # filesystem root.
@@ -261,7 +267,7 @@ fake_repo_tool() {
   FAKE_TOOL="$FAKE_REPO/bin/$1"
   export FAKE_REPO FAKE_TOOL
   mkdir -p "$FAKE_REPO/bin"
-  cp "$REPO_ROOT/bin/$1" "$FAKE_TOOL"
+  ln -s "$REPO_ROOT/bin/$1" "$FAKE_TOOL"
 }
 
 ########################################

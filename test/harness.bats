@@ -235,7 +235,7 @@ EOF
   [ "$FAKE_TOOL" = "$FAKE_REPO/bin/package-script.sh" ]
 }
 
-@test "fake_repo_tool copies a working tool into the fake repository" {
+@test "fake_repo_tool places a working tool in the fake repository" {
   fake_repo_tool package-script.sh
   [ -f "$FAKE_TOOL" ]
   run_script "$FAKE_TOOL"
@@ -243,7 +243,16 @@ EOF
   [[ "$output" == *"Expected exactly 2 arguments"* ]]
 }
 
-@test "the copied tool reads the fake repository's manifest, not the real one" {
+# Linked, not copied, so kcov credits the tool in bin/ rather than a path under the temp directory that
+# nothing measures. A copy leaves these suites exercising the real logic while reporting nothing for it —
+# package-script.sh read 7% with 48 tests against it.
+@test "fake_repo_tool links the tool so its coverage is credited" {
+  fake_repo_tool package-script.sh
+  [ -L "$FAKE_TOOL" ]
+  [ "$(readlink "$FAKE_TOOL")" = "$REPO_ROOT/bin/package-script.sh" ]
+}
+
+@test "the linked tool reads the fake repository's manifest, not the real one" {
   fake_repo_tool package-script.sh
   run_script "$FAKE_TOOL" unlock-pdf v1.0.0
   [ "$status" -eq 1 ]
