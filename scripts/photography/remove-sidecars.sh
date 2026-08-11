@@ -256,11 +256,15 @@ traverse_tree() {
     fi
 
     fname="$(basename "${entry}")"
-    # Require a non-empty extension after the last dot (mirrors ^(.*)\.([^.]+)$).
+    # Require a base name and a non-empty extension either side of the last dot (mirrors
+    # ^(.+)\.([^.]+)$). Both halves matter: a leading-dot name such as .DS_Store — which Finder leaves
+    # in any browsed folder — has no base to pair on, and an empty string is not a valid
+    # associative-array subscript, so admitting one aborts the whole scan.
     [[ "${fname}" == *.* ]] || continue
     ext="${fname##*.}"
     [[ -n "${ext}" ]] || continue
     base="${fname%.*}"
+    [[ -n "${base}" ]] || continue
 
     ext_present["${base}/${ext}"]=1
     basenames["${base}"]=1
