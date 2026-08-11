@@ -21,6 +21,8 @@ A collection of packaged shell scripts for macOS and Debian/Ubuntu, distributed 
 
 Config files (`.conf`) live next to their scripts (e.g., `scripts/system/local-backup.conf`). They are discovered by convention — no metadata field needed.
 
+`load_config` searches, in order: `$CONFIG_FILE`, the script's own directory, `<install-prefix>/etc/`, then `/etc/`. Setting `CONFIG_FILE` names a file outright, so an unreadable one is an error rather than a fall back to the search — naming a file excludes the alternatives, and quietly loading a different config could mean different backup targets or credentials.
+
 ### Documentation (READMEs)
 
 - The root `README.md` has an **Available Scripts** table — one row per script, kept alphabetical, with a short description and a link into that script's section (`scripts/<topic>/README.md#<script-name>` — link to the README file, not the directory, or GitHub's directory redirect drops the fragment).

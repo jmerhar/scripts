@@ -151,19 +151,47 @@ log_debug() {
 }
 
 ########################################
+# Sources a configuration file, announcing which one.
+# nounset is relaxed around the source so a config may reference variables that are not set, and
+# restored afterwards so the script's own strictness is unaffected.
+# Arguments:
+#   path: The configuration file to source.
+########################################
+_source_config() {
+  log_info "Loading configuration from: $1"
+  set +o nounset
+  # shellcheck source=/dev/null
+  source "$1"
+  set -o nounset
+}
+
+########################################
 # Finds and sources the configuration file.
 # Search order:
+#   0. $CONFIG_FILE, when set
 #   1. Same directory as the script (for standalone/tarball use)
 #   2. <install-prefix>/etc/ (for Homebrew/package installs)
 #   3. /etc/ (system-wide fallback)
 # Globals:
-#   SCRIPT_NAME
+#   CONFIG_FILE, SCRIPT_NAME
 # Arguments:
 #   None
 # Returns:
 #   0 if config was found and sourced, 1 otherwise.
 ########################################
 load_config() {
+  # A named file wins outright, and an unreadable one is an error rather than a quiet fall back to the
+  # search: naming a file excludes the alternatives, so silently loading a different config — with
+  # different backup targets or credentials in it — would be worse than refusing.
+  if [[ -n "${CONFIG_FILE:-}" ]]; then
+    if [[ ! -r "${CONFIG_FILE}" ]]; then
+      log_error "CONFIG_FILE is set to '${CONFIG_FILE}', which does not exist or is not readable."
+      return 1
+    fi
+    _source_config "${CONFIG_FILE}"
+    return
+  fi
+
   local script_dir
   script_dir=$(cd "$(dirname "$0")" && pwd -P)
   local config_path_local="${script_dir}/${SCRIPT_NAME}.conf"
@@ -190,11 +218,7 @@ load_config() {
     return 1
   fi
 
-  log_info "Loading configuration from: ${config_to_load}"
-  set +o nounset
-  # shellcheck source=/dev/null
-  source "${config_to_load}"
-  set -o nounset
+  _source_config "${config_to_load}"
 }
 
 ########################################

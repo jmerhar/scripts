@@ -58,8 +58,9 @@ setup_common() {
   export LC_ALL=C
 
   # Scripts and the shared library read these from the environment; a value inherited from the
-  # surrounding shell would silently change what is being tested.
-  unset LOG_FILE IS_DEBUG_MODE _LOG_QUIET SCRIPT_NAME
+  # surrounding shell would silently change what is being tested. CONFIG_FILE matters most: left set, it
+  # would point every config-reading script at a developer's own file.
+  unset LOG_FILE IS_DEBUG_MODE _LOG_QUIET SCRIPT_NAME CONFIG_FILE
 }
 
 ########################################

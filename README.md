@@ -104,6 +104,24 @@ chmod +x local-backup.sh
 
 Scripts that ship with a config file will include it in the same directory, so they work out of the box.
 
+## Configuration
+
+Scripts that read a config file look for it in this order:
+
+1. `$CONFIG_FILE`, if set
+2. the script's own directory — how the tarballs above work out of the box
+3. `<install-prefix>/etc/` — where Homebrew and APT put it
+4. `/etc/`
+
+`CONFIG_FILE` is useful for running one script against several configurations:
+
+```bash
+CONFIG_FILE=~/backup-photos.conf local-backup
+```
+
+Because naming a file excludes the alternatives, an unreadable `CONFIG_FILE` is an error rather than a
+silent fall back to the search.
+
 ## Contributing
 
 Contributions are welcome. Open an issue to discuss changes or submit a pull request.
