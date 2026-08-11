@@ -464,25 +464,24 @@ compare_dirs() {
     right_set["${norm}"]="${e}"
   done
 
-  # Compute merged sorted unique list of normalized keys
+  # Compute merged sorted unique list of normalized keys. Both sides accumulate into one array, which
+  # the enclosing condition guarantees is non-empty, so its expansion needs no guarding.
   local -a all_entries=()
   if [[ ${#left_sorted[@]} -gt 0 || ${#right_sorted[@]} -gt 0 ]]; then
-    local -a norm_left=()
-    local -a norm_right=()
+    local -a norm_entries=()
     for e in "${left_sorted[@]+"${left_sorted[@]}"}"; do
       local n="${e}"
       [[ "${_opt_ignore_case}" == true ]] && n="${e,,}"
-      norm_left+=("${n}")
+      norm_entries+=("${n}")
     done
     for e in "${right_sorted[@]+"${right_sorted[@]}"}"; do
       local n="${e}"
       [[ "${_opt_ignore_case}" == true ]] && n="${e,,}"
-      norm_right+=("${n}")
+      norm_entries+=("${n}")
     done
     while IFS= read -r -d '' entry; do
       all_entries+=("${entry}")
-    done < <(printf '%s\0' ${norm_left[@]+"${norm_left[@]}"} \
-                           ${norm_right[@]+"${norm_right[@]}"} | sort -uz)
+    done < <(printf '%s\0' "${norm_entries[@]}" | sort -uz)
   fi
 
   for norm_entry in "${all_entries[@]+"${all_entries[@]}"}"; do
