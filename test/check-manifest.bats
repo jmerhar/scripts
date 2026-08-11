@@ -190,11 +190,15 @@ manifest_with() {
   [[ "$output" == *"::error::"* ]]
 }
 
+# GITHUB_ACTIONS is set for the whole job when the suite runs in CI, so it has to be cleared explicitly
+# rather than assumed absent — otherwise this passes only on a developer machine.
 @test "emits no annotations outside Actions" {
   good_script alpha
   chmod -x "$FAKE_REPO/scripts/utility/alpha.sh"
   manifest_with alpha
-  run_script "$TOOL"
+  GITHUB_ACTIONS= run_script "$TOOL"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"is not executable"* ]]
   [[ "$output" != *"::error::"* ]]
 }
 
