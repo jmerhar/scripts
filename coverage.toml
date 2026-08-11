@@ -1,0 +1,29 @@
+# Coverage configuration for the shared tooling in jmerhar/coverage, which renders the CI summary
+# table, enforces the gate, and publishes the HTML report to https://jmerhar.github.io/coverage/.
+#
+# One suite: the shell in scripts/ and bin/, traced by kcov via bin/run-coverage.sh. kcov measures lines
+# only — there is no branch coverage for shell — so the table simply has no Branch column.
+#
+# `report` points at the merged report and `html` at the kcov output root; what gets published follows
+# from that. kcov also writes one report per traced invocation, each crediting only the hits from runs
+# that targeted a single script while listing every file, so each reads as wrong on its own. Only the
+# merged report is published, with the data/ directory whose stylesheet its per-file pages resolve as
+# ../data/bcov.css.
+
+[suites.scripts]
+label = "Shell scripts (bash)"
+format = "kcov"
+report = "coverage/kcov-merged/coverage.json"
+html = "coverage"
+# Set just under the measured figure so a real regression fails while a defensive line here or there is
+# tolerated. Two things hold this down, neither of them a gap in the tests:
+#
+#   * the scripts that move or delete data have no behavioural suites yet — they are the bulk of the
+#     uncovered lines, and TODO #2 is about closing that;
+#   * roughly 115 lines cannot be credited at all. Bash attributes a multi-line command to its final
+#     line, so the first line of each `\` continuation reads as never executed and the continuation
+#     lines are not instrumented; the closing brace of a redirected group is never reported either.
+#     Reshaping those statements is its own change, after which this rises.
+#
+# Raise it as coverage climbs; never lower it to make a red build pass.
+gate = 25.0

@@ -1,13 +1,25 @@
-.PHONY: help install lint test check clean
+.PHONY: coverage-tooling help install lint test test-coverage coverage check clean
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*##|^##@' $(MAKEFILE_LIST) | \
-		awk 'BEGIN {FS = ":.*## "}; /^##@/ {printf "\n\033[1m%s\033[0m\n", substr($$0, 5); next} {printf "  \033[36mmake %-12s\033[0m %s\n", $$1, $$2}'
+		awk 'BEGIN {FS = ":.*## "}; /^##@/ {printf "\n\033[1m%s\033[0m\n", substr($$0, 5); next} {printf "  \033[36mmake %-14s\033[0m %s\n", $$1, $$2}'
+
+# The coverage summary and gate are shared tooling from jmerhar/coverage, configured by coverage.toml.
+# Fetched rather than vendored, so a local gate enforces exactly what CI does.
+COVERAGE_REPORT := .coverage-report.py
 
 ##@ Setup
 
-install: ## Install the test toolchain
-	brew install bats-core
+install: ## Install the test toolchain via Homebrew
+	brew install bats-core yq
+
+# Refreshed on every run rather than only when absent: v1 moves within its major version, so a cached
+# copy would drift from what CI enforces. -z makes an unchanged file cost a 304, and a failed request
+# falls back to the copy already on disk, so this still works offline.
+coverage-tooling:
+	@curl -fsSL -z $(COVERAGE_REPORT) -o $(COVERAGE_REPORT) \
+		https://raw.githubusercontent.com/jmerhar/coverage/v1/bin/coverage-report.py \
+		|| test -f $(COVERAGE_REPORT)
 
 ##@ Quality
 
@@ -23,9 +35,19 @@ lint: ## ShellCheck everything, and validate the manifest and declared bash vers
 test: ## Run the bats suite
 	bats test/
 
+# Measured in the pinned kcov container, even locally: kcov's macOS build ignores the shebang and execs
+# /bin/bash, which is 3.2, and most of these scripts need 4.0 or newer. run-coverage.sh detects that and
+# falls back, so this needs Docker running rather than a local kcov.
+test-coverage: ## Run the suite under kcov without gating (writes coverage/)
+	bin/run-coverage.sh
+
+coverage: coverage-tooling ## Run the suite under kcov and enforce the coverage gate
+	bin/run-coverage.sh
+	python3 $(COVERAGE_REPORT) --gate
+
 check: lint test ## Lint + tests (gate a commit on this)
 
 ##@ Housekeeping
 
-clean: ## Remove build artefacts (all regenerable)
-	rm -rf dist
+clean: ## Remove build and coverage artefacts (all regenerable)
+	rm -rf dist coverage junit $(COVERAGE_REPORT)

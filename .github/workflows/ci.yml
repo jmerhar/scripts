@@ -7,45 +7,72 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Two jobs rather than a matrix, because the platforms do different work. Linux measures coverage and is
+# the figure that gets published; macOS runs the suite plain. Both are needed: these scripts ship to
+# Homebrew and APT, and several helpers branch on which coreutils are present — GNU `date -d` against
+# BSD `date -r`, `stat -c` against `stat -f` — so each platform exercises a side the other cannot. Tests
+# needing a tool the platform lacks skip themselves and say so.
 jobs:
-  test:
-    name: Tests (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      # Both platforms are reported: a failure on one is not a reason to hide the other.
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+  coverage:
+    name: Tests and coverage (Linux)
+    runs-on: ubuntu-latest
+    # contents: read for checkout; statuses: write to link the published coverage report.
+    permissions:
+      contents: read
+      statuses: write
     steps:
       - uses: actions/checkout@v7
 
-      # These scripts are published for both Homebrew and APT, and several helpers branch on which
-      # coreutils are present — GNU `date -d` against BSD `date -r`, `stat -c` against `stat -f`.
-      # Running the suite on both platforms is what exercises each side of those branches; tests that
-      # need a tool the platform lacks skip themselves and say so.
-      - name: Install bats and yq (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq bats
-          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.52.4/yq_linux_amd64
-          sudo chmod +x /usr/local/bin/yq
-
-      # bash is installed explicitly: macOS ships 3.2, while six of these scripts use case conversion,
-      # namerefs or associative arrays, all of which need 4+. Without it the result would depend on
-      # whatever the runner image happens to carry.
-      - name: Install bats and yq (macOS)
-        if: runner.os == 'macOS'
-        run: brew install bats-core yq bash
-
       # lint.yml's ShellCheck job finds files by a *.sh glob, which the test helper and the stubs do
       # not match: a stub has to be named exactly as the command it shadows, and the helper is loaded
-      # by bats rather than executed. They are linted here instead, next to the suite that uses them.
-      # Linux only — the findings are platform-independent, and shellcheck is not preinstalled on the
-      # macOS image.
+      # by bats rather than executed. They are linted here, next to the suite that uses them.
       - name: ShellCheck the test helper and stubs
-        if: runner.os == 'Linux'
         run: shellcheck --severity=warning test/test_helper.bash test/stubs/_stub
 
+      # Runs the whole suite, so it replaces a separate bats step. No toolchain to install: kcov has no
+      # Ubuntu 24.04 package, so run-coverage.sh uses the pinned upstream image, which brings kcov and
+      # installs bats and yq itself.
+      - name: Test with coverage
+        run: JUNIT_DIR=junit bin/run-coverage.sh
+
+      # The suite, its label and its gate are declared in coverage.toml; the tooling behind this and the
+      # three steps below is shared by every project publishing to the coverage site.
+      - uses: jmerhar/coverage/.github/actions/summary@v1
+
+      # Informational, never fails the build. The coverage file is derived from coverage.toml; the JUnit
+      # report is bats's, and gives Codecov flake and failure history. `!cancelled()` so a failing suite
+      # still reports its failures, which is the point of that.
+      - uses: jmerhar/coverage/.github/actions/codecov@v1
+        if: ${{ !cancelled() }}
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          junit: junit/report.xml
+
+      # After the Codecov upload so coverage still lands when the gate fails, and before publishing so a
+      # regression never reaches the site.
+      - uses: jmerhar/coverage/.github/actions/gate@v1
+
+      # Publish the HTML report to the shared coverage site and link it from the commit. Only on green
+      # pushes to main; the action skips when the token is absent, so this stays green without it.
+      - uses: jmerhar/coverage/.github/actions/publish@v1
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          token: ${{ secrets.COVERAGE_PAGES_TOKEN }}
+
+  test-macos:
+    name: Tests (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # bash is installed explicitly: macOS ships 3.2, while eight of these scripts use case conversion,
+      # namerefs, associative arrays or mapfile, all of which need 4.0 or newer. Without it the result
+      # would depend on whatever the runner image happens to carry.
+      - name: Install bats, yq and bash
+        run: brew install bats-core yq bash
+
+      # Not measured here. kcov's macOS build ignores the shebang and execs /bin/bash, which is 3.2, so
+      # a run would report failures from constructs the scripts legitimately use — and the site takes one
+      # report per commit anyway, so a second figure would only need reconciling with the first.
       - name: Run the bats suite
         run: bats --print-output-on-failure test/

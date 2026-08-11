@@ -1,0 +1,17 @@
+# Codecov is informational here: the enforcing gate is the shared coverage gate in CI, with the
+# threshold in coverage.toml, so a Codecov hiccup can never fail a build on its own.
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+comment: false
+
+# Coverage is measured inside the kcov container, which mounts the repository at /src, so that is the
+# prefix kcov records. Stripping it makes the paths line up with the repository as Codecov sees it.
+fixes:
+  - "/src/::"

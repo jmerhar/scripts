@@ -10,3 +10,4 @@
 coverage/
 junit/
 _coverage-harness
+.coverage-report.py
