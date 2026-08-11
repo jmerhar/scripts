@@ -210,9 +210,49 @@ setup_colors() {
 epoch_to_date() {
   local epoch="$1" format="$2"
   [[ -n "${epoch}" && "${epoch}" != 0 ]] || return 0
-  date -u -r "${epoch}" +"${format}" 2>/dev/null \
-    || date -u -d "@${epoch}" +"${format}" 2>/dev/null \
-    || true
+  # BSD date first, then GNU; whichever is present answers and the other is not reached.
+  if date -u -r "${epoch}" +"${format}" 2>/dev/null; then
+    return 0
+  fi
+  date -u -d "@${epoch}" +"${format}" 2>/dev/null || true
+}
+
+########################################
+# Joins its stdin lines with ", " onto one line.
+# Globals:
+#   None
+# Outputs:
+#   The joined line on stdout.
+########################################
+join_commas() {
+  awk '{printf "%s%s", sep, $0; sep=", "} END {print ""}'
+}
+
+########################################
+# Joins the output of `uniq -c` into "name (count)" pairs on one line, busiest first.
+# Globals:
+#   None
+# Outputs:
+#   The joined line on stdout.
+########################################
+join_counted() {
+  awk '{c = $1; $1 = ""; sub(/^ /, ""); printf "%s%s (%d)", sep, $0, c; sep = ", "} END {print ""}'
+}
+
+########################################
+# Prints its arguments as one tab-separated line.
+# Used for the working TSVs, so the column list is written once per row rather than as a format string
+# that has to be kept in step with it.
+# Globals:
+#   None
+# Arguments:
+#   The field values, in column order.
+# Outputs:
+#   One tab-separated line on stdout.
+########################################
+tsv_line() {
+  local IFS=$'\t'
+  printf '%s\n' "$*"
 }
 
 # Number of auth_results signatures of each type (dkim/spf) captured per record.
@@ -312,9 +352,12 @@ parse_xml() {
   fi
   n=${n%.*}   # xmllint prints counts as floats.
 
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "${domain}" "${begin}" "${p:-none}" "${sp:--}" "${pct:-100}" \
-    "${adkim:-r}" "${aspf:-r}" "${np:--}" "${org}" >> "${_policy_tsv}"
+  # policy TSV: domain begin p sp pct adkim aspf np org
+  local -a policy=()
+  policy+=("${domain}" "${begin}" "${p:-none}")
+  policy+=("${sp:--}" "${pct:-100}" "${adkim:-r}")
+  policy+=("${aspf:-r}" "${np:--}" "${org}")
+  tsv_line "${policy[@]}" >> "${_policy_tsv}"
 
   local i
   for (( i = 1; i <= n; i++ )); do
@@ -344,11 +387,15 @@ parse_xml() {
     local aligned_pass=0
     [[ "${pe_dkim}" == "pass" || "${pe_spf}" == "pass" ]] && aligned_pass=1
 
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "${domain}" "${begin}" "${org}" "${src}" "${count:-0}" "${disp:-none}" \
-      "${pe_dkim}" "${pe_spf}" "${hfrom}" \
-      "${dkim_pairs}" "${spf_pairs}" "${aligned_pass}" "${auth_any_pass}" \
-      >> "${_records_tsv}"
+    # records TSV: domain begin org src count disp pe_dkim pe_spf hfrom
+    #              dkim_pairs spf_pairs aligned_pass auth_any_pass
+    local -a record=()
+    record+=("${domain}" "${begin}" "${org}")
+    record+=("${src}" "${count:-0}" "${disp:-none}")
+    record+=("${pe_dkim}" "${pe_spf}" "${hfrom}")
+    record+=("${dkim_pairs}" "${spf_pairs}")
+    record+=("${aligned_pass}" "${auth_any_pass}")
+    tsv_line "${record[@]}" >> "${_records_tsv}"
   done
 
   _reports_ok=$(( _reports_ok + 1 ))
@@ -404,10 +451,13 @@ collect_reports() {
   local f
   # Null-delimited so filenames with spaces or '!' are safe; the '!' in report
   # names is literal, not history expansion, inside find.
+  local -a name_filter=()
+  name_filter+=(-name '*.gz' -o)
+  name_filter+=(-name '*.zip' -o)
+  name_filter+=(-name '*.xml')
   while IFS= read -r -d '' f; do
     files+=("${f}")
-  done < <(find "${_target_dir}" -maxdepth 1 -type f \
-    \( -name '*.gz' -o -name '*.zip' -o -name '*.xml' \) -print0 | sort -z)
+  done < <(find "${_target_dir}" -maxdepth 1 -type f \( "${name_filter[@]}" \) -print0 | sort -z)
 
   _files_seen=${#files[@]}
   if (( _files_seen == 0 )); then
@@ -453,20 +503,23 @@ print_overview() {
   total_msgs=$(awk -F'\t' '{s += $5} END {print s + 0}' "${_records_tsv}")
 
   local domains
-  domains=$(cut -f1 "${_policy_tsv}" | sort -u \
-    | awk '{printf "%s%s", sep, $0; sep=", "} END {print ""}')
+  domains=$(cut -f1 "${_policy_tsv}" | sort -u | join_commas)
+
+  local n_records reporters from_date to_date
+  n_records=$(wc -l < "${_records_tsv}" | tr -d ' ')
+  reporters=$(cut -f9 "${_policy_tsv}" | sort | uniq -c | sort -rn | join_counted)
+  from_date=$(epoch_to_date "${min_begin}" '%Y-%m-%d')
+  to_date=$(epoch_to_date "${max_begin}" '%Y-%m-%d')
+
+  local parsed span
+  parsed="Parsed ${_reports_ok} reports from ${_files_seen} files (${_reports_bad} skipped)"
+  parsed+=" · ${n_records} records · ${total_msgs} messages"
+  span="Span: ${from_date} → ${to_date}"
 
   heading "DMARC aggregate report — ${_target_dir}"
-  printf '  %sParsed %d reports from %d files (%d skipped) · %d records · %d messages%s\n' \
-    "${_C_CYAN}" "${_reports_ok}" "${_files_seen}" "${_reports_bad}" \
-    "$(wc -l < "${_records_tsv}" | tr -d ' ')" "${total_msgs}" "${_C_RESET}"
-  printf '  %sSpan: %s → %s%s\n' "${_C_CYAN}" \
-    "$(epoch_to_date "${min_begin}" '%Y-%m-%d')" \
-    "$(epoch_to_date "${max_begin}" '%Y-%m-%d')" "${_C_RESET}"
-  printf '  %sReporters: %s%s\n' "${_C_CYAN}" \
-    "$(cut -f9 "${_policy_tsv}" | sort | uniq -c | sort -rn \
-       | awk '{c=$1; $1=""; sub(/^ /,""); printf "%s%s (%d)", sep, $0, c; sep=", "} END{print ""}')" \
-    "${_C_RESET}"
+  printf '  %s%s%s\n' "${_C_CYAN}" "${parsed}" "${_C_RESET}"
+  printf '  %s%s%s\n' "${_C_CYAN}" "${span}" "${_C_RESET}"
+  printf '  %sReporters: %s%s\n' "${_C_CYAN}" "${reporters}" "${_C_RESET}"
   printf '  %sDomains: %s%s\n' "${_C_CYAN}" "${domains}" "${_C_RESET}"
 }
 
@@ -485,9 +538,9 @@ print_policies() {
   local dom
   while IFS= read -r dom; do
     # Latest report for this domain wins.
-    local line
-    line=$(awk -F'\t' -v d="${dom}" '$1 == d {print}' "${_policy_tsv}" \
-      | sort -t$'\t' -k2,2n | tail -1)
+    local rows line
+    rows=$(awk -F'\t' -v d="${dom}" '$1 == d {print}' "${_policy_tsv}")
+    line=$(sort -t$'\t' -k2,2n <<<"${rows}" | tail -1)
     local p sp pct adkim aspf np
     p=$(cut -f3 <<<"${line}"); sp=$(cut -f4 <<<"${line}"); pct=$(cut -f5 <<<"${line}")
     adkim=$(cut -f6 <<<"${line}"); aspf=$(cut -f7 <<<"${line}"); np=$(cut -f8 <<<"${line}")
@@ -505,21 +558,25 @@ print_policies() {
       *)          status="NOT ENFORCING";    color="${_C_RED}" ;;
     esac
 
-    printf '  %s%-24s%s p=%-10s sp=%-10s pct=%-3s adkim=%s aspf=%s np=%s  %s[%s]%s\n' \
-      "${_C_WHITE}" "${dom}" "${_C_RESET}" \
-      "${p}" "${sp}" "${pct}" "${adkim}" "${aspf}" "${np}" \
-      "${color}" "${status}" "${_C_RESET}"
+    local fields
+    fields=$(printf 'p=%-10s sp=%-10s pct=%-3s' "${p}" "${sp}" "${pct}")
+    fields+=$(printf ' adkim=%s aspf=%s np=%s' "${adkim}" "${aspf}" "${np}")
+    local name_cell status_cell
+    name_cell=$(printf '%-24s' "${dom}")
+    status_cell="${color}[${status}]${_C_RESET}"
+    printf '  %s%s%s %s  %s\n' "${_C_WHITE}" "${name_cell}" "${_C_RESET}" "${fields}" "${status_cell}"
 
+    local flag
     if [[ "${p}" != "reject" && "${p}" != "quarantine" ]]; then
-      printf 'policy\t%s is at p=%s — mail claiming this domain is NOT protected.\n' \
-        "${dom}" "${p}" >> "${_flags_file}"
+      flag="${dom} is at p=${p} — mail claiming this domain is NOT protected."
+      tsv_line policy "${flag}" >> "${_flags_file}"
     elif [[ "${p}" == "quarantine" ]]; then
-      printf 'policy\t%s is at p=quarantine — consider moving to p=reject once senders are covered.\n' \
-        "${dom}" >> "${_flags_file}"
+      flag="${dom} is at p=quarantine — consider moving to p=reject once senders are covered."
+      tsv_line policy "${flag}" >> "${_flags_file}"
     fi
     if [[ -n "${pct}" && "${pct}" != 100 ]]; then
-      printf 'policy\t%s applies its policy to only pct=%s%% of mail — the rest is unprotected.\n' \
-        "${dom}" "${pct}" >> "${_flags_file}"
+      flag="${dom} applies its policy to only pct=${pct}% of mail — the rest is unprotected."
+      tsv_line policy "${flag}" >> "${_flags_file}"
     fi
   done < <(cut -f1 "${_policy_tsv}" | sort -u)
 }
@@ -541,14 +598,14 @@ print_policy_timeline() {
     # Detect changes on the RFC-effective policy (absent sp→p, absent np→sp) so a
     # reporter merely omitting sp/np does not masquerade as a policy change.
     # policy TSV: domain begin p sp pct adkim aspf np org
-    local out
-    out=$(awk -F'\t' -v d="${dom}" '$1 == d {print}' "${_policy_tsv}" | sort -t$'\t' -k2,2n \
-      | awk -F'\t' '
+    local rows out
+    rows=$(awk -F'\t' -v d="${dom}" '$1 == d {print}' "${_policy_tsv}" | sort -t$'\t' -k2,2n)
+    out=$(awk -F'\t' '
           {
             p = $3; sp = ($4 == "-" ? p : $4); np = ($8 == "-" ? sp : $8)
             sig = "p=" p " sp=" sp " np=" np " pct=" $5 " adkim=" $6 " aspf=" $7
             if (sig != prev) { print $2 "\t" sig; prev = sig }
-          }')
+          }' <<<"${rows}")
     # Only print domains that actually changed (more than one distinct signature).
     if (( $(wc -l <<<"${out}") > 1 )); then
       any=true
@@ -584,10 +641,11 @@ print_outcomes() {
   local total=$(( pass + fail )) rate=0
   (( total > 0 )) && rate=$(( fail * 100 / total ))
 
-  printf '  %sPass (aligned): %d%s   %sFail: %d%s   %s(%d%% fail of %d messages)%s\n' \
-    "${_C_GREEN}" "${pass}" "${_C_RESET}" \
-    "${_C_RED}" "${fail}" "${_C_RESET}" \
-    "${_C_CYAN}" "${rate}" "${total}" "${_C_RESET}"
+  local passed failed summary
+  passed="${_C_GREEN}Pass (aligned): ${pass}${_C_RESET}"
+  failed="${_C_RED}Fail: ${fail}${_C_RESET}"
+  summary="${_C_CYAN}(${rate}% fail of ${total} messages)${_C_RESET}"
+  printf '  %s   %s   %s\n' "${passed}" "${failed}" "${summary}"
 
   # DMARC defines exactly three dispositions; print them in a fixed order so the
   # output is deterministic regardless of awk's hash iteration order.
@@ -603,21 +661,27 @@ print_outcomes() {
     }' "${_records_tsv}"
 
   if (( rate >= _warn_rate )); then
-    printf 'info\tOverall DMARC fail rate is %d%% (>= %d%% threshold); see the spoofing breakdown below.\n' \
-      "${rate}" "${_warn_rate}" >> "${_flags_file}"
+    local rate_flag
+    rate_flag="Overall DMARC fail rate is ${rate}% (>= ${_warn_rate}% threshold);"
+    rate_flag+=" see the spoofing breakdown below."
+    tsv_line info "${rate_flag}" >> "${_flags_file}"
   fi
 
   heading "Per-domain breakdown"
-  printf '  %s%-24s %8s %8s %8s %6s%s\n' \
-    "${_C_DIM}" "domain" "msgs" "pass" "fail" "fail%" "${_C_RESET}"
-  awk -F'\t' '
+  local header
+  header=$(printf '%-24s %8s %8s %8s %6s' "domain" "msgs" "pass" "fail" "fail%")
+  printf '  %s%s%s\n' "${_C_DIM}" "${header}" "${_C_RESET}"
+
+  local per_domain
+  per_domain=$(awk -F'\t' '
     { m[$1] += $5; if ($12 == 1) p[$1] += $5; else f[$1] += $5 }
     END { for (d in m) printf "%s\t%d\t%d\t%d\t%d\n", d, m[d], p[d] + 0, f[d] + 0,
-            (m[d] > 0 ? f[d] * 100 / m[d] : 0) }' "${_records_tsv}" \
-    | sort -t$'\t' -k2,2nr \
-    | while IFS=$'\t' read -r d m p f r; do
-        printf '  %s%-24s%s %8d %8d %8d %5d%%\n' "${_C_WHITE}" "${d}" "${_C_RESET}" "${m}" "${p}" "${f}" "${r}"
-      done
+            (m[d] > 0 ? f[d] * 100 / m[d] : 0) }' "${_records_tsv}")
+  local d m p f r
+  while IFS=$'\t' read -r d m p f r; do
+    [[ -n "${d}" ]] || continue
+    printf '  %s%-24s%s %8d %8d %8d %5d%%\n' "${_C_WHITE}" "${d}" "${_C_RESET}" "${m}" "${p}" "${f}" "${r}"
+  done < <(sort -t$'\t' -k2,2nr <<<"${per_domain}")
 }
 
 ########################################
@@ -634,7 +698,8 @@ analyze_flags() {
   #    receiver's aligned evaluation failed. Legit sender needing alignment, or
   #    ESP abuse. High value — list each distinct (domain, passing-auth-domain).
   #    $9=header_from, $10=dkim_pairs, $11=spf_pairs, $12=aligned_pass, $13=auth_any_pass
-  awk -F'\t' '
+  local unaligned
+  unaligned=$(awk -F'\t' '
     $13 == 1 && $12 == 0 {
       # Distinct passing auth domains for THIS record, so a message that passes
       # both DKIM and SPF on the same domain is counted once, not twice.
@@ -646,12 +711,15 @@ analyze_flags() {
       }
       for (dom in seen) cnt[$9 "\t" dom] += $5
     }
-    END { for (k in cnt) printf "%s\t%d\n", k, cnt[k] }' "${_records_tsv}" \
-    | sort -t$'\t' -k3,3nr \
-    | while IFS=$'\t' read -r hfrom authdom c; do
-        printf 'align\t%d msg for %s authenticated on %s but did NOT align — legit sender to configure, or ESP abuse.\n' \
-          "${c}" "${hfrom:-<none>}" "${authdom}" >> "${_flags_file}"
-      done
+    END { for (k in cnt) printf "%s\t%d\n", k, cnt[k] }' "${_records_tsv}")
+
+  local hfrom authdom c unaligned_flag
+  while IFS=$'\t' read -r hfrom authdom c; do
+    [[ -n "${authdom}" ]] || continue
+    unaligned_flag="${c} msg for ${hfrom:-<none>} authenticated on ${authdom} but did NOT align"
+    unaligned_flag+=" — legit sender to configure, or ESP abuse."
+    tsv_line align "${unaligned_flag}" >> "${_flags_file}"
+  done < <(sort -t$'\t' -k3,3nr <<<"${unaligned}")
 
   # 2) SPF/DKIM temperror/permerror anywhere in auth_results → DNS/config faults.
   local err_msgs
@@ -659,8 +727,10 @@ analyze_flags() {
     { if ($10 ~ /:(temperror|permerror)/ || $11 ~ /:(temperror|permerror)/) e += $5 }
     END { print e + 0 }' "${_records_tsv}")
   if (( err_msgs > 0 )); then
-    printf 'config\t%d msg saw an SPF/DKIM temperror or permerror — check DNS records and DKIM key publication.\n' \
-      "${err_msgs}" >> "${_flags_file}"
+    local err_flag
+    err_flag="${err_msgs} msg saw an SPF/DKIM temperror or permerror"
+    err_flag+=" — check DNS records and DKIM key publication."
+    tsv_line config "${err_flag}" >> "${_flags_file}"
   fi
 
   # 3) Aligned mail that was still quarantined/rejected — should not happen; a
@@ -668,8 +738,10 @@ analyze_flags() {
   local bad_disp
   bad_disp=$(awk -F'\t' '$12 == 1 && $6 != "none" {b += $5} END {print b + 0}' "${_records_tsv}")
   if (( bad_disp > 0 )); then
-    printf 'align\t%d msg passed DMARC alignment yet were quarantined/rejected — review those receivers.\n' \
-      "${bad_disp}" >> "${_flags_file}"
+    local disp_flag
+    disp_flag="${bad_disp} msg passed DMARC alignment yet were quarantined/rejected"
+    disp_flag+=" — review those receivers."
+    tsv_line align "${disp_flag}" >> "${_flags_file}"
   fi
 
   # 4) Outright spoofing: failed AND had no passing authentication at all. This is
@@ -677,8 +749,10 @@ analyze_flags() {
   local spoof_msgs
   spoof_msgs=$(awk -F'\t' '$12 == 0 && $13 == 0 {s += $5} END {print s + 0}' "${_records_tsv}")
   if (( spoof_msgs > 0 )); then
-    printf 'spoof\t%d msg failed with NO valid authentication (spoofing/forgery). If your policy is at reject/quarantine these are being blocked.\n' \
-      "${spoof_msgs}" >> "${_flags_file}"
+    local spoof_flag
+    spoof_flag="${spoof_msgs} msg failed with NO valid authentication (spoofing/forgery)."
+    spoof_flag+=" If your policy is at reject/quarantine these are being blocked."
+    tsv_line spoof "${spoof_flag}" >> "${_flags_file}"
   fi
 }
 
@@ -707,18 +781,21 @@ geolocate_ips() {
     start=$(( start + 100 ))
 
     local request response
-    request=$(printf '%s\n' "${chunk[@]}" \
-      | jq -R -s -c 'split("\n") | map(select(length > 0))' 2>/dev/null || true)
+    local ip_lines
+    ip_lines=$(printf '%s\n' "${chunk[@]}")
+    request=$(jq -R -s -c 'split("\n") | map(select(length > 0))' <<<"${ip_lines}" 2>/dev/null || true)
     [[ -n "${request}" ]] || continue
 
     # ip-api.com's free tier is HTTP-only; the payload is just IPs → country.
-    response=$(curl -fsS --max-time 15 -H 'Content-Type: application/json' \
-      -d "${request}" 'http://ip-api.com/batch?fields=status,country,query' 2>/dev/null || true)
+    local -a curl_args=(-fsS --max-time 15)
+    curl_args+=(-H 'Content-Type: application/json')
+    curl_args+=(-d "${request}")
+    curl_args+=('http://ip-api.com/batch?fields=status,country,query')
+    response=$(curl "${curl_args[@]}" 2>/dev/null || true)
     [[ -n "${response}" ]] || continue
 
-    printf '%s' "${response}" \
-      | jq -r '.[] | select(.status == "success" and .country != "") | "\(.query)\t\(.country)"' \
-        2>/dev/null || true
+    local filter='.[] | select(.status == "success" and .country != "") | "\(.query)\t\(.country)"'
+    jq -r "${filter}" <<<"${response}" 2>/dev/null || true
   done
 }
 
@@ -738,8 +815,8 @@ print_flags() {
   heading "Flags"
 
   if [[ ! -s "${_flags_file}" ]]; then
-    printf '  %sNothing flagged — every domain is enforcing and all mail aligns cleanly.%s\n' \
-      "${_C_BRIGHT_GREEN}" "${_C_RESET}"
+    local clean="Nothing flagged — every domain is enforcing and all mail aligns cleanly."
+    printf '  %s%s%s\n' "${_C_BRIGHT_GREEN}" "${clean}" "${_C_RESET}"
   else
     # Order categories by severity; label and color each.
     local cat label color
@@ -781,8 +858,8 @@ print_flags() {
           s = subnet($4); msgs[s] += $5
           if ($5 >= repmax[s]) { repmax[s] = $5; rep[s] = $4 }
         }
-        END { for (s in msgs) printf "%d\t%s\t%s\n", msgs[s], s, rep[s] }' \
-      "${_records_tsv}" | sort -t$'\t' -k1,1nr)
+        END { for (s in msgs) printf "%d\t%s\t%s\n", msgs[s], s, rep[s] }' "${_records_tsv}")
+    grouped=$(sort -t$'\t' -k1,1nr <<<"${grouped}")
     [[ "${_show_all}" != true ]] && grouped=$(head -n "${_top_n}" <<<"${grouped}")
 
     # Collect the representative IPs and resolve them to countries in one batch.
@@ -803,13 +880,15 @@ print_flags() {
     printf '  %s%8s  %-20s %s%s\n' "${_C_DIM}" "messages" "range" "country" "${_C_RESET}"
     while IFS=$'\t' read -r msgs subnet rep; do
       [[ -n "${subnet}" ]] || continue
-      printf '  %s%8d%s  %-20s %s\n' \
-        "${_C_YELLOW}" "${msgs}" "${_C_RESET}" "${subnet}" "${country["${rep}"]:-unknown}"
+      local msgs_cell range_cell
+      msgs_cell=$(printf '%8d' "${msgs}")
+      range_cell=$(printf '%-20s %s' "${subnet}" "${country["${rep}"]:-unknown}")
+      printf '  %s%s%s  %s\n' "${_C_YELLOW}" "${msgs_cell}" "${_C_RESET}" "${range_cell}"
     done <<<"${grouped}"
 
     if (( ${#reps[@]} > 0 && ${#country[@]} == 0 )); then
-      printf '  %sCountry lookup unavailable (offline, or curl/jq missing).%s\n' \
-        "${_C_DIM}" "${_C_RESET}"
+      local unavailable="Country lookup unavailable (offline, or curl/jq missing)."
+      printf '  %s%s%s\n' "${_C_DIM}" "${unavailable}" "${_C_RESET}"
     fi
   fi
 
