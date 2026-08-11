@@ -121,7 +121,11 @@ else
     --entrypoint bash "${KCOV_IMAGE}" -c '
     set -euo pipefail
     apt-get update -qq >/dev/null
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq bats wget >/dev/null
+    # bats and wget run the suite and fetch yq; the rest are what the scripts under test shell out to,
+    # and a suite covering a script that needs one fails for want of the tool rather than for a fault in
+    # the code. Keep this in step with what the suites exercise.
+    packages="bats wget libxml2-utils zip unzip jq"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $packages >/dev/null
     # Distribution "yq" is the Python jq wrapper, which does not speak the v4 expressions the packaging
     # scripts use, so mikefarah'"'"'s build is fetched at the version the workflows pin.
     wget -qO /usr/local/bin/yq \
