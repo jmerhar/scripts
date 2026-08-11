@@ -14,9 +14,10 @@ install: ## Install the test toolchain
 # --severity=warning matches .github/workflows/lint.yml, so a local run and CI agree. The stubs and
 # the test helper are named without a .sh extension, so that workflow's find(1) misses them; they are
 # listed explicitly here.
-lint: ## ShellCheck everything, and check the declared bash versions
+lint: ## ShellCheck everything, and validate the manifest and declared bash versions
 	shellcheck --severity=warning bin/*.sh scripts/*/*.sh
 	shellcheck --severity=warning test/test_helper.bash test/stubs/_stub
+	bin/check-manifest.sh
 	bin/check-bash-version.sh
 
 test: ## Run the bats suite

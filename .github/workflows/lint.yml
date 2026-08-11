@@ -29,32 +29,17 @@ jobs:
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.52.4/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
 
-      - name: Check all manifest paths exist
-        run: |
-          ok=true
-          while IFS= read -r name; do
-            path=$(yq eval ".scripts.\"${name}\".path" scripts.yaml)
-            if [[ ! -f "${path}" ]]; then
-              echo "::error::Manifest entry '${name}' points to missing file: ${path}"
-              ok=false
-            fi
-          done < <(yq eval '.scripts | keys | .[]' scripts.yaml)
-          ${ok}
+      # Registered scripts exist, are executable and have a shebang; the library is not executable;
+      # unregistered scripts are reported. A script rather than inline shell so the same checks run
+      # from `make lint` before a push, and are covered by test/check-manifest.bats.
+      - name: Validate the manifest against the tree
+        run: ./bin/check-manifest.sh
 
       # min_bash drives the guard compiled into published scripts and the dependency metadata for
       # both channels. Declared by hand it would drift, so the requirement is re-derived from the
       # source here and the build fails if a script has outgrown what it declares.
       - name: Check declared bash versions cover the features used
         run: ./bin/check-bash-version.sh
-
-      - name: Warn about unregistered scripts
-        run: |
-          while IFS= read -r -d '' script; do
-            name=$(basename "${script}" | sed 's/\.[^.]*$//')
-            if ! yq eval ".scripts.\"${name}\"" scripts.yaml | grep -q 'path:'; then
-              echo "::warning::Script '${script}' is not registered in scripts.yaml"
-            fi
-          done < <(find ./scripts -mindepth 2 -type f -not -path '*/lib/*' -print0)
 
   smoke-test:
     name: Packaging smoke test
