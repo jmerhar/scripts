@@ -69,15 +69,36 @@ EOF
 }
 
 # --- $0 fidelity, which everything $0-derived depends on ---------------------------------------
+#
+# What the scripts actually need from $0 is its *directory*, to find ../lib/common.sh, and their own
+# name, for the config path and usage text. Those are asserted rather than $0 literally, because under
+# coverage the sourced call arrives through a harness beside the script: the directory is the same, the
+# name is passed in, and kcov can trace it — whereas the `bash -c` form that sets $0 exactly cannot be
+# traced at all.
 
 @test "run_script sets \$0 to the script's own path" {
-  run_snippet "$FIXTURE" 'printf "%s" "$0"'
-  [ "$output" = "$FIXTURE" ]
+  # unlock-pdf builds its usage line from basename "$0", and reaches it when given no argument.
+  run_script "$REPO_ROOT/scripts/utility/unlock-pdf.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Usage: unlock-pdf.sh"* ]]
 }
 
-@test "run_func sets \$0 to the script's own path" {
-  run_func "$FIXTURE" report_dollar_zero
-  [ "$output" = "$FIXTURE" ]
+@test "a sourced call sees the script's own directory as \$0's" {
+  run_snippet "$FIXTURE" 'printf "%s" "$(cd "$(dirname "$0")" && pwd -P)"'
+  [ "$output" = "$(cd "$(dirname "$FIXTURE")" && pwd -P)" ]
+}
+
+@test "a sourced call resolves the shared library the way the scripts do" {
+  # The property the directory matters for: every script includes ../lib/common.sh relative to $0.
+  run_snippet "$REPO_ROOT/scripts/utility/subtitle-report.sh" \
+    'declare -F log_info >/dev/null && printf "library loaded"'
+  [ "$status" -eq 0 ]
+  [ "$output" = "library loaded" ]
+}
+
+@test "a sourced script keeps its own name, not the harness's" {
+  run_snippet "$REPO_ROOT/scripts/utility/subtitle-report.sh" 'printf "%s" "$SCRIPT_NAME"'
+  [ "$output" = "subtitle-report" ]
 }
 
 # The whole reason run_func can source a guarded script: the path handed to `source` names the same

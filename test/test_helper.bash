@@ -31,6 +31,11 @@ setup_common() {
   LIB="$REPO_ROOT/scripts/lib/common.sh"
   export LIB
 
+  # Basename of the harness bin/run-coverage.sh places beside each script while measuring. Named here
+  # because both the seams below and the runner that creates them need to agree on it.
+  COVERAGE_HARNESS_NAME="${COVERAGE_HARNESS_NAME:-_coverage-harness}"
+  export COVERAGE_HARNESS_NAME
+
   # Every stub appends its argv to STUB_CALLS and takes canned behaviour from files in
   # STUB_FIXTURES; test/stubs/_stub documents the file names it looks for.
   STUB_FIXTURES="$BATS_TEST_TMPDIR/stub-fixtures"
@@ -73,10 +78,28 @@ _assert_stubs_first() {
 }
 
 ########################################
+# Prints the kcov invocation that traces a run, or nothing when coverage is not being measured.
+# kcov must be given the script itself: handed `bash script` it instruments the bash binary and reports
+# nothing. .conf files are excluded because load_config sources them, so they would otherwise appear in
+# the report as instrumented files; the coverage harness and runner are excluded as tooling.
+# Globals:
+#   COVERAGE_DIR, REPO_ROOT
+# Outputs:
+#   Prints the command prefix, unquoted by the caller so it splits into arguments.
+########################################
+_coverage_prefix() {
+  [[ -n "${COVERAGE_DIR:-}" ]] || return 0
+  printf 'kcov --include-path=%s/scripts,%s/bin --exclude-pattern=.conf,%s,run-coverage.sh %s' \
+    "$REPO_ROOT" "$REPO_ROOT" "$COVERAGE_HARNESS_NAME" "$COVERAGE_DIR"
+}
+
+########################################
 # Runs a script end to end through its command line, as a user would.
-# `bash <script>` rather than executing it directly: the repo's exec bits are inconsistent
-# (local-backup.sh is 0644, remove-sidecars.sh is 0711) because package-script.sh normalises them
-# to 0755 when packaging, so relying on them here would make a suite fail for an unrelated reason.
+# Executed directly rather than via `bash <script>`, both because that is how a user invokes it — every
+# published script is executable, which bin/check-manifest.sh enforces — and because kcov can only trace
+# a script it runs itself.
+# Globals:
+#   COVERAGE_DIR
 # Arguments:
 #   script: Absolute path of the script to run.
 #   Remaining arguments are passed to the script.
@@ -86,7 +109,10 @@ _assert_stubs_first() {
 run_script() {
   local script="$1"
   shift
-  run bash "${script}" "$@"
+  # Word-split on purpose: the prefix is a command with its own arguments, and is empty without
+  # COVERAGE_DIR.
+  # shellcheck disable=SC2046
+  run $(_coverage_prefix) "${script}" "$@"
 }
 
 ########################################
@@ -108,6 +134,84 @@ _sourceable_path() {
 }
 
 ########################################
+# Writes the sourcing harness kcov executes, at the given path.
+# Created next to its target on demand, because it must live beside the script it sources: $0 is the
+# harness, and the scripts resolve their library as "$(dirname "$0")/../lib/common.sh". Written here
+# rather than only by bin/run-coverage.sh so that a tool copied into a fixture tree — as the bin/ suites
+# do — gets one too. bin/run-coverage.sh deletes any that a run leaves behind.
+# Arguments:
+#   path: Where to write the harness.
+########################################
+_write_coverage_harness() {
+  cat > "$1" <<'HARNESS'
+#!/usr/bin/env bash
+# Sources a script under test and calls into it, so kcov — which can only trace a script it executes
+# itself — measures the functions the suite exercises directly. SCRIPT_NAME is passed in so the sourced
+# script keeps its own identity: its config path and log prefix derive from it, not from this filename.
+mode="$1"
+# Defaulted, not forced: a test may pin SCRIPT_NAME to something of its own, exactly as a caller of the
+# shared library can, and that choice has to survive reaching the script through here.
+SCRIPT_NAME="${SCRIPT_NAME:-$2}"
+export SCRIPT_NAME
+target="$3"
+shift 3
+# shellcheck source=/dev/null
+source "${target}"
+if [[ "${mode}" == "eval" ]]; then
+  eval "$1"
+else
+  "$@"
+fi
+HARNESS
+  chmod +x "$1"
+}
+
+########################################
+# Sources a script and calls a function in it, or evaluates a snippet.
+#
+# Two implementations, because kcov cannot trace the cheap one. Without coverage, `bash -c` sets $0 to
+# the script's own path directly. Under kcov that path is unusable: kcov's injected prologue reads
+# BASH_SOURCE, which is unset inside a `-c` command string, so a script running under `set -o nounset`
+# — all of them here — dies before its function is reached. (--bash-method=DEBUG survives that but
+# measures nothing at all.) So under coverage the call goes through a harness script that kcov executes
+# directly; bin/run-coverage.sh places one beside every script for the duration of a run, so that
+# $(dirname "$0") still finds ../lib/common.sh, and the harness exports SCRIPT_NAME so the config path
+# and log prefix are the script's own rather than the harness's.
+# Globals:
+#   COVERAGE_DIR, COVERAGE_HARNESS_NAME
+# Arguments:
+#   mode: `call` to invoke a function with arguments, `eval` to evaluate a snippet.
+#   script: Absolute path of the script to source.
+#   Remaining arguments are the function and its arguments, or the snippet.
+# Outputs:
+#   Sets the bats `status`, `output` and `lines` variables.
+########################################
+_run_sourced() {
+  local mode="$1" script="$2"
+  shift 2
+
+  if [[ -z "${COVERAGE_DIR:-}" ]]; then
+    if [[ "${mode}" == "eval" ]]; then
+      run bash -c 'source "$1"; shift; eval "$1"' \
+        "${script}" "$(_sourceable_path "${script}")" "$@"
+    else
+      run bash -c 'source "$1"; shift; "$@"' \
+        "${script}" "$(_sourceable_path "${script}")" "$@"
+    fi
+    return
+  fi
+
+  local harness
+  harness="$(dirname "${script}")/${COVERAGE_HARNESS_NAME}"
+  [[ -x "${harness}" ]] || _write_coverage_harness "${harness}"
+
+  local script_name
+  script_name="$(basename "${script}" .sh)"
+  # shellcheck disable=SC2046  # the prefix is a command with arguments
+  run $(_coverage_prefix) "${harness}" "${mode}" "${script_name}" "${script}" "$@"
+}
+
+########################################
 # Calls one function from a script or library, without running its main.
 # Arguments:
 #   script: Absolute path of the script to source.
@@ -119,8 +223,7 @@ _sourceable_path() {
 run_func() {
   local script="$1" func="$2"
   shift 2
-  run bash -c 'source "$1"; shift; "$@"' \
-    "${script}" "$(_sourceable_path "${script}")" "${func}" "$@"
+  _run_sourced call "${script}" "${func}" "$@"
 }
 
 ########################################
@@ -135,8 +238,7 @@ run_func() {
 ########################################
 run_snippet() {
   local script="$1" snippet="$2"
-  run bash -c 'source "$1"; shift; eval "$1"' \
-    "${script}" "$(_sourceable_path "${script}")" "${snippet}"
+  _run_sourced eval "${script}" "${snippet}"
 }
 
 ########################################

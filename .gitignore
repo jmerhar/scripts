@@ -7,3 +7,6 @@
 
 # Ignore generated packages
 /dist
+coverage/
+junit/
+_coverage-harness

@@ -74,6 +74,51 @@ EOF
 }
 
 #######################################
+# Prints a file's mode as octal digits, preferring what git records over what the filesystem reports.
+#
+# The mode in the index is the one that matters: it is what a fresh clone gets, and it is unaffected by
+# the checkout's umask, by an archive extraction, or by a bind mount. The filesystem is consulted only
+# for untracked files, and read with stat rather than tested with -x, because as root -x reports a mode
+# 0644 file as executable — so a check built on it would pass in a container no matter what the mode is.
+# Globals:
+#   REPO_ROOT
+# Arguments:
+#   path: File to inspect.
+# Outputs:
+#   Prints the mode, e.g. 755 or 644.
+#######################################
+file_mode() {
+  local path="$1"
+  local git_mode=""
+
+  if command -v git &>/dev/null; then
+    git_mode=$(git -C "${REPO_ROOT}" ls-files -s -- "${path}" 2>/dev/null | awk 'NR==1 {print $1}')
+  fi
+
+  if [[ -n "${git_mode}" ]]; then
+    # git records 100644 or 100755; the trailing three digits are the mode.
+    printf '%s' "${git_mode: -3}"
+    return
+  fi
+
+  stat -c '%a' "${path}" 2>/dev/null || stat -f '%Lp' "${path}"
+}
+
+#######################################
+# Reports whether a mode has any execute bit set.
+# Arguments:
+#   mode: Octal mode digits, as file_mode prints them.
+# Returns:
+#   0 when the file is executable by someone, 1 otherwise.
+#######################################
+mode_is_executable() {
+  local mode="$1"
+  # Pad to three digits so the arithmetic below indexes the right positions.
+  while (( ${#mode} < 3 )); do mode="0${mode}"; done
+  (( (${mode: -3:1} & 1) || (${mode: -2:1} & 1) || (${mode: -1:1} & 1) ))
+}
+
+#######################################
 # Checks one registered script.
 # Globals:
 #   MANIFEST, REPO_ROOT
@@ -102,7 +147,7 @@ check_entry() {
 
   # Published artefacts are chmodded to 0755 regardless, so this protects the checkout rather than the
   # release: without it, `./${path}` fails with permission denied.
-  if [[ ! -x "${file}" ]]; then
+  if ! mode_is_executable "$(file_mode "${file}")"; then
     log_error "${path} is not executable (chmod +x it; every published script must run from a checkout)."
     failed=1
   fi
@@ -128,7 +173,7 @@ check_library() {
   local file
   for file in "${LIB_DIR}"/*.sh; do
     [[ -e "${file}" ]] || continue
-    if [[ -x "${file}" ]]; then
+    if mode_is_executable "$(file_mode "${file}")"; then
       log_error "scripts/lib/$(basename "${file}") is executable, but the library is sourced, not run."
       failed=1
     fi
