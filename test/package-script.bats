@@ -349,20 +349,90 @@ EOF
   [[ "$(sed -n '5p' "$published")" == "if (( BASH_VERSINFO"* ]]
 }
 
-# A guard written with bash 4 syntax could not run on the versions it exists to reject.
-@test "the guard is parseable by the oldest bash it must run on" {
-  default_manifest '    min_bash: "4.0"'
+########################################
+# Packages my-tool and prints the path of the published script it produced.
+# Extracted under its published basename, so a message the guard builds from `basename "$0"` reads as
+# it would for a user running the installed script.
+# Arguments:
+#   Extra manifest lines for the entry, as default_manifest takes them.
+# Outputs:
+#   Prints the path of the extracted published script.
+########################################
+publish_and_extract() {
+  default_manifest "$@"
   run_script "$TOOL" my-tool v1.0.0
+  [ "$status" -eq 0 ] || { echo "packaging failed: $output" >&2; return 1; }
+  local dir="$BATS_TEST_TMPDIR/published"
+  mkdir -p "$dir"
   tar -xzOf "$FAKE_REPO/dist/tarballs/scripts-my-tool-v1.0.0.tar.gz" \
-    scripts-my-tool-v1.0.0/my-tool.sh > "$BATS_TEST_TMPDIR/published.sh"
-  run bash -n "$BATS_TEST_TMPDIR/published.sh"
+    scripts-my-tool-v1.0.0/my-tool.sh > "$dir/my-tool.sh"
+  printf '%s' "$dir/my-tool.sh"
+}
+
+@test "the published script is syntactically valid" {
+  local published; published=$(publish_and_extract '    min_bash: "4.0"')
+  run bash -n "$published"
   [ "$status" -eq 0 ]
-  # /bin/bash is 3.2 on macOS, which is the case the guard exists for.
-  if [[ "$(/bin/bash -c 'echo ${BASH_VERSINFO[0]}')" -lt 4 ]]; then
-    run /bin/bash "$BATS_TEST_TMPDIR/published.sh"
-    [ "$status" -eq 1 ]
-    [[ "$output" == *"requires bash 4.0 or newer"* ]]
-  fi
+}
+
+# The guard is asserted against a version it cannot satisfy rather than against an old interpreter.
+# Demanding a version no bash has makes the refusal reproducible on any machine — testing it by running
+# /bin/bash would only ever assert whatever that happens to be, and would silently assert nothing
+# wherever /bin/bash is current.
+@test "the guard refuses a bash older than required" {
+  local published; published=$(publish_and_extract '    min_bash: "99.0"')
+  run bash "$published" --help
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"requires bash 99.0 or newer"* ]]
+  [[ "$output" == *"running ${BASH_VERSION}"* ]]
+}
+
+@test "the guard names the running version in its refusal" {
+  local published; published=$(publish_and_extract '    min_bash: "99.9"')
+  run bash "$published"
+  [[ "$output" == *"my-tool.sh requires bash 99.9 or newer"* ]]
+}
+
+@test "the guard lets a satisfied requirement through to the script" {
+  local published; published=$(publish_and_extract '    min_bash: "4.0"')
+  run bash "$published"
+  [ "$status" -eq 0 ]
+  # my-tool.sh's whole body is `echo hello`, so reaching it proves the guard stood aside.
+  [ "$output" = "hello" ]
+}
+
+@test "the guard compares the minor version, not just the major" {
+  # A guard checking only the major would let this through on any bash 5.
+  local published; published=$(publish_and_extract "    min_bash: \"${BASH_VERSINFO[0]}.99\"")
+  run bash "$published"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"requires bash ${BASH_VERSINFO[0]}.99 or newer"* ]]
+}
+
+# A guard written with a bash 4 construct would still run on bash 5, so no amount of running it here
+# would reveal the problem. The detector that check-bash-version.sh uses on the scripts is applied to
+# the guard itself: it must need nothing beyond baseline bash.
+@test "the guard itself uses no feature newer than the bash it rejects" {
+  local published; published=$(publish_and_extract '    min_bash: "4.3"')
+  # The guard is the block between the shebang and the script's own body.
+  sed -n "2,9p" "$published" > "$BATS_TEST_TMPDIR/guard-only.sh"
+  grep -q 'BASH_VERSINFO' "$BATS_TEST_TMPDIR/guard-only.sh"
+
+  run_func "$REPO_ROOT/bin/check-bash-version.sh" required_version "$BATS_TEST_TMPDIR/guard-only.sh"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# The only assertion that runs a genuinely old bash. A pinned image is a known version, unlike
+# /bin/bash; skipped where Docker is unavailable rather than quietly asserting nothing.
+@test "the guard refuses bash 3.2 in practice" {
+  command -v docker >/dev/null 2>&1 || skip "docker not available to run a pinned old bash"
+  docker info >/dev/null 2>&1 || skip "docker not running"
+  local published; published=$(publish_and_extract '    min_bash: "4.0"')
+  run docker run --rm -v "$published:/published.sh:ro" bash:3.2 bash /published.sh
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"requires bash 4.0 or newer"* ]]
+  [[ "$output" == *"running 3.2"* ]]
 }
 
 @test "every channel ships the same guarded content" {
