@@ -2,34 +2,36 @@
 #
 # scripts/lib/common.sh is inlined into nine published scripts, so a regression here ships everywhere
 # at once. Its behaviour is also almost entirely $0-derived — SCRIPT_NAME, the install prefix and the
-# config search path all come from it — so most tests here place a copy of the library at a chosen
-# path and source that, which is the only way to exercise those branches.
+# config search path all come from it — so most tests here link the library under a chosen
+# path and source it there, which is the only way to exercise those branches.
 
 load test_helper
 
 setup() { setup_common; }
 
 ########################################
-# Places a copy of the shared library at <dir>/<name>.sh inside the test's temp directory and prints
-# its path. Sourcing that copy is what lets a test choose $0, and with it SCRIPT_NAME, the config
+# Links the shared library as <dir>/<name>.sh inside the test's temp directory and prints that path.
+# Sourcing it through that name is what lets a test choose $0, and with it SCRIPT_NAME, the config
 # search path and the detected install prefix.
+# A link rather than a copy so kcov credits the library in scripts/lib: a copy leaves these tests
+# exercising it while the coverage lands on a temp path nothing measures.
 # Arguments:
 #   dir: Directory relative to BATS_TEST_TMPDIR.
 #   name: Basename without the .sh suffix; becomes SCRIPT_NAME.
 # Outputs:
-#   Prints the absolute path of the copy.
+#   Prints the absolute path of the link.
 ########################################
-lib_copy() {
+lib_at() {
   local dir="$BATS_TEST_TMPDIR/$1"
   mkdir -p "$dir"
-  cp "$LIB" "$dir/$2.sh"
+  ln -sf "$LIB" "$dir/$2.sh"
   printf '%s' "$dir/$2.sh"
 }
 
 # --- Script identity -------------------------------------------------------------------------
 
 @test "SCRIPT_NAME defaults to the script's basename without the extension" {
-  run_snippet "$(lib_copy bin widget)" 'echo "$SCRIPT_NAME"'
+  run_snippet "$(lib_at bin widget)" 'echo "$SCRIPT_NAME"'
   [ "$status" -eq 0 ]
   [ "$output" = "widget" ]
 }
@@ -54,27 +56,27 @@ lib_copy() {
 # --- get_script_prefix -----------------------------------------------------------------------
 
 @test "get_script_prefix returns the parent of a bin directory" {
-  local tool; tool=$(lib_copy usr/bin mytool)
+  local tool; tool=$(lib_at usr/bin mytool)
   run_func "$tool" get_script_prefix
   [ "$status" -eq 0 ]
   [ "$output" = "$(cd "$BATS_TEST_TMPDIR/usr" && pwd -P)" ]
 }
 
 @test "get_script_prefix returns the parent of an sbin directory" {
-  local tool; tool=$(lib_copy usr/sbin mytool)
+  local tool; tool=$(lib_at usr/sbin mytool)
   run_func "$tool" get_script_prefix
   [ "$output" = "$(cd "$BATS_TEST_TMPDIR/usr" && pwd -P)" ]
 }
 
 @test "get_script_prefix returns nothing outside bin or sbin" {
-  local tool; tool=$(lib_copy opt/tools mytool)
+  local tool; tool=$(lib_at opt/tools mytool)
   run_func "$tool" get_script_prefix
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
 
 @test "get_script_prefix is not fooled by a directory merely ending in bin" {
-  local tool; tool=$(lib_copy opt/sbin-like mytool)
+  local tool; tool=$(lib_at opt/sbin-like mytool)
   run_func "$tool" get_script_prefix
   [ -z "$output" ]
 }
@@ -82,7 +84,7 @@ lib_copy() {
 # --- load_config -----------------------------------------------------------------------------
 
 @test "load_config reads a config beside the script" {
-  local tool; tool=$(lib_copy opt/tools mytool)
+  local tool; tool=$(lib_at opt/tools mytool)
   echo 'VAL=beside' > "$BATS_TEST_TMPDIR/opt/tools/mytool.conf"
   run_snippet "$tool" 'load_config >/dev/null; echo "$VAL"'
   [ "$status" -eq 0 ]
@@ -90,7 +92,7 @@ lib_copy() {
 }
 
 @test "load_config falls back to the install prefix's etc directory" {
-  local tool; tool=$(lib_copy usr/bin mytool)
+  local tool; tool=$(lib_at usr/bin mytool)
   mkdir -p "$BATS_TEST_TMPDIR/usr/etc"
   echo 'VAL=prefix' > "$BATS_TEST_TMPDIR/usr/etc/mytool.conf"
   run_snippet "$tool" 'load_config >/dev/null; echo "$VAL"'
@@ -98,7 +100,7 @@ lib_copy() {
 }
 
 @test "load_config prefers the config beside the script over the prefix one" {
-  local tool; tool=$(lib_copy usr/bin mytool)
+  local tool; tool=$(lib_at usr/bin mytool)
   mkdir -p "$BATS_TEST_TMPDIR/usr/etc"
   echo 'VAL=beside' > "$BATS_TEST_TMPDIR/usr/bin/mytool.conf"
   echo 'VAL=prefix' > "$BATS_TEST_TMPDIR/usr/etc/mytool.conf"
@@ -107,7 +109,7 @@ lib_copy() {
 }
 
 @test "load_config reports which file it read" {
-  local tool; tool=$(lib_copy opt/tools mytool)
+  local tool; tool=$(lib_at opt/tools mytool)
   echo 'VAL=x' > "$BATS_TEST_TMPDIR/opt/tools/mytool.conf"
   run_func "$tool" load_config
   [[ "$output" == *"Loading configuration from: "*"/opt/tools/mytool.conf" ]]
@@ -115,13 +117,13 @@ lib_copy() {
 
 @test "load_config fails when no config exists anywhere" {
   # A deliberately improbable name, so the /etc fallback cannot accidentally match.
-  local tool; tool=$(lib_copy opt/tools lib-common-bats-absent-tool)
+  local tool; tool=$(lib_at opt/tools lib-common-bats-absent-tool)
   run_func "$tool" load_config
   [ "$status" -eq 1 ]
 }
 
 @test "load_config tolerates a config that reads an unset variable" {
-  local tool; tool=$(lib_copy opt/tools mytool)
+  local tool; tool=$(lib_at opt/tools mytool)
   printf 'VAL="${NOT_DEFINED_ANYWHERE:-}fallback"\n' > "$BATS_TEST_TMPDIR/opt/tools/mytool.conf"
   run_snippet "$tool" 'set -o nounset; load_config >/dev/null; echo "$VAL"'
   [ "$status" -eq 0 ]
@@ -132,7 +134,7 @@ lib_copy() {
   # load_config relaxes nounset around `source` so a config may reference unset variables; the
   # setting must be back on afterwards. Probed in a subshell so the abort does not become this
   # test's own exit status.
-  local tool; tool=$(lib_copy opt/tools mytool)
+  local tool; tool=$(lib_at opt/tools mytool)
   echo 'VAL=x' > "$BATS_TEST_TMPDIR/opt/tools/mytool.conf"
   run_snippet "$tool" 'set -o nounset; load_config >/dev/null
     if (echo "${NEVER_SET}") 2>/dev/null; then echo "nounset lost"; else echo "nounset restored"; fi'
@@ -141,15 +143,76 @@ lib_copy() {
 }
 
 @test "a malformed config aborts a script running under errexit" {
-  local tool; tool=$(lib_copy opt/tools mytool)
+  local tool; tool=$(lib_at opt/tools mytool)
   printf 'VAL=(unclosed\n' > "$BATS_TEST_TMPDIR/opt/tools/mytool.conf"
   run_snippet "$tool" 'set -o errexit; load_config >/dev/null; echo "kept going"'
   [ "$status" -ne 0 ]
   [[ "$output" != *"kept going"* ]]
 }
 
+# --- load_config: an explicitly named file ------------------------------------------------------
+
+@test "CONFIG_FILE is loaded in preference to everything else" {
+  local tool; tool=$(lib_at usr/bin mytool)
+  mkdir -p "$BATS_TEST_TMPDIR/usr/etc"
+  echo 'VAL=beside' > "$BATS_TEST_TMPDIR/usr/bin/mytool.conf"
+  echo 'VAL=prefix' > "$BATS_TEST_TMPDIR/usr/etc/mytool.conf"
+  echo 'VAL=named'  > "$BATS_TEST_TMPDIR/named.conf"
+  CONFIG_FILE="$BATS_TEST_TMPDIR/named.conf" run_snippet "$tool" 'load_config >/dev/null; echo "$VAL"'
+  [ "$status" -eq 0 ]
+  [ "$output" = "named" ]
+}
+
+@test "CONFIG_FILE works where the search would find nothing" {
+  local tool; tool=$(lib_at opt/tools lib-common-bats-absent-tool)
+  echo 'VAL=named' > "$BATS_TEST_TMPDIR/named.conf"
+  CONFIG_FILE="$BATS_TEST_TMPDIR/named.conf" run_snippet "$tool" 'load_config >/dev/null; echo "$VAL"'
+  [ "$output" = "named" ]
+}
+
+@test "CONFIG_FILE reports which file it read" {
+  local tool; tool=$(lib_at opt/tools mytool)
+  echo 'VAL=named' > "$BATS_TEST_TMPDIR/named.conf"
+  CONFIG_FILE="$BATS_TEST_TMPDIR/named.conf" run_func "$tool" load_config
+  [[ "$output" == *"Loading configuration from: $BATS_TEST_TMPDIR/named.conf" ]]
+}
+
+# Naming a file excludes the alternatives, so an unreadable one must fail rather than quietly load a
+# different config — which could point at different backup targets or hold different credentials.
+@test "an unreadable CONFIG_FILE fails instead of falling back to the search" {
+  local tool; tool=$(lib_at opt/tools mytool)
+  echo 'VAL=beside' > "$BATS_TEST_TMPDIR/opt/tools/mytool.conf"
+  CONFIG_FILE="$BATS_TEST_TMPDIR/absent.conf" run_snippet "$tool" \
+    'if load_config >/dev/null 2>&1; then echo "loaded [$VAL]"; else echo "refused"; fi'
+  [ "$output" = "refused" ]
+}
+
+@test "an unreadable CONFIG_FILE says so" {
+  local tool; tool=$(lib_at opt/tools mytool)
+  CONFIG_FILE="$BATS_TEST_TMPDIR/absent.conf" run_func "$tool" load_config
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"CONFIG_FILE is set to"*"absent.conf"*"not readable"* ]]
+}
+
+@test "an empty CONFIG_FILE is ignored, leaving the search in charge" {
+  local tool; tool=$(lib_at opt/tools mytool)
+  echo 'VAL=beside' > "$BATS_TEST_TMPDIR/opt/tools/mytool.conf"
+  CONFIG_FILE="" run_snippet "$tool" 'load_config >/dev/null; echo "$VAL"'
+  [ "$output" = "beside" ]
+}
+
+@test "CONFIG_FILE keeps nounset relaxed while sourcing and restored after" {
+  local tool; tool=$(lib_at opt/tools mytool)
+  printf 'VAL="${NOT_DEFINED:-}ok"\n' > "$BATS_TEST_TMPDIR/named.conf"
+  CONFIG_FILE="$BATS_TEST_TMPDIR/named.conf" run_snippet "$tool" \
+    'set -o nounset; load_config >/dev/null; echo "$VAL"
+     if (echo "${NEVER_SET}") 2>/dev/null; then echo "nounset lost"; else echo "nounset restored"; fi'
+  [ "${lines[0]}" = "ok" ]
+  [ "${lines[1]}" = "nounset restored" ]
+}
+
 @test "load_config leaves a config's arrays usable" {
-  local tool; tool=$(lib_copy opt/tools mytool)
+  local tool; tool=$(lib_at opt/tools mytool)
   printf 'DIRS=(one two three)\n' > "$BATS_TEST_TMPDIR/opt/tools/mytool.conf"
   run_snippet "$tool" 'load_config >/dev/null; echo "${#DIRS[@]}:${DIRS[1]}"'
   [ "$output" = "3:two" ]
