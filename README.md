@@ -45,10 +45,14 @@ All code is checked with [ShellCheck](https://www.shellcheck.net/) in CI.
 Linux and macOS in CI:
 
 ```bash
-make install   # brew install bats-core
-make test      # run the suite
-make check     # ShellCheck + tests
+make install    # brew install bats-core yq
+make test       # run the suite
+make check      # ShellCheck + tests
+make coverage   # the suite under kcov, then the coverage gate
 ```
+
+Line coverage is published per commit at
+[jmerhar.github.io/coverage/scripts](https://jmerhar.github.io/coverage/scripts/).
 
 See [`test/README.md`](test/README.md) for how the suites are structured and how to
 add one.

@@ -129,5 +129,29 @@ timeout` rather than `test parse_options 3`.
 every stub control. Change `test_helper.bash` or `_stub` and that suite is what tells you whether the
 guarantees the other suites rely on still hold.
 
-Coverage measurement is not wired up yet; it arrives once the shared
-[jmerhar/coverage](https://github.com/jmerhar/coverage) setup is reworked.
+---
+
+## Coverage
+
+```bash
+make coverage        # the suite under kcov, then the shared gate
+make test-coverage   # the same without gating
+```
+
+Needs Docker rather than a local kcov: kcov's macOS build ignores the shebang and execs `/bin/bash`,
+which is 3.2 there, and most of these scripts need 4.0 or newer — so `bin/run-coverage.sh` probes what a
+local kcov would run and falls back to the pinned container, which is what CI uses too.
+
+Everything coverage-specific is in `test_helper.bash`: the three seams notice `COVERAGE_DIR` and trace
+through kcov. **No `.bats` file should ever mention coverage.**
+
+`run_func` and `run_snippet` cannot be traced the way they normally run. `bash -c 'source …'` sets `$0`
+exactly, but kcov's prologue reads `BASH_SOURCE`, which is unset inside a `-c` string, so a script under
+`set -o nounset` dies before its function is reached. Under coverage those calls instead go through a
+harness kcov executes directly, written beside the script — where `$(dirname "$0")/../lib/common.sh`
+still resolves — and handed the script's own `SCRIPT_NAME`. It defaults rather than forces that name, so
+a test pinning `SCRIPT_NAME` keeps its value. `bin/run-coverage.sh` deletes any harness a run leaves
+behind, and `.gitignore` covers one that a killed run strands.
+
+The consequence for tests: assert what the scripts need from `$0` — its directory, and their own name —
+rather than `$0` itself, since under coverage `$0` is the harness. `harness.bats` does exactly that.

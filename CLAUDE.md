@@ -104,9 +104,10 @@ Linux and macOS via `.github/workflows/ci.yml`. See [`test/README.md`](test/READ
 one — it covers the three ways a test reaches the code, the safety rules, and how the stubs work.
 
 ```bash
-make test     # the suite
-make lint     # ShellCheck, including the helper and stubs
-make check    # both; gate a commit on this
+make test      # the suite
+make lint      # ShellCheck, the manifest checks, the declared bash versions
+make check     # both; gate a commit on this
+make coverage  # the suite under kcov, then the shared gate
 ```
 
 Two rules matter most:
@@ -119,8 +120,27 @@ Two rules matter most:
   committed `.conf` files, which on a real machine can name real volumes. Assert on stub call logs,
   never on side effects, and write nothing outside `$BATS_TEST_TMPDIR`.
 
-Coverage measurement is not wired up yet; it arrives once the shared
-[jmerhar/coverage](https://github.com/jmerhar/coverage) setup is reworked.
+### Coverage
+
+Line coverage is measured by kcov through `bin/run-coverage.sh` and published to
+[the shared site](https://jmerhar.github.io/coverage/scripts/); `coverage.toml` declares the suite and
+its gate, and the reporting is the shared actions from
+[jmerhar/coverage](https://github.com/jmerhar/coverage). Three things about it are not obvious:
+
+- **The kcov seam lives in `test/test_helper.bash` and nowhere else.** `run_script`, `run_func` and
+  `run_snippet` notice `COVERAGE_DIR`; no `.bats` file knows coverage exists. Keep it that way.
+- **`bash -c` cannot be traced.** kcov's prologue reads `BASH_SOURCE`, unset inside a `-c` string, so a
+  script under `set -o nounset` dies before its function runs, and `--bash-method=DEBUG` measures
+  nothing. Function-level calls therefore go through a harness kcov executes directly, written beside
+  the script so `$(dirname "$0")/../lib/common.sh` still resolves. `bin/run-coverage.sh` removes them.
+- **Coverage is Linux-only, and that is deliberate.** kcov's macOS build ignores the shebang and execs
+  `/bin/bash` — 3.2 there — so most of these scripts fail under it. The runner detects that and uses the
+  pinned container instead, which is also what CI does, so `make coverage` needs Docker rather than a
+  local kcov.
+
+The gate sits below what the suite actually reaches: roughly 115 lines cannot be credited, because bash
+attributes a multi-line command to its final line. Reshaping those is a `TODO.md` item; raise the gate
+after it, never lower it to make a build pass.
 
 ### Testing Locally
 

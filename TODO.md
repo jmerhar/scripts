@@ -27,26 +27,24 @@ an `exiftool` that reports a camera model, a `curl` that answers as a Deluge
 daemon, an `ffmpeg` that yields a subtitle track. Best split one pull request per
 topic directory. See [`test/README.md`](test/README.md).
 
-Coverage measurement is deliberately absent until the shared
-[jmerhar/coverage](https://github.com/jmerhar/coverage) setup is reworked.
-Findings from measuring kcov against this repo, worth keeping for then:
+These scripts are also the bulk of the uncovered lines, so this is what will move
+the published coverage figure more than anything else.
 
-- `.conf` files get instrumented, because `load_config` sources them, and need
-  excluding or they land in the report.
-- `--include-path` only discovers unexecuted files in directories kcov has
-  already seen, so the denominator is only complete once the suite touches every
-  one of them.
-- Publishing is narrow: `kcov-merged/` alone loses the line highlighting, whose
-  per-file pages reference `../data/bcov.css`, while the whole output tree
-  carries dangling symlinks and `.so` helpers that break the shared site's Pages
-  deploy. Publish the tree and strip those two.
-- Bash attributes a multi-line command to its final line, so the first line of
-  each `\` continuation reads as never executed and the continuation lines are
-  not instrumented at all; the closing brace of a redirected group
-  (`} >> "$file"`) is never reported either. Reshape those statements rather than
-  trying to test them — argument arrays and named variables for the long
-  invocations, a function for the redirected group. This repo has 114
-  continuations, concentrated in `dmarc-report`, `subtitle-sync` and
-  `prune-orphaned-torrents`, and one redirected group in `bin/package-script.sh`.
-  The suite asserts behaviour rather than layout, so it stays valid across that
-  reshaping and protects it.
+## 3. Reshape the statements coverage cannot credit
+
+Bash attributes a multi-line command to its final line, so the first line of each
+`\` continuation reads as never executed and the continuation lines are not
+instrumented at all; the closing brace of a redirected group (`} >> "$file"`) is
+never reported either. Roughly 115 lines here can therefore never be credited
+however thorough the tests are, which is part of why the gate in `coverage.toml`
+sits where it does.
+
+The fix is to reshape those statements rather than try to test them: argument
+arrays with named variables for the long invocations, a function for the
+redirected group. There are 114 continuations — 46 in `dmarc-report`, 21 in
+`subtitle-sync`, 15 in `prune-orphaned-torrents` — and one redirected group at
+`bin/package-script.sh:307`.
+
+Worth doing as its own change, raising the gate afterwards so the effect is
+visible. The suite asserts behaviour rather than layout, so it stays valid across
+the reshaping and protects it.
