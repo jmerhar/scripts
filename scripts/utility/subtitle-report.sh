@@ -857,6 +857,10 @@ format_subs() {
     [[ -n "${srcs["${lang}"]:-}" ]] || order+=("${lang}")
     srcs["${lang}"]+="${srcs["${lang}"]:+,}${src}"
   done
+  # Nothing to render for a file with no subtitles. Without this the loop below reads the single empty
+  # line that printf emits for an empty array and looks up srcs[""], which is not a valid subscript.
+  (( ${#order[@]} > 0 )) || return 0
+
   local out="" lang_sorted
   while IFS= read -r lang_sorted; do
     out+="${out:+, }${lang_sorted} [${srcs["${lang_sorted}"]}]"
