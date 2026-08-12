@@ -374,6 +374,15 @@ with_map() {
   [[ "$output" == *"movie.xyz"* ]]
 }
 
+# A config is optional here, but one named explicitly and not readable is a typo worth refusing: the
+# alternative is a report built from the defaults the caller believes they replaced.
+@test "an unreadable CONFIG_FILE is refused rather than ignored" {
+  touch_file movie.mkv
+  CONFIG_FILE="$BATS_TEST_TMPDIR/nope.conf" run_script "$SCRIPT" -C --no-embedded "$TREE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"CONFIG_FILE is set to"*"nope.conf"* ]]
+}
+
 # An empty array in the config is treated as "unset" rather than "recognise nothing", since the latter
 # makes the script scan a tree and silently report no media at all.
 @test "an empty extension list in the config leaves the defaults in place" {

@@ -190,8 +190,50 @@ lib_at() {
 @test "an unreadable CONFIG_FILE says so" {
   local tool; tool=$(lib_at opt/tools mytool)
   CONFIG_FILE="$BATS_TEST_TMPDIR/absent.conf" run_func "$tool" load_config
-  [ "$status" -eq 1 ]
   [[ "$output" == *"CONFIG_FILE is set to"*"absent.conf"*"not readable"* ]]
+}
+
+# The two failures carry different statuses so a caller for whom a missing config is normal can still
+# refuse a named one it cannot read.
+@test "load_config distinguishes an unreadable CONFIG_FILE from no config at all" {
+  local tool; tool=$(lib_at opt/tools lib-common-bats-absent-tool)
+  CONFIG_FILE="$BATS_TEST_TMPDIR/absent.conf" run_func "$tool" load_config
+  [ "$status" -eq 2 ]
+  run_func "$tool" load_config
+  [ "$status" -eq 1 ]
+}
+
+# --- load_optional_config -----------------------------------------------------------------------
+
+@test "load_optional_config succeeds when there is no config to find" {
+  local tool; tool=$(lib_at opt/tools lib-common-bats-absent-tool)
+  run_snippet "$tool" 'load_optional_config >/dev/null; echo "status=$?"'
+  [ "$output" = "status=0" ]
+}
+
+@test "load_optional_config loads a config when one exists" {
+  local tool; tool=$(lib_at opt/tools mytool)
+  echo 'VAL=beside' > "$BATS_TEST_TMPDIR/opt/tools/mytool.conf"
+  run_snippet "$tool" 'load_optional_config >/dev/null; echo "$VAL"'
+  [ "$output" = "beside" ]
+}
+
+# The whole point of the wrapper: a typo in CONFIG_FILE must not read as "no config", or the run
+# proceeds on the defaults the caller thinks they overrode.
+@test "load_optional_config refuses an unreadable CONFIG_FILE" {
+  local tool; tool=$(lib_at opt/tools lib-common-bats-absent-tool)
+  CONFIG_FILE="$BATS_TEST_TMPDIR/absent.conf" run_snippet "$tool" \
+    'if load_optional_config >/dev/null 2>&1; then echo "carried on"; else echo "refused"; fi'
+  [ "$output" = "refused" ]
+}
+
+@test "load_optional_config lets the refusal reach stderr while stdout is dropped" {
+  local tool; tool=$(lib_at opt/tools mytool)
+  echo 'VAL=named' > "$BATS_TEST_TMPDIR/named.conf"
+  CONFIG_FILE="$BATS_TEST_TMPDIR/named.conf" run_snippet "$tool" 'load_optional_config >/dev/null'
+  [[ "$output" != *"Loading configuration from"* ]]
+  CONFIG_FILE="$BATS_TEST_TMPDIR/absent.conf" run_snippet "$tool" 'load_optional_config >/dev/null || true'
+  [[ "$output" == *"CONFIG_FILE is set to"* ]]
 }
 
 @test "an empty CONFIG_FILE is ignored, leaving the search in charge" {

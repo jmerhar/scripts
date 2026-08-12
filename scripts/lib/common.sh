@@ -177,7 +177,10 @@ _source_config() {
 # Arguments:
 #   None
 # Returns:
-#   0 if config was found and sourced, 1 otherwise.
+#   0 if config was found and sourced, 2 if CONFIG_FILE names a file that cannot be read, 1 if no
+#   config file exists. The two failures are distinguished because "you asked for a file I cannot
+#   read" is a user error every caller should refuse, while "there is no config" is normal for a
+#   script whose every setting has a default.
 ########################################
 load_config() {
   # A named file wins outright, and an unreadable one is an error rather than a quiet fall back to the
@@ -186,7 +189,7 @@ load_config() {
   if [[ -n "${CONFIG_FILE:-}" ]]; then
     if [[ ! -r "${CONFIG_FILE}" ]]; then
       log_error "CONFIG_FILE is set to '${CONFIG_FILE}', which does not exist or is not readable."
-      return 1
+      return 2
     fi
     _source_config "${CONFIG_FILE}"
     return
@@ -219,6 +222,23 @@ load_config() {
   fi
 
   _source_config "${config_to_load}"
+}
+
+########################################
+# Loads configuration for a script that can run without one.
+# An absent config is normal for such a script, since every setting has a default — but a CONFIG_FILE
+# naming a file that cannot be read is a user error, because carrying on would apply the very defaults
+# the caller believes they have overridden. Callers redirect stdout themselves when they do not want
+# _source_config's "Loading configuration from" line; the refusal goes to stderr either way.
+# Globals:
+#   CONFIG_FILE, SCRIPT_NAME
+# Returns:
+#   0 whether or not a config was found, 1 when CONFIG_FILE cannot be read (load_config has logged why).
+########################################
+load_optional_config() {
+  local status=0
+  load_config || status=$?
+  (( status != 2 ))
 }
 
 ########################################

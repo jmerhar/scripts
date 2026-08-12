@@ -1009,7 +1009,9 @@ main() {
   fi
 
   # Config is optional: defaults apply when no .conf file is present.
-  load_config &>/dev/null || true
+  # Every setting has a default, so running without a config is fine; stdout is dropped to keep the
+  # "Loading configuration from" line out of the report.
+  load_optional_config >/dev/null || exit 1
   apply_config
 
   # Build the language lookup once in the parent shell; the per-file

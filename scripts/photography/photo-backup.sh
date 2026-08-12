@@ -266,7 +266,7 @@ perform_backup() {
 #   Command-line arguments passed to the script.
 #######################################
 main() {
-  load_config || true  # Config is optional; CLI args can provide everything
+  load_optional_config || exit 1  # Config is optional; CLI args can provide everything
   parse_options "$@"
   validate_config "HOST" "DEST_PATH" "array:SOURCES" || { show_usage; exit 1; }
 

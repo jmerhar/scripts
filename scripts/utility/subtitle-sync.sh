@@ -1047,7 +1047,9 @@ print_summary() {
 main() {
   parse_options "$@"
 
-  load_config &>/dev/null || true
+  # Every setting has a default, so running without a config is fine; stdout is dropped to keep the
+  # "Loading configuration from" line out of the report.
+  load_optional_config >/dev/null || exit 1
   apply_config
   apply_config_flag_defaults
   setup_runtime
