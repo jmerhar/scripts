@@ -610,10 +610,12 @@ requested_langs_display() {
 ########################################
 detect_embedded_langs() {
   local path="$1" line
+  local -a probe=(-v error -select_streams s)
+  probe+=(-show_entries stream_tags=language -of csv=p=0)
+  probe+=(-- "${path}")
   while IFS= read -r line; do
     printf '%s\n' "$(normalize_lang "${line}")"
-  done < <(ffprobe -v error -select_streams s \
-    -show_entries stream_tags=language -of csv=p=0 -- "${path}" 2>/dev/null)
+  done < <(ffprobe "${probe[@]}" 2>/dev/null)
 }
 
 ########################################
@@ -777,9 +779,40 @@ traverse_tree() {
 ########################################
 sorted_langs() {
   (( ${#_lang_files[@]} > 0 )) || return 0
-  printf '%s\n' "${!_lang_files[@]}" \
-    | sort | sed '/^und$/d'
+  printf '%s\n' "${!_lang_files[@]}" | sort | sed '/^und$/d'
   [[ -n "${_lang_files[und]:-}" ]] && printf 'und\n'
+}
+
+########################################
+# Prints one per-language summary row: the language, how many files have it, and the split by source.
+# Globals:
+#   _lang_files, _lang_emb, _lang_side, _C_CYAN, _C_RESET
+# Arguments:
+#   lang: The normalized language token.
+########################################
+print_lang_row() {
+  local lang="$1"
+  local files="${_lang_files["${lang}"]:-0}"
+  local emb="${_lang_emb["${lang}"]:-0}"
+  local side="${_lang_side["${lang}"]:-0}"
+  local row
+  row=$(printf '  %-5s %4d files   (%4d embedded, %4d sidecar)' "${lang}" "${files}" "${emb}" "${side}")
+  printf '%s\n' "${_C_CYAN}${row}${_C_RESET}"
+}
+
+########################################
+# Prints one file row in the listing: its basename, then an already-colored annotation.
+# Globals:
+#   _C_WHITE, _C_RESET
+# Arguments:
+#   path: The media file path.
+#   annotation: The text to show against it, including any color escapes.
+########################################
+print_file_row() {
+  local path="$1" annotation="$2"
+  local name
+  name="$(basename "${path}")"
+  printf '  %s%s%s  %s\n' "${_C_WHITE}" "${name}" "${_C_RESET}" "${annotation}"
 }
 
 ########################################
@@ -818,23 +851,21 @@ print_summary() {
     printf '\n%s\n' "${_C_BOLD}${_C_GREEN}Requested language(s): $(requested_langs_display)${_C_RESET}"
     local lang
     for lang in "${_langs_norm[@]}"; do
-      printf '%s\n' "${_C_CYAN}$(printf '  %-5s %4d files   (%4d embedded, %4d sidecar)' \
-        "${lang}" "${_lang_files["${lang}"]:-0}" "${_lang_emb["${lang}"]:-0}" "${_lang_side["${lang}"]:-0}")${_C_RESET}"
+      print_lang_row "${lang}"
     done
-    printf '%s\n' "${_C_BOLD}${_C_GREEN}$(printf '  %d files have at least one · %d missing all.' \
-      "${have_any}" "${miss_all}")${_C_RESET}"
+    local totals="  ${have_any} files have at least one · ${miss_all} missing all."
+    printf '%s\n' "${_C_BOLD}${_C_GREEN}${totals}${_C_RESET}"
   else
     printf '\n%s\n' "${_C_BOLD}${_C_GREEN}By language:${_C_RESET}"
     local lang
     while IFS= read -r lang; do
-      printf '%s\n' "${_C_CYAN}$(printf '  %-5s %4d files   (%4d embedded, %4d sidecar)' \
-        "${lang}" "${_lang_files["${lang}"]}" "${_lang_emb["${lang}"]:-0}" "${_lang_side["${lang}"]:-0}")${_C_RESET}"
+      print_lang_row "${lang}"
     done < <(sorted_langs)
   fi
 
   printf '\n%s\n' "${_C_BOLD}${_C_GREEN}By source:${_C_RESET}"
-  printf '%s\n' "${_C_CYAN}$(printf '  embedded only %d · sidecar only %d · both %d' \
-    "${_emb_only}" "${_side_only}" "${_both}")${_C_RESET}"
+  local by_source="  embedded only ${_emb_only} · sidecar only ${_side_only} · both ${_both}"
+  printf '%s\n' "${_C_CYAN}${by_source}${_C_RESET}"
 }
 
 ########################################
@@ -900,13 +931,11 @@ print_list() {
       fi
       printf '  %s  %s\n' "$(basename "${path}")" "${label}"
     elif [[ -n "${subs}" ]]; then
-      printf '  %s%s%s  %s%s%s\n' \
-        "${_C_WHITE}" "$(basename "${path}")" "${_C_RESET}" \
-        "${_C_CYAN}" "$(format_subs "${subs}")" "${_C_RESET}"
+      local rendered
+      rendered="$(format_subs "${subs}")"
+      print_file_row "${path}" "${_C_CYAN}${rendered}${_C_RESET}"
     else
-      printf '  %s%s%s  %s%s%s\n' \
-        "${_C_WHITE}" "$(basename "${path}")" "${_C_RESET}" \
-        "${_C_MAGENTA}" "(none)" "${_C_RESET}"
+      print_file_row "${path}" "${_C_MAGENTA}(none)${_C_RESET}"
     fi
   done < <(sorted_file_indices)
 }
