@@ -18,8 +18,8 @@ html = "coverage"
 # Set just under the measured figure so a real regression fails while a defensive line here or there is
 # tolerated. Two things hold this down, neither of them a gap in the tests:
 #
-#   * `mdcheck-progress`, `local-backup`, `photo-backup`, `nopasswd-sudo` and `unlock-pdf` have no
-#     behavioural suite yet, and are most of the uncovered lines;
+#   * `mdcheck-progress`, `local-backup`, `nopasswd-sudo` and `unlock-pdf` have no behavioural suite
+#     yet, and are most of the uncovered lines;
 #   * a `\` continuation cannot be credited at all, because bash attributes a multi-line command to its
 #     final line: the first line reads as never executed and the lines between are not instrumented.
 #     The closing brace of a redirected group is never reported either. Each script has its
@@ -27,4 +27,4 @@ html = "coverage"
 #     above does.
 #
 # Raise it as coverage climbs; never lower it to make a red build pass.
-gate = 75.0
+gate = 78.0
