@@ -167,6 +167,10 @@ its gate, and the reporting is the shared actions from
   script under `set -o nounset` dies before its function runs, and `--bash-method=DEBUG` measures
   nothing. Function-level calls therefore go through a harness kcov executes directly, written beside
   the script so `$(dirname "$0")/../lib/common.sh` still resolves. `bin/run-coverage.sh` removes them.
+- **bats is installed from source in the container, not from apt.** Debian ships 1.8, which predates
+  `BATS_TEST_TIMEOUT`; a suite that bounds a test to turn a runaway loop into a failure would silently
+  have no bound. `BATS_VERSION` in `bin/run-coverage.sh` pins the same version a local run and the macOS
+  job use, so all three behave alike.
 - **Coverage is Linux-only, and that is deliberate.** kcov's macOS build ignores the shebang and execs
   `/bin/bash` — 3.2 there — so most of these scripts fail under it. The runner detects that and uses the
   pinned container instead, which is also what CI does, so `make coverage` needs Docker rather than a

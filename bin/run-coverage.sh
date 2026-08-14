@@ -43,6 +43,12 @@ KCOV_IMAGE=${KCOV_IMAGE:-kcov/kcov@sha256:481289ae32e55e5b733019515acd10948a4f76
 YQ_VERSION=${YQ_VERSION:-v4.52.4}
 export YQ_VERSION
 
+# Debian's bats is 1.8, which predates BATS_TEST_TIMEOUT (added in 1.9). A suite that bounds a test to turn
+# a runaway loop into a failure would silently have no bound there, so bats is installed from source at the
+# version a local run and the macOS job use — all three then behave the same.
+BATS_VERSION=${BATS_VERSION:-v1.14.0}
+export BATS_VERSION
+
 COVERAGE_HARNESS_NAME="_coverage-harness"
 export COVERAGE_HARNESS_NAME
 
@@ -117,15 +123,22 @@ else
   fi
   docker run --rm -v "${ROOT}":/src -w /src \
     -e "JUNIT_DIR=${JUNIT_DIR:-}" -e "COVERAGE_HARNESS_NAME=${COVERAGE_HARNESS_NAME}" \
-    -e "YQ_VERSION=${YQ_VERSION}" \
+    -e "YQ_VERSION=${YQ_VERSION}" -e "BATS_VERSION=${BATS_VERSION}" \
     --entrypoint bash "${KCOV_IMAGE}" -c '
     set -euo pipefail
     apt-get update -qq >/dev/null
-    # bats and wget run the suite and fetch yq; the rest are what the scripts under test shell out to,
-    # and a suite covering a script that needs one fails for want of the tool rather than for a fault in
-    # the code. Keep this in step with what the suites exercise.
-    packages="bats wget libxml2-utils zip unzip jq"
+    # wget fetches bats and yq; the rest are what the scripts under test shell out to, and a suite covering
+    # a script that needs one fails for want of the tool rather than for a fault in the code. Keep this in
+    # step with what the suites exercise.
+    # procps is for bats, not for the scripts: its per-test timeout shells out to ps/pkill, and without
+    # them every test in a file that sets BATS_TEST_TIMEOUT aborts with "Cannot execute timeout".
+    packages="wget libxml2-utils zip unzip jq procps"
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $packages >/dev/null
+    # Not the distribution package: see the BATS_VERSION note above.
+    wget -qO /tmp/bats.tar.gz \
+      "https://github.com/bats-core/bats-core/archive/refs/tags/${BATS_VERSION}.tar.gz"
+    tar -xzf /tmp/bats.tar.gz -C /tmp
+    "/tmp/bats-core-${BATS_VERSION#v}/install.sh" /usr/local >/dev/null
     # Distribution "yq" is the Python jq wrapper, which does not speak the v4 expressions the packaging
     # scripts use, so mikefarah'"'"'s build is fetched at the version the workflows pin.
     wget -qO /usr/local/bin/yq \

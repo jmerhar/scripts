@@ -32,8 +32,8 @@ setup() {
 # fault in that loop does not fail — it spins, and a spinning test would hold the whole suite open. bats
 # arms the timeout before setup runs, which is why it is set here rather than in setup.
 #
-# BATS_TEST_TIMEOUT needs bats 1.9 or newer. Debian's bats is 1.8, so under the coverage container this
-# does nothing and such a fault still shows up as a hang rather than a failure.
+# BATS_TEST_TIMEOUT needs bats 1.9 or newer, which is why bin/run-coverage.sh installs a pinned bats rather
+# than the distribution's 1.8: with 1.8 the bound silently would not exist.
 ########################################
 setup_file() {
   export BATS_TEST_TIMEOUT=60
