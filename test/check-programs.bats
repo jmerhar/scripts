@@ -217,11 +217,14 @@ EOF
   [[ "$output" == *"::error::"* ]]
 }
 
+# GITHUB_ACTIONS is set for the whole job when the suite runs in CI, so it has to be cleared explicitly
+# rather than assumed absent — otherwise this passes only on a developer machine.
 @test "no annotations outside Actions" {
   program bad.awk <<'EOF'
 BEGIN { if ( }
 EOF
-  run_script "$TOOL" "$DIR"
+  GITHUB_ACTIONS= run_script "$TOOL" "$DIR"
+  [ "$status" -ne 0 ]
   [[ "$output" != *"::error::"* ]]
 }
 
