@@ -23,7 +23,12 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-readonly DROPIN="/etc/sudoers.d/99-temp-nopasswd"
+# The two paths this writes to are taken from the environment when set. Both are system-wide and one of
+# them governs sudo itself, so being able to point them elsewhere is what allows the grant, the revoke and
+# the boot unit to be exercised without touching a real machine's sudoers; unset, they are the real ones.
+: "${DROPIN:=/etc/sudoers.d/99-temp-nopasswd}"
+: "${SYSTEMD_UNIT_DIR:=/etc/systemd/system}"
+readonly DROPIN SYSTEMD_UNIT_DIR
 readonly AUTO_UNIT="nopasswd-sudo-autorevoke"
 readonly BOOT_UNIT="nopasswd-sudo-bootrevoke"
 readonly DEFAULT_TIMEOUT_MIN=30
@@ -119,9 +124,10 @@ schedule_revoke() {
   fi
   local self
   self="$(readlink -f "$0")"
-  systemd-run --quiet --unit="${AUTO_UNIT}" --on-active="${minutes}min" \
-    --description="Auto-revoke temporary passwordless sudo" \
-    "${self}" off
+  local -a args=(--quiet --unit="${AUTO_UNIT}" --on-active="${minutes}min")
+  args+=(--description="Auto-revoke temporary passwordless sudo")
+  args+=("${self}" off)
+  systemd-run "${args[@]}"
   log_info "auto-revoke ARMED: passwordless sudo self-disables in ${minutes} min."
 }
 
@@ -145,7 +151,7 @@ cancel_revoke() {
 #   BOOT_UNIT
 #######################################
 ensure_boot_revoke() {
-  local self unit="/etc/systemd/system/${BOOT_UNIT}.service"
+  local self unit="${SYSTEMD_UNIT_DIR}/${BOOT_UNIT}.service"
   self="$(readlink -f "$0")"
   if [[ ! -f "${unit}" ]]; then
     cat >"${unit}" <<UNIT
@@ -196,8 +202,9 @@ show_status() {
   fi
   if systemctl is-active --quiet "${AUTO_UNIT}.timer" 2>/dev/null; then
     log_info "auto-revoke (this session): ARMED"
-    systemctl list-timers "${AUTO_UNIT}.timer" --no-pager 2>/dev/null \
-      | sed -n '2p' | sed 's/^/  /'
+    local timers
+    timers=$(systemctl list-timers "${AUTO_UNIT}.timer" --no-pager 2>/dev/null || true)
+    sed -n '2p' <<<"${timers}" | sed 's/^/  /'
   else
     log_info "auto-revoke (this session): not armed"
   fi
