@@ -90,7 +90,7 @@ _assert_stubs_first() {
 ########################################
 _coverage_prefix() {
   [[ -n "${COVERAGE_DIR:-}" ]] || return 0
-  printf 'kcov --include-path=%s/scripts,%s/bin --exclude-pattern=.conf,%s,run-coverage.sh %s' \
+  printf 'kcov --include-path=%s/scripts,%s/bin --exclude-pattern=.conf,.md,%s,run-coverage.sh %s' \
     "$REPO_ROOT" "$REPO_ROOT" "$COVERAGE_HARNESS_NAME" "$COVERAGE_DIR"
 }
 
@@ -137,7 +137,7 @@ _sourceable_path() {
 ########################################
 # Writes the sourcing harness kcov executes, at the given path.
 # Created next to its target on demand, because it must live beside the script it sources: $0 is the
-# harness, and the scripts resolve their library as "$(dirname "$0")/../lib/common.sh". Written here
+# harness, and the scripts resolve their library relative to "$(dirname "$0")". Written here
 # rather than only by bin/run-coverage.sh so that a tool copied into a fixture tree — as the bin/ suites
 # do — gets one too. bin/run-coverage.sh deletes any that a run leaves behind.
 # Arguments:
@@ -176,8 +176,8 @@ HARNESS
 # — all of them here — dies before its function is reached. (--bash-method=DEBUG survives that but
 # measures nothing at all.) So under coverage the call goes through a harness script that kcov executes
 # directly; bin/run-coverage.sh places one beside every script for the duration of a run, so that
-# $(dirname "$0") still finds ../lib/common.sh, and the harness exports SCRIPT_NAME so the config path
-# and log prefix are the script's own rather than the harness's.
+# $(dirname "$0") is still the script's own directory and its library include resolves, and the harness
+# exports SCRIPT_NAME so the config path and log prefix are the script's own rather than the harness's.
 # Globals:
 #   COVERAGE_DIR, COVERAGE_HARNESS_NAME
 # Arguments:

@@ -160,7 +160,7 @@ load test_helper
 setup() { setup_common; }
 
 @test "rejects an unknown option" {
-  run_script "$REPO_ROOT/scripts/utility/compare-dirs.sh" --nonsense
+  run_script "$REPO_ROOT/scripts/utility/compare-dirs/compare-dirs.sh" --nonsense
   [ "$status" -ne 0 ]
   [[ "$output" == *"Unknown option"* ]]
 }
@@ -192,8 +192,8 @@ through kcov. **No `.bats` file should ever mention coverage.**
 `run_func` and `run_snippet` cannot be traced the way they normally run. `bash -c 'source …'` sets `$0`
 exactly, but kcov's prologue reads `BASH_SOURCE`, which is unset inside a `-c` string, so a script under
 `set -o nounset` dies before its function is reached. Under coverage those calls instead go through a
-harness kcov executes directly, written beside the script — where `$(dirname "$0")/../lib/common.sh`
-still resolves — and handed the script's own `SCRIPT_NAME`. It defaults rather than forces that name, so
+harness kcov executes directly, written beside the script — so the library path the script derives
+from `$(dirname "$0")` still resolves — and handed the script's own `SCRIPT_NAME`. It defaults rather than forces that name, so
 a test pinning `SCRIPT_NAME` keeps its value. `bin/run-coverage.sh` deletes any harness a run leaves
 behind, and `.gitignore` covers one that a killed run strands.
 

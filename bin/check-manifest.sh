@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 #
 # Validates scripts.yaml against the working tree: every registered script must exist, be executable,
-# and start with a shebang; the shared library must not be executable; and scripts under scripts/ that
-# nobody registered are reported.
+# start with a shebang and have a README beside it; the shared library must not be executable; and
+# scripts under scripts/ that nobody registered are reported.
 #
 # These are the properties that only break at a distance. A non-executable script still packages
 # correctly, because package-script.sh chmods 0755 into every artefact, so the only person affected is
 # whoever runs it from a checkout. A missing shebang is not noticed until a release, where the packager
-# refuses to compile the bash-version guard. And an unregistered script is simply never published.
+# refuses to compile the bash-version guard. A script with no README beside it is linked from the
+# generated indexes to a directory that renders nothing. And an unregistered script is simply never
+# published.
 #
 # Usage:
 #   ./check-manifest.sh
 #
-# Exits non-zero if any registered script is missing, non-executable or lacks a shebang. An
-# unregistered script is a warning: a work in progress under scripts/ is legitimate, and so is the
-# harness that run-coverage.sh puts there for the duration of a run.
+# Exits non-zero if any registered script is missing, non-executable, undocumented or lacking a
+# shebang. An unregistered script is a warning: a work in progress under scripts/ is legitimate, and so
+# is the harness that run-coverage.sh puts there for the duration of a run.
 
 set -o errexit
 set -o nounset
@@ -65,8 +67,8 @@ show_usage() {
   cat <<EOF
 Usage: $(basename "$0")
 
-Checks scripts.yaml against the working tree: registered scripts exist, are executable and have a
-shebang; the shared library is not executable; unregistered scripts under scripts/ are reported.
+Checks scripts.yaml against the working tree: registered scripts exist, are executable, have a
+shebang and a README; the shared library is not executable; unregistered scripts are reported.
 
 Options:
   -h    Show this help message.
@@ -157,6 +159,14 @@ check_entry() {
     failed=1
   fi
 
+  # The generated indexes link each script to its directory, and GitHub renders a directory by showing
+  # its README. A directory without one is a link that resolves and displays nothing, which is the one
+  # broken-documentation case generating the tables from this manifest cannot rule out.
+  if [[ ! -f "$(dirname "${file}")/README.md" ]]; then
+    log_error "$(dirname "${path}")/README.md is missing, so the index links to a directory that renders no documentation."
+    failed=1
+  fi
+
   return "${failed}"
 }
 
@@ -236,7 +246,7 @@ main() {
     exit 1
   fi
 
-  log_info "All ${count} registered script(s) exist, are executable and have a shebang."
+  log_info "All ${count} registered script(s) exist, are executable, have a shebang and are documented."
 }
 
 # Only run when executed, not when sourced — the test suite sources this file to exercise its

@@ -28,10 +28,17 @@ html = "coverage"
 #     `xmllint --xpath` programs. Bash attributes the whole command to one line, so kcov counts the rest
 #     as never-executed bash even though they run — as awk, jq and XPath. No test can reach them.
 #
-# Excluding that last category was tried and rejected: kcov's --exclude-line and --exclude-region both
-# drop the lines correctly, but in this build they also disable --include-path, so the measurement then
-# takes in unrelated files (including previous output directories' HTML and JS) and the overall figure
-# stops meaning anything. Re-test that before trying again.
+# Excluding that last category line by line was tried and rejected: kcov's --exclude-line and
+# --exclude-region both drop the lines correctly, but in this build they also disable --include-path, so
+# the measurement then takes in unrelated files (including previous output directories' HTML and JS) and
+# the overall figure stops meaning anything. Re-test that before trying again.
+#
+# --exclude-pattern drops whole files rather than lines and does not have that effect, which is what
+# keeps `.conf` files and the per-script READMEs out of the measurement. Both matter: kcov's bash parser
+# reads an ordinary prose line as code, so a file that is not bash at all is otherwise reported as bash
+# that never ran — a README beside a script cost 36 uncovered lines before it was excluded.
+#
+# The measured figure is 89.15% (3080/3455 lines) across 20 files.
 #
 # Raise it as coverage climbs; never lower it to make a red build pass, and never delete a guard to
 # flatter the number.

@@ -70,7 +70,7 @@ EOF
 
 # --- $0 fidelity, which everything $0-derived depends on ---------------------------------------
 #
-# What the scripts actually need from $0 is its *directory*, to find ../lib/common.sh, and their own
+# What the scripts actually need from $0 is its *directory*, to find the shared library, and their own
 # name, for the config path and usage text. Those are asserted rather than $0 literally, because under
 # coverage the sourced call arrives through a harness beside the script: the directory is the same, the
 # name is passed in, and kcov can trace it — whereas the `bash -c` form that sets $0 exactly cannot be
@@ -89,7 +89,7 @@ EOF
 }
 
 @test "a sourced call resolves the shared library the way the scripts do" {
-  # The property the directory matters for: every script includes ../lib/common.sh relative to $0.
+  # The property the directory matters for: every script includes the shared library relative to $0.
   run_snippet "$REPO_ROOT/scripts/utility/subtitle-report/subtitle-report.sh" \
     'declare -F log_info >/dev/null && printf "library loaded"'
   [ "$status" -eq 0 ]

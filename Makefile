@@ -1,4 +1,4 @@
-.PHONY: coverage-tooling help install lint smoke test test-coverage coverage check clean
+.PHONY: coverage-tooling docs docs-check help install lint smoke test test-coverage coverage check clean
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*##|^##@' $(MAKEFILE_LIST) | \
@@ -34,6 +34,7 @@ lint: ## ShellCheck everything, and validate the manifest and declared bash vers
 	shellcheck --severity=warning test/test_helper.bash test/stubs/_stub
 	bin/check-manifest.sh
 	bin/check-bash-version.sh
+	$(MAKE) docs-check
 
 # Packages every manifest entry at a throwaway version, which is what catches a manifest and a packager
 # that have stopped agreeing. Writes into dist/, which `make clean` removes.
@@ -44,6 +45,15 @@ lint: ## ShellCheck everything, and validate the manifest and declared bash vers
 # mistake in it still fails locally.
 smoke: ## Package every manifest entry at v0.0.0 as a smoke test
 	bin/smoke-package-all.sh
+
+# The root table and every topic index come from scripts.yaml, so a script cannot be renamed,
+# moved or added without its documentation following. `make lint` runs the same generator with --check, so
+# a stale index fails the build rather than going unnoticed.
+docs: ## Regenerate the README index tables from the manifest
+	@bin/update-all-tables.sh
+
+docs-check: ## Fail if any README index table is out of date
+	@bin/update-all-tables.sh --check
 
 test: ## Run the bats suite
 	bats test/

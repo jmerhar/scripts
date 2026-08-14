@@ -10,11 +10,27 @@ A collection of packaged shell scripts for macOS and Debian/Ubuntu, distributed 
 
 ### Directory Layout
 
-- `scripts/` — User-facing scripts, organized by topic:
+Each publishable script lives in its own directory, alongside everything that belongs to it: its config
+template and its README. The script keeps its own filename inside that directory because `SCRIPT_NAME`
+derives from `basename "$0" .sh`, and that name drives config discovery, the usage text and the log
+prefix — a tidier `main.sh` would silently become `SCRIPT_NAME=main` and break all three. The published
+artefact is a single file named after the script, so the repetition is invisible outside the repo.
+
+- `scripts/` — User-facing scripts, one directory per script, grouped by topic:
   - `scripts/system/` — System administration tools (e.g., backups)
   - `scripts/utility/` — General-purpose utilities
   - `scripts/photography/` — Photography workflow automation
   - `scripts/lib/` — Shared library sourced by other scripts (not published as a package)
+
+```
+scripts/system/
+  README.md                       # generated index: intro + one row per script
+  local-backup/
+    local-backup.sh
+    local-backup.conf
+    README.md                     # this script's documentation
+```
+
 - `bin/` — Internal CI/CD tooling (packaging, dependency installation). Not published as packages.
 - `test/` — bats suites, the shared test helper, and the command stubs. Not published as packages.
 - `scripts.yaml` — Central manifest defining all publishable scripts, their metadata, and dependencies.
@@ -25,14 +41,17 @@ Config files (`.conf`) live next to their scripts (e.g., `scripts/system/local-b
 
 ### Documentation (READMEs)
 
-- The root `README.md` has an **Available Scripts** table — one row per script, kept alphabetical, with a short description and a link into that script's section (`scripts/<topic>/README.md#<script-name>` — link to the README file, not the directory, or GitHub's directory redirect drops the fragment).
-- Each `scripts/<topic>/README.md` documents its scripts in detail, one `##` section per script, in this order (include only the parts that apply): description → `### Features` → `### Requirements` → `### Usage` → `### Options` → `### Example` → `### Exit Codes`, with `---` between sections.
+- **Each script documents itself** in `scripts/<topic>/<script>/README.md`. It opens with a level-1 heading naming the script, then (include only the parts that apply): description → `### Features` → `### Requirements` → `### Usage` → `### Options` → `### Example` → `### Exit Codes`. This is the file to edit when a script's behaviour, options or requirements change.
+- **The index tables are generated, not written.** The root `README.md` and each `scripts/<topic>/README.md` hold a `<!-- BEGIN TABLE -->` block filled in from `scripts.yaml` by `bin/update-all-tables.sh`, which knows the set of indexes and derives the topic list from the manifest. Run `make docs` after touching the manifest; `make lint` and the lint workflow run it with `--check` and fail when an index is stale.
+- Index links point at the **directory** (`scripts/<topic>/<script>/`), never at the README inside it. GitHub renders a directory's README when the directory is visited, so the shorter target works and shows the script's other files beside its docs. Do not add `README.md#<anchor>` targets: an anchor is the one thing a directory link cannot carry, and with one README per script there is nothing to anchor to.
 
-**Keep the docs in sync with the code.** Whenever you add a script, or change one in a way that affects its description, options, requirements, or behaviour, update `scripts.yaml`, the root README table row, and the script's per-topic README section in the same change.
+**Keep the docs in sync with the code.** A script's own README is hand-written, so a change to its options or behaviour means editing it in the same commit. Its one-line index entry comes from the manifest's `summary`, so that is where a changed summary goes — never into a table by hand.
 
 ### Manifest (`scripts.yaml`)
 
-All publishable scripts are registered in `scripts.yaml`. The manifest contains repo-level defaults (author, homepage, license) and per-script entries with path, description, and dependencies.
+All publishable scripts are registered in `scripts.yaml`. The manifest contains repo-level defaults (author, homepage, license) and per-script entries with path, summary, description, and dependencies.
+
+Two texts, because the audiences differ: `description` is package metadata — what someone inspecting a `.deb` or a formula reads — and may run long. `summary` is the one-line form the generated documentation indexes use. Omit `summary` and the index falls back to `description`, which usually reads as too wordy in a table.
 
 ```yaml
 defaults:
@@ -42,8 +61,9 @@ defaults:
 
 scripts:
   script-name:
-    path: scripts/topic/script-name.sh
-    description: "One-line description."
+    path: scripts/topic/script-name/script-name.sh
+    summary: "Short line for the README index."
+    description: "Longer description, used as package metadata."
     min_bash: "4.3"              # Optional; omit when only baseline features are used
     platforms: [debian]          # Optional; omit to publish to both (see below)
     dependencies:
@@ -84,9 +104,14 @@ deliberately **not** in `make lint`, and `test/compile-all-includes.bats` is wha
 
 The convention uses a two-line pattern in scripts:
 ```bash
-# shellcheck source=../lib/common.sh
-# @include ../lib/common.sh
+# shellcheck source=../../lib/common.sh
+# @include ../../lib/common.sh
 ```
+
+Both lines are relative to the script, which sits one directory deeper than the topic — so from
+`scripts/<topic>/<name>/` the library is `../../lib/common.sh`. They must name the same path: the
+compiler drops the `source` line and inlines whatever the directive names, so a mismatch publishes a
+script that sources a path which does not exist.
 
 The `# shellcheck source=` line lets ShellCheck resolve the dependency during linting. The `# @include` line is the directive that `compile-includes.sh` replaces with the file contents. The `shellcheck source=` line is stripped during compilation since it's no longer needed.
 
@@ -119,6 +144,7 @@ make test      # the suite
 make lint      # ShellCheck, the manifest checks, the declared bash versions
 make check     # both; gate a commit on this
 make smoke     # package every manifest entry at v0.0.0, catching manifest/packager drift
+make docs      # regenerate the README index tables from the manifest
 make coverage  # the suite under kcov, then the shared gate
 ```
 
@@ -166,7 +192,8 @@ its gate, and the reporting is the shared actions from
 - **`bash -c` cannot be traced.** kcov's prologue reads `BASH_SOURCE`, unset inside a `-c` string, so a
   script under `set -o nounset` dies before its function runs, and `--bash-method=DEBUG` measures
   nothing. Function-level calls therefore go through a harness kcov executes directly, written beside
-  the script so `$(dirname "$0")/../lib/common.sh` still resolves. `bin/run-coverage.sh` removes them.
+  the script, so the library path it derives from `$(dirname "$0")` still resolves.
+  `bin/run-coverage.sh` removes them.
 - **bats is installed from source in the container, not from apt.** Debian ships 1.8, which predates
   `BATS_TEST_TIMEOUT`; a suite that bounds a test to turn a runaway loop into a failure would silently
   have no bound. `BATS_VERSION` in `bin/run-coverage.sh` pins the same version a local run and the macOS

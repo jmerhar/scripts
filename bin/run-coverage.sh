@@ -16,8 +16,8 @@
 # Function-level tests need a harness. `bash -c 'source …'` sets $0 correctly but cannot be traced —
 # kcov's prologue reads BASH_SOURCE, unset inside a -c string, so a script under `set -o nounset` dies
 # before its function runs. A harness that kcov executes directly works, provided it sits beside the
-# script so $(dirname "$0")/../lib/common.sh still resolves. This writes one into each directory holding
-# a script, and removes them on exit.
+# script, so the library path the script derives from $(dirname "$0") still resolves. This writes one
+# into each directory holding a script, and removes them on exit.
 #
 # kcov is not packaged for Ubuntu 24.04 (its Debian package was dropped over an FTBFS with GCC 15), so
 # CI uses the upstream image. A locally installed kcov is preferred because it avoids the container
