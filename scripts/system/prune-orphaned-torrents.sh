@@ -50,6 +50,10 @@ _cookie_jar=""
 # Holds the most recent line entered by the user (set by read_answer).
 _answer=""
 
+# Turns a NUL-delimited stream on stdin into a JSON array of its non-empty entries. Shared by the two
+# places that read NUL-delimited data, so they cannot drift apart.
+readonly _JQ_SPLIT_NUL='split("\u0000") | map(select(length > 0))'
+
 # --- Color Variables (set by setup_colors) ---
 _C_CYAN=""
 _C_GREEN=""
@@ -289,13 +293,11 @@ find_orphans() {
     exclude_args+=(! -iname "${pattern}")
   done
 
-  _orphans_json=$(
-    # `|| true` stops a partial find failure (e.g. an unreadable subdirectory)
-    # from aborting the script under errexit/pipefail; paths found so far are
-    # still piped to jq.
-    { find "${_scan_dirs[@]}" -type f -links 1 "${exclude_args[@]}" -print0 || true; } \
-      | jq -Rs 'split("\u0000") | map(select(length > 0))'
-  )
+  local -a find_args=("${_scan_dirs[@]}" -type f -links 1)
+  find_args+=("${exclude_args[@]}" -print0)
+  # `|| true` stops a partial find failure (e.g. an unreadable subdirectory) from aborting the script
+  # under errexit/pipefail; paths found so far are still piped to jq.
+  _orphans_json=$({ find "${find_args[@]}" || true; } | jq -Rs "${_JQ_SPLIT_NUL}")
 }
 
 ########################################
@@ -315,18 +317,17 @@ deluge_rpc() {
   local params="$2"
 
   local payload
-  payload=$(jq -nc --arg m "${method}" --argjson p "${params}" \
-    '{method: $m, params: $p, id: 1}')
+  payload=$(jq -nc --arg m "${method}" --argjson p "${params}" '{method: $m, params: $p, id: 1}')
+
+  # The payload is sent via stdin (--data @-) rather than as a -d argument so the Deluge password in
+  # the auth.login body never appears in this process's argv (visible to other users via ps / /proc).
+  # curl's -d strips the trailing newline the here-string adds, which is harmless for JSON anyway.
+  local -a curl_args=(-fsS -c "${_cookie_jar}" -b "${_cookie_jar}")
+  curl_args+=(-H 'Content-Type: application/json')
+  curl_args+=(--data @- "${DELUGE_URL}")
 
   local response
-  # The payload is sent via stdin (--data @-) rather than as a -d argument so
-  # the Deluge password in the auth.login body never appears in this process's
-  # argv (visible to other users via ps / /proc). curl's -d strips the trailing
-  # newline the here-string adds, which is harmless for the JSON body anyway.
-  if ! response=$(curl -fsS \
-    -c "${_cookie_jar}" -b "${_cookie_jar}" \
-    -H 'Content-Type: application/json' \
-    --data @- "${DELUGE_URL}" <<<"${payload}"); then
+  if ! response=$(curl "${curl_args[@]}" <<<"${payload}"); then
     log_error "Deluge request failed (method: ${method})."
     return 1
   fi
@@ -399,8 +400,8 @@ deluge_connect() {
 #   The torrents-status JSON object (info-hash -> status) on stdout.
 ########################################
 fetch_torrent_status() {
-  deluge_rpc "core.get_torrents_status" \
-    '[{}, ["name", "download_location", "save_path", "total_size", "files", "time_added"]]'
+  local fields='["name", "download_location", "save_path", "total_size", "files", "time_added"]'
+  deluge_rpc "core.get_torrents_status" "[{}, ${fields}]"
 }
 
 ########################################
@@ -431,12 +432,14 @@ compute_candidates() {
   dprefix="${dprefix%/}"
   lprefix="${lprefix%/}"
 
-  jq -c \
-    --argjson orphans "${_orphans_json}" \
-    --argjson excludes "${_excludes_json}" \
-    --argjson minratio "${MIN_MEDIA_RATIO:-0.1}" \
-    --arg dprefix "${dprefix}" \
-    --arg lprefix "${lprefix}" '
+  local -a args=(-c)
+  args+=(--argjson orphans "${_orphans_json}")
+  args+=(--argjson excludes "${_excludes_json}")
+  args+=(--argjson minratio "${MIN_MEDIA_RATIO:-0.1}")
+  args+=(--arg dprefix "${dprefix}")
+  args+=(--arg lprefix "${lprefix}")
+
+  jq "${args[@]}" '
     # Rewrite a Deluge-reported absolute path into the local filesystem path.
     def rewrite:
       if ($dprefix | length) > 0 and (. == $dprefix or startswith($dprefix + "/"))
@@ -454,9 +457,10 @@ compute_candidates() {
     [ to_entries[]
       | .key as $hash
       | .value as $t
-      # Skip torrents with no save location (e.g. metadata-only/error state):
-      # rtrimstr would error on a null base and abort the whole program, and
-      # such a torrent can never own a scanned orphan anyway.
+      # Skip torrents with no save location (e.g. metadata-only/error state).
+      # The `// ""` is what keeps rtrimstr off a null; dropping the torrent
+      # outright is what stops its files being resolved against an empty base,
+      # which would compare scanned orphans against bare "/name" paths.
       | (($t.download_location // $t.save_path // "") | rtrimstr("/")) as $base
       | select($base != "")
       | (($t.files // []) | map(. + {abs: (($base + "/" + .path) | rewrite)})) as $files
@@ -504,10 +508,12 @@ compute_strays() {
   dprefix="${dprefix%/}"
   lprefix="${lprefix%/}"
 
-  jq -c \
-    --argjson orphans "${_orphans_json}" \
-    --arg dprefix "${dprefix}" \
-    --arg lprefix "${lprefix}" '
+  local -a args=(-c)
+  args+=(--argjson orphans "${_orphans_json}")
+  args+=(--arg dprefix "${dprefix}")
+  args+=(--arg lprefix "${lprefix}")
+
+  jq "${args[@]}" '
     def rewrite:
       if ($dprefix | length) > 0 and (. == $dprefix or startswith($dprefix + "/"))
       then $lprefix + .[($dprefix | length):] else . end;
@@ -822,10 +828,8 @@ main() {
   setup_colors
 
   # Convert the configured exclusion globs into a JSON array for the matcher.
-  _excludes_json=$(
-    printf '%s\0' "${EXCLUDE_PATTERNS[@]+"${EXCLUDE_PATTERNS[@]}"}" \
-      | jq -Rs 'split("\u0000") | map(select(length > 0))'
-  )
+  local -a patterns=("${EXCLUDE_PATTERNS[@]+"${EXCLUDE_PATTERNS[@]}"}")
+  _excludes_json=$(printf '%s\0' "${patterns[@]}" | jq -Rs "${_JQ_SPLIT_NUL}")
 
   prepare_scan_dirs || exit 1
 
