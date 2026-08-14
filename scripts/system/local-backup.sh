@@ -174,7 +174,12 @@ wait_for_raid() {
     return
   fi
 
-  while grep -qE '\[(resync|check|recover|reshape)' /proc/mdstat 2>/dev/null; do
+  # The kernel reports an operation in progress as a progress line — "[=>...]  resync = 6.8% (…)" — and a
+  # queued one as "resync=PENDING" or "resync=DELAYED". Both forms put the operation name immediately
+  # before an "=", which is what this matches; the trailing [a-z]* covers "recovery", the name used for a
+  # rebuild. Matching a bracket before the name would find none of these, since the brackets in that line
+  # hold the progress bar.
+  while grep -qE '(resync|check|recover|reshape)[a-z]*[[:space:]]*=' /proc/mdstat 2>/dev/null; do
     log_info "RAID operation in progress. Waiting ${MDSTAT_CHECK_INTERVAL}s before rechecking..."
     sleep "${MDSTAT_CHECK_INTERVAL}"
   done
