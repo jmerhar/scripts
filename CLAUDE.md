@@ -150,9 +150,17 @@ its gate, and the reporting is the shared actions from
   pinned container instead, which is also what CI does, so `make coverage` needs Docker rather than a
   local kcov.
 
-The gate sits below what the suite actually reaches: roughly 115 lines cannot be credited, because bash
-attributes a multi-line command to its final line. Reshaping those is a `TODO.md` item; raise the gate
-after it, never lower it to make a build pass.
+The gate sits just under the measured figure. What keeps it short of the whole file is defensive code the
+tests cannot drive rather than logic they miss: branches for a tool that is absent (stubbed here, so the
+"not found" path never runs), colour setup behind `[[ -t 1 ]]`, and guards that exist precisely because
+they should never fire. Set the gate to what is reachable and say why; never lower it to make a build
+pass.
+
+No publishable script has a `\` continuation left. That matters for the figure — bash attributes a
+multi-line command to its final line, so the first line of a continuation reads as never executed and the
+lines between are not instrumented at all, and the closing brace of a redirected group is never reported.
+Keep new code single-statement-per-line for the same reason; `bin/run-coverage.sh` is the exception, since
+it is excluded from the report.
 
 ### Testing Locally
 
