@@ -127,10 +127,32 @@ Two rules matter most:
 - **Code under test is reached only through `run_script`, `run_func` or `run_snippet`.** All three run
   it in a subprocess with `$0` set to the script's own path, because every script derives its library
   include, `SCRIPT_NAME`, install prefix, config search path and usage text from `$0`.
-- **`test/stubs` must stay first on `PATH`** — `setup_common` fails the test otherwise. `load_config`
-  resolves its config path from `$0` and honours no override, so the scripts read the repo's own
-  committed `.conf` files, which on a real machine can name real volumes. Assert on stub call logs,
-  never on side effects, and write nothing outside `$BATS_TEST_TMPDIR`.
+- **`test/stubs` must stay first on `PATH`** — `setup_common` fails the test otherwise. A test that does
+  not name its own `CONFIG_FILE` reads the repo's own committed `.conf` files, which on a real machine
+  can name real volumes, so pass one wherever a config value decides what gets written. Assert on stub
+  call logs, never on side effects, and write nothing outside `$BATS_TEST_TMPDIR`.
+
+### Environment seams
+
+Several scripts read paths that only exist on a particular machine in a particular state — a mounted
+array mid-scrub, a sudoers directory, a RAID status file. Those are written as
+
+```bash
+: "${MDSTAT:=/proc/mdstat}"
+readonly MDSTAT
+```
+
+so the default is the real path and a test can point them elsewhere. **Do not "simplify" these back to
+literals**: as literals the surrounding logic is unreachable, and for two of them a test would act on the
+real system. The full set:
+
+| Script | Seams | Why it matters |
+|---|---|---|
+| all config readers | `CONFIG_FILE` | Named ahead of the search; unreadable is an error, not a fall back |
+| `local-backup` | `MDSTAT`, `MDSTAT_CHECK_INTERVAL` | The RAID wait is otherwise unreachable and polls for five minutes |
+| `mdcheck-progress` | `MDSTAT`, `SYS_BLOCK`, `MDCHECK_STATE_DIR`, `MDADM_CONF` | Nearly the whole tool reads machine state |
+| `nopasswd-sudo` | `DROPIN`, `SYSTEMD_UNIT_DIR` | Defaults are `/etc/sudoers.d` and `/etc/systemd/system`; the coverage job runs as root |
+| `subtitle-sync` | `CACHE_DIR` (via config) | Defaults under `$XDG_CACHE_HOME`, so a test would write to the real cache |
 
 ### Coverage
 
