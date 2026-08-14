@@ -16,7 +16,7 @@ load test_helper
 
 setup() {
   setup_common
-  SCRIPT="$REPO_ROOT/scripts/utility/dmarc-report.sh"
+  SCRIPT="$REPO_ROOT/scripts/utility/dmarc-report/dmarc-report.sh"
   REPORTS="$BATS_TEST_TMPDIR/reports"
   mkdir -p "$REPORTS"
 

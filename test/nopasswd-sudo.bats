@@ -18,7 +18,7 @@ load test_helper
 
 setup() {
   setup_common
-  SCRIPT="$REPO_ROOT/scripts/system/nopasswd-sudo.sh"
+  SCRIPT="$REPO_ROOT/scripts/system/nopasswd-sudo/nopasswd-sudo.sh"
   DROPIN_FILE="$BATS_TEST_TMPDIR/99-temp-nopasswd"
   UNIT_DIR="$BATS_TEST_TMPDIR/systemd"
   mkdir -p "$UNIT_DIR"

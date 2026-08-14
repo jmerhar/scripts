@@ -12,7 +12,7 @@ load test_helper
 
 setup() {
   setup_common
-  SCRIPT="$REPO_ROOT/scripts/utility/compare-dirs.sh"
+  SCRIPT="$REPO_ROOT/scripts/utility/compare-dirs/compare-dirs.sh"
   LEFT="$BATS_TEST_TMPDIR/left"
   RIGHT="$BATS_TEST_TMPDIR/right"
   mkdir -p "$LEFT" "$RIGHT"

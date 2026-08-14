@@ -13,7 +13,7 @@ load test_helper
 
 setup() {
   setup_common
-  SCRIPT="$REPO_ROOT/scripts/photography/remove-sidecars.sh"
+  SCRIPT="$REPO_ROOT/scripts/photography/remove-sidecars/remove-sidecars.sh"
 
   # The tree under test, and a sibling the script is never given.
   TREE="$BATS_TEST_TMPDIR/tree"

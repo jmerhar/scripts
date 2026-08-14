@@ -5,28 +5,28 @@ defaults:
 
 scripts:
   local-backup:
-    path: scripts/system/local-backup.sh
+    path: scripts/system/local-backup/local-backup.sh
     description: "A generic script to create and automatically prune rsync-based system backups."
     min_bash: "4.0"        # mapfile
     dependencies:
       common: [rsync]
 
   prune-orphaned-torrents:
-    path: scripts/system/prune-orphaned-torrents.sh
+    path: scripts/system/prune-orphaned-torrents/prune-orphaned-torrents.sh
     description: "Finds orphaned media files left by *arr hard-linking and interactively removes the corresponding torrents from Deluge."
     min_bash: "4.0"        # ${var,,}, mapfile
     dependencies:
       common: [curl, jq]
 
   nopasswd-sudo:
-    path: scripts/system/nopasswd-sudo.sh
+    path: scripts/system/nopasswd-sudo/nopasswd-sudo.sh
     description: "Toggles temporary passwordless sudo for a user, with an in-session auto-revoke timer and a boot-time safety net so it never stays enabled by accident."
     platforms: [debian]   # systemd/sudoers tool — not applicable to Homebrew/macOS
     dependencies:
       debian: [sudo]
 
   mdcheck-progress:
-    path: scripts/system/mdcheck-progress.sh
+    path: scripts/system/mdcheck-progress/mdcheck-progress.sh
     description: "Reports the progress of an MD RAID check (Debian's monthly mdcheck scrub), including while it is paused between nightly windows, with a schedule-aware estimate of when it will finish."
     min_bash: "4.0"        # mapfile
     platforms: [debian]   # reads MD sysfs + mdadm's mdcheck systemd units — Linux-only
@@ -34,23 +34,23 @@ scripts:
       debian: [mdadm]
 
   photo-backup:
-    path: scripts/photography/photo-backup.sh
+    path: scripts/photography/photo-backup/photo-backup.sh
     description: "A robust script for backing up photo collections from multiple sources to a remote server using rsync."
     dependencies:
       common: [rsync]
 
   remove-sidecars:
-    path: scripts/photography/remove-sidecars.sh
+    path: scripts/photography/remove-sidecars/remove-sidecars.sh
     description: 'A script to find and delete "sidecar" files when a corresponding RAW photo file exists.'
     min_bash: "4.0"        # ${var,,}, declare -A
 
   compare-dirs:
-    path: scripts/utility/compare-dirs.sh
+    path: scripts/utility/compare-dirs/compare-dirs.sh
     description: "Recursively compares two directories and reports differences in existence, size, timestamps, and checksums."
     min_bash: "4.0"        # ${var,,}, declare -A
 
   dmarc-report:
-    path: scripts/utility/dmarc-report.sh
+    path: scripts/utility/dmarc-report/dmarc-report.sh
     description: "Aggregates a folder of DMARC RUA reports (.xml.gz/.zip) into one overall report, tracking policy changes over time and flagging unenforced domains, unaligned senders, DNS/DKIM errors, and spoofing (grouped into subnets with per-range country lookup)."
     min_bash: "4.0"        # declare -A
     dependencies:
@@ -59,21 +59,21 @@ scripts:
       debian: [libxml2-utils, unzip]
 
   subtitle-report:
-    path: scripts/utility/subtitle-report.sh
+    path: scripts/utility/subtitle-report/subtitle-report.sh
     description: "Reports on subtitle coverage for a media library, detecting embedded tracks and sidecar files and breaking down counts by language and source."
     min_bash: "4.0"        # ${var,,}, declare -A
     dependencies:
       common: [ffmpeg]
 
   subtitle-sync:
-    path: scripts/utility/subtitle-sync.sh
+    path: scripts/utility/subtitle-sync/subtitle-sync.sh
     description: "Resynchronizes drifting subtitles to a video's speech using a Whisper transcript as reference and alass for segment-aware alignment (handles ad-break, global-offset, and speed drift). Requires the external tools 'alass' and 'whisper-ctranslate2' on PATH."
     min_bash: "4.3"        # local -n
     dependencies:
       common: [ffmpeg]
 
   unlock-pdf:
-    path: scripts/utility/unlock-pdf.sh
+    path: scripts/utility/unlock-pdf/unlock-pdf.sh
     description: "Decrypts a password-protected PDF file using the 'qpdf' command-line tool."
     dependencies:
       common: [qpdf]

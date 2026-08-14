@@ -64,7 +64,7 @@ EOF
 }
 
 @test "run_script propagates a script's exit status" {
-  run_script "$REPO_ROOT/scripts/utility/unlock-pdf.sh"
+  run_script "$REPO_ROOT/scripts/utility/unlock-pdf/unlock-pdf.sh"
   [ "$status" -eq 1 ]
 }
 
@@ -78,7 +78,7 @@ EOF
 
 @test "run_script sets \$0 to the script's own path" {
   # unlock-pdf builds its usage line from basename "$0", and reaches it when given no argument.
-  run_script "$REPO_ROOT/scripts/utility/unlock-pdf.sh"
+  run_script "$REPO_ROOT/scripts/utility/unlock-pdf/unlock-pdf.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Usage: unlock-pdf.sh"* ]]
 }
@@ -90,14 +90,14 @@ EOF
 
 @test "a sourced call resolves the shared library the way the scripts do" {
   # The property the directory matters for: every script includes ../lib/common.sh relative to $0.
-  run_snippet "$REPO_ROOT/scripts/utility/subtitle-report.sh" \
+  run_snippet "$REPO_ROOT/scripts/utility/subtitle-report/subtitle-report.sh" \
     'declare -F log_info >/dev/null && printf "library loaded"'
   [ "$status" -eq 0 ]
   [ "$output" = "library loaded" ]
 }
 
 @test "a sourced script keeps its own name, not the harness's" {
-  run_snippet "$REPO_ROOT/scripts/utility/subtitle-report.sh" 'printf "%s" "$SCRIPT_NAME"'
+  run_snippet "$REPO_ROOT/scripts/utility/subtitle-report/subtitle-report.sh" 'printf "%s" "$SCRIPT_NAME"'
   [ "$output" = "subtitle-report" ]
 }
 

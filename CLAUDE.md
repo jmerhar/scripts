@@ -19,7 +19,7 @@ A collection of packaged shell scripts for macOS and Debian/Ubuntu, distributed 
 - `test/` — bats suites, the shared test helper, and the command stubs. Not published as packages.
 - `scripts.yaml` — Central manifest defining all publishable scripts, their metadata, and dependencies.
 
-Config files (`.conf`) live next to their scripts (e.g., `scripts/system/local-backup.conf`). They are discovered by convention — no metadata field needed.
+Config files (`.conf`) live next to their scripts (e.g., `scripts/system/local-backup/local-backup.conf`). They are discovered by convention — no metadata field needed.
 
 `load_config` searches, in order: `$CONFIG_FILE`, the script's own directory, `<install-prefix>/etc/`, then `/etc/`. Setting `CONFIG_FILE` names a file outright, so an unreadable one is an error rather than a fall back to the search — naming a file excludes the alternatives, and quietly loading a different config could mean different backup targets or credentials.
 

@@ -14,17 +14,17 @@ load test_helper
 
 setup() {
   setup_common
-  COMPARE_DIRS="$REPO_ROOT/scripts/utility/compare-dirs.sh"
-  SIDECARS="$REPO_ROOT/scripts/photography/remove-sidecars.sh"
-  LOCAL_BACKUP="$REPO_ROOT/scripts/system/local-backup.sh"
-  PHOTO_BACKUP="$REPO_ROOT/scripts/photography/photo-backup.sh"
-  MDCHECK="$REPO_ROOT/scripts/system/mdcheck-progress.sh"
-  NOPASSWD="$REPO_ROOT/scripts/system/nopasswd-sudo.sh"
-  PRUNE="$REPO_ROOT/scripts/system/prune-orphaned-torrents.sh"
-  DMARC="$REPO_ROOT/scripts/utility/dmarc-report.sh"
-  SUBREPORT="$REPO_ROOT/scripts/utility/subtitle-report.sh"
-  SUBSYNC="$REPO_ROOT/scripts/utility/subtitle-sync.sh"
-  UNLOCK="$REPO_ROOT/scripts/utility/unlock-pdf.sh"
+  COMPARE_DIRS="$REPO_ROOT/scripts/utility/compare-dirs/compare-dirs.sh"
+  SIDECARS="$REPO_ROOT/scripts/photography/remove-sidecars/remove-sidecars.sh"
+  LOCAL_BACKUP="$REPO_ROOT/scripts/system/local-backup/local-backup.sh"
+  PHOTO_BACKUP="$REPO_ROOT/scripts/photography/photo-backup/photo-backup.sh"
+  MDCHECK="$REPO_ROOT/scripts/system/mdcheck-progress/mdcheck-progress.sh"
+  NOPASSWD="$REPO_ROOT/scripts/system/nopasswd-sudo/nopasswd-sudo.sh"
+  PRUNE="$REPO_ROOT/scripts/system/prune-orphaned-torrents/prune-orphaned-torrents.sh"
+  DMARC="$REPO_ROOT/scripts/utility/dmarc-report/dmarc-report.sh"
+  SUBREPORT="$REPO_ROOT/scripts/utility/subtitle-report/subtitle-report.sh"
+  SUBSYNC="$REPO_ROOT/scripts/utility/subtitle-sync/subtitle-sync.sh"
+  UNLOCK="$REPO_ROOT/scripts/utility/unlock-pdf/unlock-pdf.sh"
 
   # Two real directories, for the scripts that insist their arguments exist.
   LEFT="$BATS_TEST_TMPDIR/left"

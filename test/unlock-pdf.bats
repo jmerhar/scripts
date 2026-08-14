@@ -9,7 +9,7 @@ load test_helper
 
 setup() {
   setup_common
-  SCRIPT="$REPO_ROOT/scripts/utility/unlock-pdf.sh"
+  SCRIPT="$REPO_ROOT/scripts/utility/unlock-pdf/unlock-pdf.sh"
   PDF="$BATS_TEST_TMPDIR/secret.pdf"
   printf '%%PDF-1.4 encrypted\n' > "$PDF"
 }

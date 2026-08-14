@@ -247,7 +247,7 @@ EOF
 # assertion against the actual library rather than a fixture.
 @test "inlines the real shared library into a real script" {
   cp -R "$REPO_ROOT/scripts" "$BATS_TEST_TMPDIR/scripts"
-  run_script "$TOOL" "$BATS_TEST_TMPDIR/scripts/system/local-backup.sh"
+  run_script "$TOOL" "$BATS_TEST_TMPDIR/scripts/system/local-backup/local-backup.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"_COMMON_SH_LOADED"* ]]
   [[ "$output" == *"validate_config()"* ]]

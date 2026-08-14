@@ -12,7 +12,7 @@ load test_helper
 
 setup() {
   setup_common
-  SCRIPT="$REPO_ROOT/scripts/utility/subtitle-report.sh"
+  SCRIPT="$REPO_ROOT/scripts/utility/subtitle-report/subtitle-report.sh"
   TREE="$BATS_TEST_TMPDIR/media"
   mkdir -p "$TREE"
   # An empty config by default, so the repository's own subtitle-report.conf is never read.

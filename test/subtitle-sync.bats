@@ -17,7 +17,7 @@ load test_helper
 
 setup() {
   setup_common
-  SCRIPT="$REPO_ROOT/scripts/utility/subtitle-sync.sh"
+  SCRIPT="$REPO_ROOT/scripts/utility/subtitle-sync/subtitle-sync.sh"
   TREE="$BATS_TEST_TMPDIR/media"
   CACHE="$BATS_TEST_TMPDIR/cache"
   mkdir -p "$TREE" "$CACHE"

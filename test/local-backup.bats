@@ -18,7 +18,7 @@ load test_helper
 
 setup() {
   setup_common
-  SCRIPT="$REPO_ROOT/scripts/system/local-backup.sh"
+  SCRIPT="$REPO_ROOT/scripts/system/local-backup/local-backup.sh"
   SRC="$BATS_TEST_TMPDIR/src"
   DEST="$BATS_TEST_TMPDIR/backups"
   LOG="$BATS_TEST_TMPDIR/backup.log"

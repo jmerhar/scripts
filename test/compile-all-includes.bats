@@ -160,6 +160,6 @@ compile_run() {
 @test "the repository's own scripts are not rewritten by these tests" {
   make_script system/one.sh
   compile_run
-  run grep -c '# @include ' "$REPO_ROOT/scripts/utility/subtitle-sync.sh"
+  run grep -c '# @include ' "$REPO_ROOT/scripts/utility/subtitle-sync/subtitle-sync.sh"
   [ "$output" = "1" ]
 }

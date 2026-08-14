@@ -12,9 +12,9 @@ set -o nounset
 set -o pipefail
 
 # --- Shared Library ---
-# shellcheck source=../lib/common.sh
-source "$(cd "$(dirname "$0")" && pwd -P)/../lib/common.sh"
-# @include ../lib/common.sh
+# shellcheck source=../../lib/common.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/common.sh"
+# @include ../../lib/common.sh
 
 # --- Global State ---
 _opt_timestamps=false

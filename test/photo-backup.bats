@@ -17,7 +17,7 @@ load test_helper
 
 setup() {
   setup_common
-  SCRIPT="$REPO_ROOT/scripts/photography/photo-backup.sh"
+  SCRIPT="$REPO_ROOT/scripts/photography/photo-backup/photo-backup.sh"
   ONE="$BATS_TEST_TMPDIR/one"
   TWO="$BATS_TEST_TMPDIR/two"
   mkdir -p "$ONE" "$TWO"

@@ -15,9 +15,9 @@ TEMP_DIR=$(mktemp -d)
 readonly TEMP_DIR
 
 # --- Shared Library ---
-# shellcheck source=../lib/common.sh
-source "$(cd "$(dirname "$0")" && pwd -P)/../lib/common.sh"
-# @include ../lib/common.sh
+# shellcheck source=../../lib/common.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/common.sh"
+# @include ../../lib/common.sh
 
 # --- Configuration (initialized as empty) ---
 SOURCES=()

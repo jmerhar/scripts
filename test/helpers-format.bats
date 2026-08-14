@@ -11,13 +11,13 @@ load test_helper
 
 setup() {
   setup_common
-  COMPARE_DIRS="$REPO_ROOT/scripts/utility/compare-dirs.sh"
-  PRUNE="$REPO_ROOT/scripts/system/prune-orphaned-torrents.sh"
-  SIDECARS="$REPO_ROOT/scripts/photography/remove-sidecars.sh"
-  MDCHECK="$REPO_ROOT/scripts/system/mdcheck-progress.sh"
-  SUBSYNC="$REPO_ROOT/scripts/utility/subtitle-sync.sh"
-  SUBREPORT="$REPO_ROOT/scripts/utility/subtitle-report.sh"
-  DMARC="$REPO_ROOT/scripts/utility/dmarc-report.sh"
+  COMPARE_DIRS="$REPO_ROOT/scripts/utility/compare-dirs/compare-dirs.sh"
+  PRUNE="$REPO_ROOT/scripts/system/prune-orphaned-torrents/prune-orphaned-torrents.sh"
+  SIDECARS="$REPO_ROOT/scripts/photography/remove-sidecars/remove-sidecars.sh"
+  MDCHECK="$REPO_ROOT/scripts/system/mdcheck-progress/mdcheck-progress.sh"
+  SUBSYNC="$REPO_ROOT/scripts/utility/subtitle-sync/subtitle-sync.sh"
+  SUBREPORT="$REPO_ROOT/scripts/utility/subtitle-report/subtitle-report.sh"
+  DMARC="$REPO_ROOT/scripts/utility/dmarc-report/dmarc-report.sh"
 }
 
 ########################################

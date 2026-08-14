@@ -17,7 +17,7 @@ load test_helper
 
 setup() {
   setup_common
-  SCRIPT="$REPO_ROOT/scripts/system/prune-orphaned-torrents.sh"
+  SCRIPT="$REPO_ROOT/scripts/system/prune-orphaned-torrents/prune-orphaned-torrents.sh"
   TEMP_ROOT="$BATS_TEST_TMPDIR/temp"
   LIBRARY="$BATS_TEST_TMPDIR/library"
   mkdir -p "$TEMP_ROOT" "$LIBRARY"
@@ -817,7 +817,7 @@ with_conf() {
 # The committed configuration names the real server volumes, so a test that forgot CONFIG_FILE would
 # scan and offer to delete real media. This asserts the mechanism the whole suite depends on.
 @test "the committed config is never what a test reads" {
-  local committed="$REPO_ROOT/scripts/system/prune-orphaned-torrents.conf"
+  local committed="$REPO_ROOT/scripts/system/prune-orphaned-torrents/prune-orphaned-torrents.conf"
   [ -f "$committed" ]
   run grep -c "$TEMP_ROOT" "$committed"
   [ "$output" = "0" ]

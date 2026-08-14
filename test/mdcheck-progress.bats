@@ -17,7 +17,7 @@ load test_helper
 
 setup() {
   setup_common
-  SCRIPT="$REPO_ROOT/scripts/system/mdcheck-progress.sh"
+  SCRIPT="$REPO_ROOT/scripts/system/mdcheck-progress/mdcheck-progress.sh"
   SYSFS="$BATS_TEST_TMPDIR/sys-block"
   STATE="$BATS_TEST_TMPDIR/mdcheck-state"
   MDSTAT_FILE="$BATS_TEST_TMPDIR/mdstat"

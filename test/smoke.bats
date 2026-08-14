@@ -23,68 +23,68 @@ teardown() {
 }
 
 @test "smoke: photo-backup shows usage for -h" {
-  run_script "$REPO_ROOT/scripts/photography/photo-backup.sh" -h
+  run_script "$REPO_ROOT/scripts/photography/photo-backup/photo-backup.sh" -h
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage:"* ]]
 }
 
 @test "smoke: remove-sidecars shows usage for --help" {
-  run_script "$REPO_ROOT/scripts/photography/remove-sidecars.sh" --help
+  run_script "$REPO_ROOT/scripts/photography/remove-sidecars/remove-sidecars.sh" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: remove-sidecars"* ]]
 }
 
 @test "smoke: local-backup shows usage for -h" {
-  run_script "$REPO_ROOT/scripts/system/local-backup.sh" -h
+  run_script "$REPO_ROOT/scripts/system/local-backup/local-backup.sh" -h
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: local-backup"* ]]
 }
 
 @test "smoke: mdcheck-progress shows usage for --help" {
-  run_script "$REPO_ROOT/scripts/system/mdcheck-progress.sh" --help
+  run_script "$REPO_ROOT/scripts/system/mdcheck-progress/mdcheck-progress.sh" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: mdcheck-progress"* ]]
 }
 
 @test "smoke: nopasswd-sudo shows usage for --help" {
-  run_script "$REPO_ROOT/scripts/system/nopasswd-sudo.sh" --help
+  run_script "$REPO_ROOT/scripts/system/nopasswd-sudo/nopasswd-sudo.sh" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"{on|off|status}"* ]]
 }
 
 @test "smoke: prune-orphaned-torrents shows usage for --help" {
-  run_script "$REPO_ROOT/scripts/system/prune-orphaned-torrents.sh" --help
+  run_script "$REPO_ROOT/scripts/system/prune-orphaned-torrents/prune-orphaned-torrents.sh" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: prune-orphaned-torrents"* ]]
 }
 
 @test "smoke: compare-dirs shows usage for --help" {
-  run_script "$REPO_ROOT/scripts/utility/compare-dirs.sh" --help
+  run_script "$REPO_ROOT/scripts/utility/compare-dirs/compare-dirs.sh" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: compare-dirs"* ]]
 }
 
 @test "smoke: dmarc-report shows usage for --help" {
-  run_script "$REPO_ROOT/scripts/utility/dmarc-report.sh" --help
+  run_script "$REPO_ROOT/scripts/utility/dmarc-report/dmarc-report.sh" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: dmarc-report"* ]]
 }
 
 @test "smoke: subtitle-report shows usage for --help" {
-  run_script "$REPO_ROOT/scripts/utility/subtitle-report.sh" --help
+  run_script "$REPO_ROOT/scripts/utility/subtitle-report/subtitle-report.sh" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: subtitle-report"* ]]
 }
 
 @test "smoke: subtitle-sync shows usage for --help" {
-  run_script "$REPO_ROOT/scripts/utility/subtitle-sync.sh" --help
+  run_script "$REPO_ROOT/scripts/utility/subtitle-sync/subtitle-sync.sh" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: subtitle-sync"* ]]
 }
 
 # unlock-pdf has no help flag at all; its argument check is the only reachable entry behaviour.
 @test "smoke: unlock-pdf shows usage when given no argument" {
-  run_script "$REPO_ROOT/scripts/utility/unlock-pdf.sh"
+  run_script "$REPO_ROOT/scripts/utility/unlock-pdf/unlock-pdf.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Usage:"*"<input.pdf>"* ]]
 }
