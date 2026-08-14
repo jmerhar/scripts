@@ -632,8 +632,13 @@ with_conf() {
 }
 
 # Quitting has to leave the loop entirely. Breaking only out of the prompt would move on to the next
-# torrent and ask about it, which is the opposite of what the user just asked for -- so the third
-# candidate must never even be shown.
+# torrent and ask about it, which is the opposite of what the user just asked for -- so with three
+# candidates and a quit at the second, exactly two prompts may be issued.
+#
+# Counted rather than asserted as the absence of the third name: under kcov a traced command that expands
+# a multi-line variable leaks the value's later lines into stderr, and the candidate list is newline-
+# delimited JSON carrying every torrent's name. An absence check against $output would then fail under
+# coverage while passing without it.
 @test "answering q stops and still reports what was done" {
   orphan a/ep.mkv 5000
   orphan b/ep.mkv 5000
@@ -645,8 +650,8 @@ with_conf() {
   [ "$(rpc_calls core.remove_torrent)" -eq 1 ]
   [[ "$output" == *"Quitting"* ]]
   [[ "$output" == *"Removed 1 torrent"* ]]
-  [[ "$output" == *"Two"* ]]
-  [[ "$output" != *"Three"* ]]
+  run bash -c "printf '%s\n' \"\$1\" | grep -c 'Remove this torrent'" _ "$output"
+  [ "$output" = "2" ]
 }
 
 # An unrecognised key must re-ask rather than being taken as consent to delete.

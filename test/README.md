@@ -128,6 +128,25 @@ only today.
 Colour output is suppressed whenever stdout is not a terminal, which it never is under bats, so assert
 on message text and never on escape codes.
 
+**`$output` is not clean under coverage.** kcov traces the script by setting `PS4` and reading the xtrace
+stream, and a traced command that expands a **multi-line** variable leaks that value's second and later
+lines into the script's stderr, which bats folds into `$output`. So an assertion of the form
+
+```bash
+[[ "$output" != *"Three"* ]]      # unsafe if "Three" can appear inside a multi-line variable
+```
+
+passes locally and fails under `make coverage`, or the other way round. Prefer a positive assertion —
+count the lines you expect, or check the stub call log, which coverage cannot touch:
+
+```bash
+run bash -c "printf '%s\n' \"\$1\" | grep -c 'Remove this torrent'" _ "$output"
+[ "$output" = "2" ]
+```
+
+Absence checks are still fine when the string could not appear in any variable the script holds, which is
+the common case; the hazard is specific to text that also lives in a multi-line value.
+
 ---
 
 ## Adding a suite
