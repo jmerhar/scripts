@@ -52,20 +52,13 @@ jobs:
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.52.4/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
 
+      # Both steps are scripts rather than inline shell so they run from `make lint` before a push and
+      # are covered by test/compile-all-includes.bats and test/smoke-package-all.bats.
+      - name: Compile @include directives
+        run: ./bin/compile-all-includes.sh
+
       - name: Run package-script against each manifest entry
-        run: |
-          # Compile @include directives before smoke-testing
-          while IFS= read -r -d '' script; do
-            if grep -q '# @include ' "${script}"; then
-              echo "--- Compiling: ${script} ---"
-              ./bin/compile-includes.sh "${script}" -i
-            fi
-          done < <(find ./scripts -type f -name '*.sh' -not -path '*/lib/*' -print0)
-          # Smoke-test each script in the manifest
-          while IFS= read -r name; do
-            echo "--- Smoke-testing: ${name} ---"
-            ./bin/package-script.sh "${name}" v0.0.0
-          done < <(yq eval '.scripts | keys | .[]' scripts.yaml)
+        run: ./bin/smoke-package-all.sh
 
       - name: Verify output artifacts exist
         run: |

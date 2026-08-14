@@ -77,6 +77,11 @@ minimum and a package that installs but cannot run.
 
 Scripts can share code via `scripts/lib/common.sh`. In development, scripts `source` the library directly. For publishing, `bin/compile-includes.sh` inlines the library contents at build time so published scripts are fully self-contained.
 
+`bin/compile-all-includes.sh` walks the tree and compiles every script that carries a directive; both
+workflows call it, so the walk is one tested thing rather than two copies of inline YAML shell. It
+rewrites in place, which is right for a disposable CI checkout and wrong for a working tree — so it is
+deliberately **not** in `make lint`, and `test/compile-all-includes.bats` is what exercises it locally.
+
 The convention uses a two-line pattern in scripts:
 ```bash
 # shellcheck source=../lib/common.sh
@@ -90,6 +95,10 @@ The `# shellcheck source=` line lets ShellCheck resolve the dependency during li
 `bin/package-script.sh` reads metadata from `scripts.yaml` (via `yq`) and generates Homebrew formulas (`.rb`), Debian packages (`.deb`), and release tarballs (`.tar.gz`).
 
 Only scripts registered in `scripts.yaml` are publishable. Scripts under `bin/` are internal tooling.
+
+`bin/smoke-package-all.sh` packages every manifest entry at a throwaway version. That is what catches a
+manifest and a packager that have stopped agreeing — a new entry missing a field, or metadata that no
+longer matches the tree — before a release does. It runs in CI and from `make smoke`.
 
 ### Release & CI/CD
 
@@ -109,6 +118,7 @@ one — it covers the three ways a test reaches the code, the safety rules, and 
 make test      # the suite
 make lint      # ShellCheck, the manifest checks, the declared bash versions
 make check     # both; gate a commit on this
+make smoke     # package every manifest entry at v0.0.0, catching manifest/packager drift
 make coverage  # the suite under kcov, then the shared gate
 ```
 

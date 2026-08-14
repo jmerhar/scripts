@@ -50,15 +50,7 @@ jobs:
 
       - name: Compile @include directives
         working-directory: scripts
-        run: |
-          set -e
-          echo "--- Compiling @include directives ---"
-          while IFS= read -r -d '' script; do
-            if grep -q '# @include ' "${script}"; then
-              echo "Compiling: ${script}"
-              ./bin/compile-includes.sh "${script}" -i
-            fi
-          done < <(find ./scripts -type f -name '*.sh' -not -path '*/lib/*' -print0)
+        run: ./bin/compile-all-includes.sh
 
       - name: Package scripts
         id: package
