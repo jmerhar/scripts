@@ -11,7 +11,11 @@ set -o nounset
 set -o pipefail
 
 # --- Global Constants ---
-readonly MDSTAT_CHECK_INTERVAL=300 # Seconds between /proc/mdstat checks
+# The RAID status file and the polling interval are read from the environment when set, so the wait can
+# be pointed at a fixture and driven at a usable speed; unset, they are the real file and five minutes.
+: "${MDSTAT:=/proc/mdstat}"
+: "${MDSTAT_CHECK_INTERVAL:=300}" # Seconds between MDSTAT checks
+readonly MDSTAT MDSTAT_CHECK_INTERVAL
 
 # --- Shared Library ---
 _LOG_QUIET="true"
@@ -101,13 +105,13 @@ run_backup() {
     rsync_opts+=(--info=progress2)
   fi
 
-  log_debug "rsync command: rsync ${rsync_opts[*]} ${rsync_excludes[*]} ${SOURCE_DIR}/ --link-dest ${latest_link} ${backup_path}"
+  local -a rsync_args=("${rsync_opts[@]}" "${rsync_excludes[@]}")
+  rsync_args+=("${SOURCE_DIR}/" --link-dest "${latest_link}" "${backup_path}")
 
-  rsync "${rsync_opts[@]}" \
-    "${rsync_excludes[@]}" \
-    "${SOURCE_DIR}/" \
-    --link-dest "${latest_link}" \
-    "${backup_path}" || rsync_exit_code=$?
+  # Logged from the array that is actually run, so the two cannot describe different commands.
+  log_debug "rsync command: rsync ${rsync_args[*]}"
+
+  rsync "${rsync_args[@]}" || rsync_exit_code=$?
 
   if [[ ${rsync_exit_code} -eq 0 ]]; then
     log_info "Rsync process completed successfully."
@@ -161,16 +165,16 @@ run_prune() {
 
 #######################################
 # Waits for any active RAID resync/check/rebuild operations to finish.
-# Polls /proc/mdstat at a regular interval. If /proc/mdstat does not
-# exist (e.g., no RAID arrays on this system), returns immediately.
+# Polls MDSTAT at a regular interval. If that file does not exist (e.g., no RAID
+# arrays on this system), returns immediately.
 # Globals:
-#   MDSTAT_CHECK_INTERVAL
+#   MDSTAT, MDSTAT_CHECK_INTERVAL
 # Arguments:
 #   None
 #######################################
 wait_for_raid() {
-  if [[ ! -f /proc/mdstat ]]; then
-    log_debug "/proc/mdstat not found, skipping RAID check."
+  if [[ ! -f "${MDSTAT}" ]]; then
+    log_debug "${MDSTAT} not found, skipping RAID check."
     return
   fi
 
@@ -179,7 +183,7 @@ wait_for_raid() {
   # before an "=", which is what this matches; the trailing [a-z]* covers "recovery", the name used for a
   # rebuild. Matching a bracket before the name would find none of these, since the brackets in that line
   # hold the progress bar.
-  while grep -qE '(resync|check|recover|reshape)[a-z]*[[:space:]]*=' /proc/mdstat 2>/dev/null; do
+  while grep -qE '(resync|check|recover|reshape)[a-z]*[[:space:]]*=' "${MDSTAT}" 2>/dev/null; do
     log_info "RAID operation in progress. Waiting ${MDSTAT_CHECK_INTERVAL}s before rechecking..."
     sleep "${MDSTAT_CHECK_INTERVAL}"
   done
