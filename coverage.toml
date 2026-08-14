@@ -23,7 +23,15 @@ html = "coverage"
 #     the two CI runners agree, which means each one's "command not found, skipping" path never runs;
 #   * colour setup behind `[[ -t 1 ]]`, since bats is never a terminal;
 #   * root-only and non-root-only branches, each unreachable on one of the two runs;
-#   * guards that exist precisely because they should never fire.
+#   * guards that exist precisely because they should never fire;
+#   * roughly 113 lines that are not bash at all: the interiors of multi-line `awk`, `jq` and
+#     `xmllint --xpath` programs. Bash attributes the whole command to one line, so kcov counts the rest
+#     as never-executed bash even though they run — as awk, jq and XPath. No test can reach them.
+#
+# Excluding that last category was tried and rejected: kcov's --exclude-line and --exclude-region both
+# drop the lines correctly, but in this build they also disable --include-path, so the measurement then
+# takes in unrelated files (including previous output directories' HTML and JS) and the overall figure
+# stops meaning anything. Re-test that before trying again.
 #
 # Raise it as coverage climbs; never lower it to make a red build pass, and never delete a guard to
 # flatter the number.
