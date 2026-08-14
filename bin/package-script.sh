@@ -91,6 +91,35 @@ find_config_file() {
 }
 
 #######################################
+# Writes a script with a bash-version guard inserted directly after its shebang.
+#
+# A function rather than a brace group with a redirect, because bash never reports the closing brace of a
+# redirected group as executed, so the whole block reads as uncovered however often it runs.
+# Arguments:
+#   script_path - Path to the source script.
+#   min_bash    - The declared minimum version, for the message.
+#   major       - Its major component.
+#   minor       - Its minor component.
+# Outputs:
+#   The guarded script on stdout.
+#######################################
+emit_guarded_script() {
+  local script_path="$1" min_bash="$2" major="$3" minor="$4"
+  head -n 1 "${script_path}"
+  cat <<GUARD
+
+# Requires bash ${min_bash}: this script uses features that earlier releases lack. Deliberately
+# written in bash 3.x syntax, so that it still runs — and explains itself — on a version it rejects.
+if (( BASH_VERSINFO[0] < ${major} || (BASH_VERSINFO[0] == ${major} && BASH_VERSINFO[1] < ${minor}) )); then
+  echo "Error: \$(basename "\$0") requires bash ${min_bash} or newer (running \${BASH_VERSION})." >&2
+  exit 1
+fi
+
+GUARD
+  tail -n +2 "${script_path}"
+}
+
+#######################################
 # Writes the published form of a script — the source, preceded by a bash-version guard when the
 # manifest declares one — and prints its path.
 #
@@ -138,20 +167,7 @@ prepare_script() {
     minor=0
   fi
 
-  {
-    head -n 1 "${script_path}"
-    cat <<GUARD
-
-# Requires bash ${min_bash}: this script uses features that earlier releases lack. Deliberately
-# written in bash 3.x syntax, so that it still runs — and explains itself — on a version it rejects.
-if (( BASH_VERSINFO[0] < ${major} || (BASH_VERSINFO[0] == ${major} && BASH_VERSINFO[1] < ${minor}) )); then
-  echo "Error: \$(basename "\$0") requires bash ${min_bash} or newer (running \${BASH_VERSION})." >&2
-  exit 1
-fi
-
-GUARD
-    tail -n +2 "${script_path}"
-  } > "${prepared}"
+  emit_guarded_script "${script_path}" "${min_bash}" "${major}" "${minor}" > "${prepared}"
 
   echo "${prepared}"
 }
@@ -313,6 +329,39 @@ EOF
 }
 
 #######################################
+# Writes a Debian control file to stdout.
+#
+# A function rather than a brace group with a redirect, for the same reason as emit_guarded_script: bash
+# never reports the closing brace of a redirected group, so the whole block reads as uncovered.
+# Arguments:
+#   name         - Package name.
+#   deb_version  - Version without a leading "v".
+#   dependencies - Comma-separated Depends value, or empty to omit the field.
+#   author       - Maintainer.
+#   homepage     - Homepage URL.
+#   license      - Licence name.
+#   description  - One-line description.
+# Outputs:
+#   The control file contents on stdout.
+#######################################
+emit_deb_control() {
+  local name="$1" deb_version="$2" dependencies="$3" author="$4" homepage="$5" license="$6" description="$7"
+  echo "Package: ${name}"
+  echo "Version: ${deb_version}"
+  echo "Architecture: all"
+  # Omitted rather than left empty: an empty Depends is a Lintian error, and a package with no
+  # dependencies simply has no such field.
+  if [[ -n "${dependencies}" ]]; then
+    echo "Depends: ${dependencies}"
+  fi
+  echo "Maintainer: ${author}"
+  echo "Homepage: ${homepage}"
+  echo "License: ${license}"
+  echo "Description: ${description}"
+  echo " This package installs the '${name}' script."
+}
+
+#######################################
 # Generates a Debian (.deb) package.
 # Arguments:
 #   name         - Script name.
@@ -376,20 +425,9 @@ generate_deb_package() {
   rm -rf "${package_dir}"
   mkdir -p "${control_dir}" "${bin_dir}"
 
-  # Build control file
-  {
-    echo "Package: ${name}"
-    echo "Version: ${deb_version}"
-    echo "Architecture: all"
-    if [[ -n "${deb_dependencies}" ]]; then
-      echo "Depends: ${deb_dependencies}"
-    fi
-    echo "Maintainer: ${author}"
-    echo "Homepage: ${homepage}"
-    echo "License: ${license}"
-    echo "Description: ${description}"
-    echo " This package installs the '${name}' script."
-  } > "${control_dir}/control"
+  local -a control_args=("${name}" "${deb_version}" "${deb_dependencies}" "${author}")
+  control_args+=("${homepage}" "${license}" "${description}")
+  emit_deb_control "${control_args[@]}" > "${control_dir}/control"
 
   # Add conffiles entry if config file is present
   if [[ -n "${config_path}" ]]; then
@@ -545,20 +583,20 @@ main() {
 
   # Generate Homebrew formula
   if [[ " ${platforms} " == *" homebrew "* ]]; then
-    generate_homebrew_formula \
-      "${name}" "${version}" "${description}" "${homepage}" \
-      "${tarball_url}" "${sha256}" "${published_script}" "${config_path}" \
-      "${deps_common}" "${deps_homebrew}" "${license}" "${min_bash}"
+    local -a formula_args=("${name}" "${version}" "${description}" "${homepage}")
+    formula_args+=("${tarball_url}" "${sha256}" "${published_script}" "${config_path}")
+    formula_args+=("${deps_common}" "${deps_homebrew}" "${license}" "${min_bash}")
+    generate_homebrew_formula "${formula_args[@]}"
   else
     log_info "Skipping Homebrew formula (platforms: ${platforms})."
   fi
 
   # Generate Debian package
   if [[ " ${platforms} " == *" debian "* ]]; then
-    generate_deb_package \
-      "${name}" "${version}" "${description}" "${author}" "${homepage}" \
-      "${license}" "${published_script}" "${config_path}" \
-      "${deps_common}" "${deps_debian}" "${min_bash}"
+    local -a deb_args=("${name}" "${version}" "${description}" "${author}" "${homepage}")
+    deb_args+=("${license}" "${published_script}" "${config_path}")
+    deb_args+=("${deps_common}" "${deps_debian}" "${min_bash}")
+    generate_deb_package "${deb_args[@]}"
   else
     log_info "Skipping Debian package (platforms: ${platforms})."
   fi

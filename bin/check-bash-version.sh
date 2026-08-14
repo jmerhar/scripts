@@ -61,6 +61,26 @@ EOF
 }
 
 #######################################
+# Reports whether a file matches any of the given extended regular expressions.
+# Arguments:
+#   file - Path to search.
+#   Remaining arguments are the patterns.
+# Returns:
+#   0 if any pattern matches, 1 if none do.
+#######################################
+matches_any() {
+  local file="$1"
+  shift
+  local pattern
+  for pattern in "$@"; do
+    if grep -qE "${pattern}" "${file}"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+#######################################
 # Reports the highest bash version a file's constructs require.
 # Globals:
 #   None
@@ -80,9 +100,13 @@ required_version() {
 
   if [[ -z "${required}" ]]; then
     # 4.0 — case-conversion expansions, associative arrays, mapfile/readarray.
-    if grep -qE '\$\{[a-zA-Z_][a-zA-Z0-9_]*(\[[^]]*\])?(,,|\^\^|,|\^)\}' "${file}" \
-      || grep -qE '(^|[^[:alnum:]_])(declare|local|typeset)[[:space:]]+-[a-zA-Z]*A[a-zA-Z]*[[:space:]]' "${file}" \
-      || grep -qE '(^|[^[:alnum:]_])(mapfile|readarray)[[:space:]]' "${file}"; then
+    # Each pattern is one 4.0 feature: case-conversion expansion, an associative-array declaration, and
+    # mapfile/readarray. Held in an array so the list can grow without the matcher changing shape.
+    local -a patterns_40=()
+    patterns_40+=('\$\{[a-zA-Z_][a-zA-Z0-9_]*(\[[^]]*\])?(,,|\^\^|,|\^)\}')
+    patterns_40+=('(^|[^[:alnum:]_])(declare|local|typeset)[[:space:]]+-[a-zA-Z]*A[a-zA-Z]*[[:space:]]')
+    patterns_40+=('(^|[^[:alnum:]_])(mapfile|readarray)[[:space:]]')
+    if matches_any "${file}" "${patterns_40[@]}"; then
       required="4.0"
     fi
   fi
