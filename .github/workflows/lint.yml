@@ -41,6 +41,12 @@ jobs:
       - name: Check declared bash versions cover the features used
         run: ./bin/check-bash-version.sh
 
+      # The awk and jq programs the scripts run are not bash, so ShellCheck says nothing about them.
+      # Unchecked, a typo in one surfaces only when the script runs it — for the pruning filters, that
+      # means on the server, mid-run.
+      - name: Syntax-check the awk and jq programs
+        run: ./bin/check-programs.sh
+
       # The README index tables are generated from the manifest, so a hand-edit or a manifest change
       # without a `make docs` leaves them stale. Regenerating into a temp file and diffing turns that
       # into a build failure rather than something a reader notices later.
@@ -57,6 +63,12 @@ jobs:
         run: |
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.52.4/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
+
+      # Runs first, on the pristine checkout: it reads each @embed directive out of the source tree to
+      # confirm the compiled form holds that program's text, and the compile step below removes those
+      # directives. After it, the check would pass having verified nothing.
+      - name: Verify the published scripts are self-contained
+        run: ./bin/check-published-form.sh
 
       # Both steps are scripts rather than inline shell so they run from `make lint` before a push and
       # are covered by test/compile-all-includes.bats and test/smoke-package-all.bats.

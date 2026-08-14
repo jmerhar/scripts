@@ -183,17 +183,7 @@ list_names() {
 #   The README with the table replaced.
 #######################################
 splice_table() {
-  awk -v tfile="$2" '
-    /<!-- BEGIN TABLE -->/ {
-      print
-      while ((getline line < tfile) > 0) print line
-      close(tfile)
-      found=1
-      next
-    }
-    /<!-- END TABLE -->/ { print ""; found=0 }
-    !found { print }
-  ' "$1"
+  awk -v tfile="$2" -f "${SCRIPT_DIR}/splice-table.awk" "$1"
 }
 
 #######################################

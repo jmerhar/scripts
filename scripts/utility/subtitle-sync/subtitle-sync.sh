@@ -631,21 +631,9 @@ first_cue_ms() {
 #   delta_ms: Signed milliseconds to add.
 ########################################
 shift_srt() {
-  local in_srt="$1" out_srt="$2" delta_ms="$3"
-  awk -v off="${delta_ms}" '
-    function toms(h,m,s,ms){ return ((h*60+m)*60+s)*1000+ms }
-    function fmt(t,   h,m,s,ms){
-      if (t<0) t=0
-      ms=t%1000; t=int(t/1000); s=t%60; t=int(t/60); m=t%60; h=int(t/60)
-      return sprintf("%02d:%02d:%02d,%03d",h,m,s,ms)
-    }
-    / --> /{
-      split($1,a,"[:,]"); split($3,b,"[:,]")
-      printf "%s --> %s\n", fmt(toms(a[1],a[2],a[3],a[4])+off), fmt(toms(b[1],b[2],b[3],b[4])+off)
-      next
-    }
-    { print }
-  ' "${in_srt}" >"${out_srt}"
+  local in_srt="$1" out_srt="$2" delta_ms="$3" prog
+  prog=$(load_program shift-timestamps.awk)  # @embed shift-timestamps.awk
+  awk -v off="${delta_ms}" "${prog}" "${in_srt}" >"${out_srt}"
 }
 
 ########################################

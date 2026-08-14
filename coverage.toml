@@ -24,9 +24,10 @@ html = "coverage"
 #   * colour setup behind `[[ -t 1 ]]`, since bats is never a terminal;
 #   * root-only and non-root-only branches, each unreachable on one of the two runs;
 #   * guards that exist precisely because they should never fire;
-#   * roughly 113 lines that are not bash at all: the interiors of multi-line `awk`, `jq` and
-#     `xmllint --xpath` programs. Bash attributes the whole command to one line, so kcov counts the rest
-#     as never-executed bash even though they run — as awk, jq and XPath. No test can reach them.
+#   * the interiors of the two multi-line `xmllint --xpath` expressions in dmarc-report. Bash attributes
+#     the whole command to one line, so kcov counts the rest as never-executed bash even though it runs —
+#     as XPath. No test can reach those lines. XPath has no program-file option and both expressions
+#     contain single quotes, so unlike the awk and jq programs they cannot move into files.
 #
 # Excluding that last category line by line was tried and rejected: kcov's --exclude-line and
 # --exclude-region both drop the lines correctly, but in this build they also disable --include-path, so
@@ -38,8 +39,10 @@ html = "coverage"
 # reads an ordinary prose line as code, so a file that is not bash at all is otherwise reported as bash
 # that never ran — a README beside a script cost 36 uncovered lines before it was excluded.
 #
-# The measured figure is 89.15% (3080/3455 lines) across 20 files.
+# The measured figure is 92.22% (3282/3559 lines) across 22 files. It rose when the awk and jq programs
+# moved into their own files: their interiors were counted as bash that never ran, and a program file is
+# not measured at all. What is left is the list above.
 #
 # Raise it as coverage climbs; never lower it to make a red build pass, and never delete a guard to
 # flatter the number.
-gate = 88.0
+gate = 90.0

@@ -308,13 +308,9 @@ traverse_tree() {
 #   A formatted string such as "1.23 MB".
 ########################################
 format_size() {
-  awk -v s="${1:-0}" 'BEGIN {
-    split("B KB MB GB TB PB", u, " ");
-    if (s == 0) { print "0 B"; exit }
-    i = 1;
-    while (s >= 1024 && i < 6) { s /= 1024; i++ }
-    printf "%.2f %s\n", s, u[i]
-  }'
+  local prog
+  prog=$(load_program ../../lib/format-size.awk)  # @embed ../../lib/format-size.awk
+  awk -v s="${1:-0}" "${prog}"
 }
 
 ########################################

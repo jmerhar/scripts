@@ -266,12 +266,7 @@ generate_homebrew_formula() {
 
   # Convert script-name to ClassName
   local class_name
-  class_name=$(echo "${name}" | awk -F'[-_]' '{
-    for (i=1; i<=NF; i++) {
-      printf "%s", toupper(substr($i,1,1)) substr($i,2)
-    }
-    print ""
-  }')
+  class_name=$(echo "${name}" | awk -F'[-_]' -f "${SCRIPT_DIR}/class-name.awk")
 
   mkdir -p "${HOMEBREW_DIR}"
   local formula_file="${HOMEBREW_DIR}/${name}.rb"

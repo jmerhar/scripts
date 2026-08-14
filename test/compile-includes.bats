@@ -258,3 +258,245 @@ EOF
   # verbatim, and the published script still sources a config file at that point.
   [[ "$output" == *"shellcheck source=/dev/null"* ]]
 }
+
+# --- The @embed directive ----------------------------------------------------------------------
+#
+# An awk or jq program lives in a file beside its script so it can be highlighted, syntax-checked and
+# kept out of the coverage measurement. Published scripts are single files, so the directive inlines the
+# program as a literal. The development form and the published form must hold exactly the same text —
+# a difference there means the tests exercise one program and users run another.
+
+########################################
+# Writes a program file into the work directory.
+# Arguments:
+#   name: Filename to create.
+# Inputs:
+#   The program text, read from stdin.
+########################################
+program_fixture() {
+  cat > "$WORK/$1"
+}
+
+@test "an @embed line becomes the same assignment holding the program" {
+  program_fixture sum.awk <<'EOF'
+BEGIN { total = 0 }
+{ total += $1 }
+END { print total }
+EOF
+  local script
+  script=$(script_fixture embed.sh <<'EOF'
+#!/usr/bin/env bash
+_AWK_SUM=$(load_program sum.awk)  # @embed sum.awk
+printf '%s\n' 1 2 3 | awk "${_AWK_SUM}"
+EOF
+)
+  run_script "$TOOL" "$script"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"_AWK_SUM='BEGIN { total = 0 }"* ]]
+  [[ "$output" == *"END { print total }'"* ]]
+  [[ "$output" != *"load_program"* ]]
+  [[ "$output" != *"@embed"* ]]
+}
+
+# The point of the whole mechanism: what the published script runs must behave as the development form
+# does. Both are executed here rather than compared as text, since text equality would not prove the
+# quoting survived.
+@test "the compiled script produces what the development form produces" {
+  program_fixture sum.awk <<'EOF'
+{ total += $1 }
+END { print total + 0 }
+EOF
+  cp "$REPO_ROOT/scripts/lib/common.sh" "$WORK/common.sh"
+  cat > "$WORK/dev.sh" <<'EOF'
+#!/usr/bin/env bash
+set -o errexit -o nounset -o pipefail
+SCRIPT_NAME="$(basename "$0" .sh)"
+source "$(cd "$(dirname "$0")" && pwd -P)/common.sh"
+_AWK_SUM=$(load_program sum.awk)  # @embed sum.awk
+printf '%s
+' 4 5 6 | awk "${_AWK_SUM}"
+EOF
+  chmod +x "$WORK/dev.sh"
+  run bash "$WORK/dev.sh"
+  [ "$status" -eq 0 ]
+  local from_dev="$output"
+
+  run_script "$TOOL" "$WORK/dev.sh" "$WORK/pub.sh"
+  run bash "$WORK/pub.sh"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$from_dev" ]
+  [ "$output" = "15" ]
+}
+
+# `$(...)` strips trailing newlines, so a literal that kept them would give the published script a
+# different string from the one the development form loads.
+@test "trailing newlines in the program file are not embedded" {
+  printf 'BEGIN { print "x" }\n\n\n' > "$WORK/trail.awk"
+  local script
+  script=$(script_fixture trail.sh <<'EOF'
+#!/usr/bin/env bash
+_P=$(load_program trail.awk)  # @embed trail.awk
+EOF
+)
+  run_script "$TOOL" "$script"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"_P='BEGIN { print \"x\" }'"* ]]
+}
+
+# A program embedded single-quoted is handed to awk or jq untouched, which is the whole reason for the
+# quoting: `$1` is an awk field, not a shell argument.
+@test "shell metacharacters in the program are embedded literally" {
+  program_fixture meta.awk <<'EOF'
+{ print $1, $NF, "`backtick`", "${brace}" }
+EOF
+  local script
+  script=$(script_fixture meta.sh <<'EOF'
+#!/usr/bin/env bash
+_P=$(load_program meta.awk)  # @embed meta.awk
+EOF
+)
+  run_script "$TOOL" "$script"
+  [[ "$output" == *'$1, $NF'* ]]
+  [[ "$output" == *'`backtick`'* ]]
+  [[ "$output" == *'${brace}'* ]]
+}
+
+@test "indentation and a local declaration are preserved" {
+  program_fixture ind.awk <<'EOF'
+{ print }
+EOF
+  local script
+  script=$(script_fixture ind.sh <<'EOF'
+#!/usr/bin/env bash
+f() {
+  local prog
+  prog=$(load_program ind.awk)  # @embed ind.awk
+}
+EOF
+)
+  run_script "$TOOL" "$script"
+  [[ "$output" == *"  prog='{ print }'"* ]]
+}
+
+@test "a script may embed more than one program" {
+  program_fixture one.awk <<'EOF'
+{ print "one" }
+EOF
+  program_fixture two.jq <<'EOF'
+.[] | .name
+EOF
+  local script
+  script=$(script_fixture multi.sh <<'EOF'
+#!/usr/bin/env bash
+_A=$(load_program one.awk)  # @embed one.awk
+_B=$(load_program two.jq)  # @embed two.jq
+EOF
+)
+  run_script "$TOOL" "$script"
+  [[ "$output" == *"_A='{ print \"one\" }'"* ]]
+  [[ "$output" == *"_B='.[] | .name'"* ]]
+}
+
+@test "@embed and @include can appear in the same script" {
+  program_fixture both.awk <<'EOF'
+{ print }
+EOF
+  local script
+  script=$(script_fixture both.sh <<'EOF'
+#!/usr/bin/env bash
+# shellcheck source=lib/common.sh
+source "$(dirname "$0")/lib/common.sh"
+# @include lib/common.sh
+_P=$(load_program both.awk)  # @embed both.awk
+EOF
+)
+  run_script "$TOOL" "$script"
+  [[ "$output" == *"LIBRARY LINE ONE"* ]]
+  [[ "$output" == *"_P='{ print }'"* ]]
+  [[ "$output" != *"@include"* ]]
+  [[ "$output" != *"source "* ]]
+}
+
+# --- The @embed guards -------------------------------------------------------------------------
+
+# The directive and the call name are two statements of the same fact, and the compiler acts on the
+# directive. If they drift, the published script holds a program the development form never ran.
+@test "a directive naming a different program than the call is refused" {
+  program_fixture right.awk <<'EOF'
+{ print }
+EOF
+  program_fixture wrong.awk <<'EOF'
+{ exit 1 }
+EOF
+  local script
+  script=$(script_fixture drift.sh <<'EOF'
+#!/usr/bin/env bash
+_P=$(load_program right.awk)  # @embed wrong.awk
+EOF
+)
+  run_script "$TOOL" "$script"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"@embed names 'wrong.awk'"* ]]
+  [[ "$output" == *"load_program is called with 'right.awk'"* ]]
+}
+
+# The program is embedded inside single quotes, so a single quote in it would end the string early and
+# publish a script that is not even valid bash.
+@test "a program containing a single quote is refused" {
+  printf 'BEGIN { print "it%ss here" }\n' "'" > "$WORK/apos.awk"
+  local script
+  script=$(script_fixture apos.sh <<'EOF'
+#!/usr/bin/env bash
+_P=$(load_program apos.awk)  # @embed apos.awk
+EOF
+)
+  run_script "$TOOL" "$script"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"contains a single quote"* ]]
+}
+
+@test "a missing program file is refused, naming it" {
+  local script
+  script=$(script_fixture absent.sh <<'EOF'
+#!/usr/bin/env bash
+_P=$(load_program nowhere.awk)  # @embed nowhere.awk
+EOF
+)
+  run_script "$TOOL" "$script"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Program file not found"* ]]
+  [[ "$output" == *"nowhere.awk"* ]]
+}
+
+# Documentation shows the pattern, and a comment is not code: acting on an example would make any file
+# that documents @embed — the shared library among them — impossible to compile.
+@test "a commented-out example is not treated as a directive" {
+  local script
+  script=$(script_fixture doc.sh <<'EOF'
+#!/usr/bin/env bash
+# The call site looks like this:
+#   _P=$(load_program candidates.jq)  # @embed candidates.jq
+echo body
+EOF
+)
+  run_script "$TOOL" "$script"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'#   _P=$(load_program candidates.jq)  # @embed candidates.jq'* ]]
+  [[ "$output" == *"echo body"* ]]
+}
+
+# An ordinary assignment must not be touched: the directive is what marks a line for embedding, and
+# without it the line is just code.
+@test "an assignment without the directive is left alone" {
+  local script
+  script=$(script_fixture plain.sh <<'EOF'
+#!/usr/bin/env bash
+_P=$(load_program something.awk)
+other=$(date)
+EOF
+)
+  run_script "$TOOL" "$script"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'_P=$(load_program something.awk)'* ]]
+  [[ "$output" == *'other=$(date)'* ]]
+}

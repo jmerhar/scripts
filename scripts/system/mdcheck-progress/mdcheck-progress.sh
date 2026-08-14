@@ -168,12 +168,9 @@ midnight_of() {
 #   e.g. "6.77 TiB".
 ########################################
 human_bytes() {
-  awk -v b="$1" 'BEGIN {
-    split("B KiB MiB GiB TiB PiB", u, " ")
-    i = 1
-    while (b >= 1024 && i < 6) { b /= 1024; i++ }
-    printf (i == 1 ? "%d %s" : "%.2f %s"), b, u[i]
-  }'
+  local prog
+  prog=$(load_program human-bytes.awk)  # @embed human-bytes.awk
+  awk -v b="$1" "${prog}"
 }
 
 ########################################
@@ -286,11 +283,9 @@ project_finish() {
 #   Path to the checkpoint file, or empty if none.
 ########################################
 checkpoint_file() {
-  local md="$1" uuid
-  uuid=$(awk -v dev="/dev/${md}" '
-    $1 == "ARRAY" && $2 == dev {
-      for (i = 3; i <= NF; i++) if ($i ~ /^UUID=/) { sub(/^UUID=/, "", $i); print $i }
-    }' "${MDADM_CONF}" 2>/dev/null || true)
+  local md="$1" uuid prog
+  prog=$(load_program array-uuid.awk)  # @embed array-uuid.awk
+  uuid=$(awk -v dev="/dev/${md}" "${prog}" "${MDADM_CONF}" 2>/dev/null || true)
   if [[ -n "${uuid}" && -f "${MDCHECK_STATE_DIR}/MD_UUID_${uuid}" ]]; then
     echo "${MDCHECK_STATE_DIR}/MD_UUID_${uuid}"
     return

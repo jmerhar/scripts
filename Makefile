@@ -1,4 +1,4 @@
-.PHONY: coverage-tooling docs docs-check help install lint smoke test test-coverage coverage check clean
+.PHONY: coverage-tooling docs docs-check help install lint published smoke test test-coverage coverage check clean
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*##|^##@' $(MAKEFILE_LIST) | \
@@ -34,6 +34,7 @@ lint: ## ShellCheck everything, and validate the manifest and declared bash vers
 	shellcheck --severity=warning test/test_helper.bash test/stubs/_stub
 	bin/check-manifest.sh
 	bin/check-bash-version.sh
+	bin/check-programs.sh
 	$(MAKE) docs-check
 
 # Packages every manifest entry at a throwaway version, which is what catches a manifest and a packager
@@ -45,6 +46,12 @@ lint: ## ShellCheck everything, and validate the manifest and declared bash vers
 # mistake in it still fails locally.
 smoke: ## Package every manifest entry at v0.0.0 as a smoke test
 	bin/smoke-package-all.sh
+
+# package-script.sh does not compile, so `make smoke` alone packages the development form — which still
+# sources the library and reads its programs from disk. Compiling a throwaway copy is what checks the
+# thing users actually install.
+published: ## Verify every published script compiles to a self-contained file
+	bin/check-published-form.sh
 
 # The root table and every topic index come from scripts.yaml, so a script cannot be renamed,
 # moved or added without its documentation following. `make lint` runs the same generator with --check, so
@@ -68,7 +75,7 @@ coverage: coverage-tooling ## Run the suite under kcov and enforce the coverage 
 	bin/run-coverage.sh
 	python3 $(COVERAGE_REPORT) --gate
 
-check: lint test ## Lint + tests (gate a commit on this)
+check: lint test published ## Lint + tests + published form (gate a commit on this)
 
 ##@ Housekeeping
 

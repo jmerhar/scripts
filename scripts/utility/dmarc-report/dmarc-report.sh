@@ -600,12 +600,9 @@ print_policy_timeline() {
     # policy TSV: domain begin p sp pct adkim aspf np org
     local rows out
     rows=$(awk -F'\t' -v d="${dom}" '$1 == d {print}' "${_policy_tsv}" | sort -t$'\t' -k2,2n)
-    out=$(awk -F'\t' '
-          {
-            p = $3; sp = ($4 == "-" ? p : $4); np = ($8 == "-" ? sp : $8)
-            sig = "p=" p " sp=" sp " np=" np " pct=" $5 " adkim=" $6 " aspf=" $7
-            if (sig != prev) { print $2 "\t" sig; prev = sig }
-          }' <<<"${rows}")
+    local prog
+    prog=$(load_program policy-changes.awk)  # @embed policy-changes.awk
+    out=$(awk -F'\t' "${prog}" <<<"${rows}")
     # Only print domains that actually changed (more than one distinct signature).
     if (( $(wc -l <<<"${out}") > 1 )); then
       any=true
@@ -650,15 +647,9 @@ print_outcomes() {
   # DMARC defines exactly three dispositions; print them in a fixed order so the
   # output is deterministic regardless of awk's hash iteration order.
   printf '  %sDispositions applied:%s ' "${_C_CYAN}" "${_C_RESET}"
-  awk -F'\t' '
-    { d[$6] += $5 }
-    END {
-      n = split("none quarantine reject", order, " "); sep = ""
-      for (i = 1; i <= n; i++) if (order[i] in d) {
-        printf "%s%s=%d", sep, order[i], d[order[i]]; sep = ", "
-      }
-      print (sep == "" ? "(none)" : "")
-    }' "${_records_tsv}"
+  local prog
+  prog=$(load_program domain-pass-fail.awk)  # @embed domain-pass-fail.awk
+  awk -F'\t' "${prog}" "${_records_tsv}"
 
   if (( rate >= _warn_rate )); then
     local rate_flag
@@ -673,10 +664,9 @@ print_outcomes() {
   printf '  %s%s%s\n' "${_C_DIM}" "${header}" "${_C_RESET}"
 
   local per_domain
-  per_domain=$(awk -F'\t' '
-    { m[$1] += $5; if ($12 == 1) p[$1] += $5; else f[$1] += $5 }
-    END { for (d in m) printf "%s\t%d\t%d\t%d\t%d\n", d, m[d], p[d] + 0, f[d] + 0,
-            (m[d] > 0 ? f[d] * 100 / m[d] : 0) }' "${_records_tsv}")
+  local prog
+  prog=$(load_program per-domain-totals.awk)  # @embed per-domain-totals.awk
+  per_domain=$(awk -F'\t' "${prog}" "${_records_tsv}")
   local d m p f r
   while IFS=$'\t' read -r d m p f r; do
     [[ -n "${d}" ]] || continue
@@ -699,19 +689,9 @@ analyze_flags() {
   #    ESP abuse. High value — list each distinct (domain, passing-auth-domain).
   #    $9=header_from, $10=dkim_pairs, $11=spf_pairs, $12=aligned_pass, $13=auth_any_pass
   local unaligned
-  unaligned=$(awk -F'\t' '
-    $13 == 1 && $12 == 0 {
-      # Distinct passing auth domains for THIS record, so a message that passes
-      # both DKIM and SPF on the same domain is counted once, not twice.
-      delete seen
-      split($10 ";" $11, pairs, ";")
-      for (i in pairs) {
-        n = split(pairs[i], kv, ":")
-        if (n == 2 && kv[2] == "pass") seen[kv[1]] = 1
-      }
-      for (dom in seen) cnt[$9 "\t" dom] += $5
-    }
-    END { for (k in cnt) printf "%s\t%d\n", k, cnt[k] }' "${_records_tsv}")
+  local prog
+  prog=$(load_program unaligned-auth.awk)  # @embed unaligned-auth.awk
+  unaligned=$(awk -F'\t' "${prog}" "${_records_tsv}")
 
   local hfrom authdom c unaligned_flag
   while IFS=$'\t' read -r hfrom authdom c; do
@@ -849,16 +829,9 @@ print_flags() {
     # sorted by message volume. The representative is a real, routable address so
     # geolocation is accurate rather than querying a synthetic network address.
     local grouped
-    grouped=$(awk -F'\t' '
-        function subnet(ip,   a) {
-          if (index(ip, ":")) { split(ip, a, ":"); return a[1] ":" a[2] ":" a[3] ":" a[4] "::/64" }
-          split(ip, a, "."); return a[1] "." a[2] "." a[3] ".0/24"
-        }
-        $12 == 0 && $4 != "" {
-          s = subnet($4); msgs[s] += $5
-          if ($5 >= repmax[s]) { repmax[s] = $5; rep[s] = $4 }
-        }
-        END { for (s in msgs) printf "%d\t%s\t%s\n", msgs[s], s, rep[s] }' "${_records_tsv}")
+    local prog
+    prog=$(load_program failing-subnets.awk)  # @embed failing-subnets.awk
+    grouped=$(awk -F'\t' "${prog}" "${_records_tsv}")
     grouped=$(sort -t$'\t' -k1,1nr <<<"${grouped}")
     [[ "${_show_all}" != true ]] && grouped=$(head -n "${_top_n}" <<<"${grouped}")
 

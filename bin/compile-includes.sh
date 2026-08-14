@@ -49,6 +49,62 @@ EOF
 }
 
 #######################################
+# Prints the assignment that replaces an `# @embed` line, with the program inlined as a literal.
+#
+# The development form reads the program from a file:
+#
+#   _JQ_CANDIDATES=$(load_program candidates.jq)  # @embed candidates.jq
+#
+# and the published form is the same variable holding the same text, so a single-file script needs
+# nothing beside it. The text is embedded single-quoted, which is what keeps a program containing `$1`,
+# `$dprefix` or a backtick from being touched by the shell — the same reason the programs were quoted
+# that way when they lived inside the script.
+#
+# Trailing newlines are stripped because `$(...)` strips them, so the compiled variable holds exactly
+# what the development form held.
+#
+# Two guards, both fatal, because either mistake would publish a script that runs a program nobody
+# tested: the name in the directive must match the name passed to load_program, and the program must
+# contain no single quote, which the embedding could not survive.
+# Arguments:
+#   assignment_prefix: Everything left of the `=`, indentation included.
+#   call_name: Program name passed to load_program.
+#   directive_name: Program name given in the @embed directive.
+#   base_dir: Directory to resolve the program against.
+#   input_file: File being compiled, for error messages.
+# Outputs:
+#   The assignment, with the program text inlined.
+#######################################
+embed_program() {
+  local assignment_prefix="$1"
+  local call_name="$2"
+  local directive_name="$3"
+  local base_dir="$4"
+  local input_file="$5"
+
+  if [[ "${call_name}" != "${directive_name}" ]]; then
+    log_error "@embed names '${directive_name}' but load_program is called with '${call_name}' (in ${input_file})."
+    exit 1
+  fi
+
+  local resolved_path="${base_dir}/${directive_name}"
+  if [[ ! -f "${resolved_path}" ]]; then
+    log_error "Program file not found: ${resolved_path} (referenced from ${input_file})"
+    exit 1
+  fi
+
+  local program
+  program=$(cat "${resolved_path}")
+
+  if [[ "${program}" == *"'"* ]]; then
+    log_error "${resolved_path} contains a single quote, which cannot be embedded in the published script."
+    exit 1
+  fi
+
+  printf "%s='%s'\n" "${assignment_prefix}" "${program}"
+}
+
+#######################################
 # Processes a single file, expanding @include directives.
 # When a `# @include <path>` line is found, it is replaced with the file
 # contents. Any `source`/`.` command or `# shellcheck source=` directive
@@ -66,6 +122,26 @@ process_file() {
   local has_pending="false"
 
   while IFS= read -r line || [[ -n "${line}" ]]; do
+    # Match an assignment carrying an # @embed directive. Matched before the buffered-line flush below
+    # because it is self-contained: unlike @include, there is no preceding loader line to drop.
+    if [[ "${line}" =~ ^([[:space:]]*[^#=[:space:]][^=]*)=\$\(load_program[[:space:]]+([^\)]+)\)[[:space:]]*#[[:space:]]*@embed[[:space:]]+(.+)$ ]]; then
+      local prefix="${BASH_REMATCH[1]}"
+      local call_name="${BASH_REMATCH[2]}"
+      local directive_name="${BASH_REMATCH[3]}"
+      # Trim the whitespace the regex cannot, since both names are compared literally.
+      call_name="${call_name%"${call_name##*[![:space:]]}"}"
+      directive_name="${directive_name%"${directive_name##*[![:space:]]}"}"
+
+      if [[ "${has_pending}" == "true" ]]; then
+        printf '%s\n' "${pending_line}"
+        has_pending="false"
+        pending_line=""
+      fi
+
+      embed_program "${prefix}" "${call_name}" "${directive_name}" "${base_dir}" "${input_file}"
+      continue
+    fi
+
     # Match # @include <path>
     if [[ "${line}" =~ ^[[:space:]]*#[[:space:]]*@include[[:space:]]+(.+)$ ]]; then
       local include_path="${BASH_REMATCH[1]}"

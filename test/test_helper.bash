@@ -268,7 +268,17 @@ fake_repo_tool() {
   FAKE_TOOL="$FAKE_REPO/bin/$1"
   export FAKE_REPO FAKE_TOOL
   mkdir -p "$FAKE_REPO/bin"
-  ln -s "$REPO_ROOT/bin/$1" "$FAKE_TOOL"
+  ln -sf "$REPO_ROOT/bin/$1" "$FAKE_TOOL"
+
+  # The awk programs the bin/ tools run with `awk -f` are resolved beside the tool, so the fake bin has
+  # to hold them as well — otherwise a tool linked here fails for want of a program rather than for the
+  # reason under test. All of them are linked rather than just one tool's: this directory stands in for
+  # the real bin/, and mapping each tool to its programs would be a second thing to keep in step.
+  local program
+  for program in "$REPO_ROOT"/bin/*.awk "$REPO_ROOT"/bin/*.jq; do
+    [ -e "$program" ] || continue
+    ln -sf "$program" "$FAKE_REPO/bin/$(basename "$program")"
+  done
 }
 
 ########################################

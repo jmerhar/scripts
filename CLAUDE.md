@@ -11,7 +11,7 @@ A collection of packaged shell scripts for macOS and Debian/Ubuntu, distributed 
 ### Directory Layout
 
 Each publishable script lives in its own directory, alongside everything that belongs to it: its config
-template and its README. The script keeps its own filename inside that directory because `SCRIPT_NAME`
+template, its README, and any `awk` or `jq` program it runs. The script keeps its own filename inside that directory because `SCRIPT_NAME`
 derives from `basename "$0" .sh`, and that name drives config discovery, the usage text and the log
 prefix — a tidier `main.sh` would silently become `SCRIPT_NAME=main` and break all three. The published
 artefact is a single file named after the script, so the repetition is invisible outside the repo.
@@ -29,6 +29,12 @@ scripts/system/
     local-backup.sh
     local-backup.conf
     README.md                     # this script's documentation
+  prune-orphaned-torrents/
+    prune-orphaned-torrents.sh
+    prune-orphaned-torrents.conf
+    candidates.jq                 # programs the script runs, inlined when published
+    strays.jq
+    README.md
 ```
 
 - `bin/` — Internal CI/CD tooling (packaging, dependency installation). Not published as packages.
@@ -115,6 +121,50 @@ script that sources a path which does not exist.
 
 The `# shellcheck source=` line lets ShellCheck resolve the dependency during linting. The `# @include` line is the directive that `compile-includes.sh` replaces with the file contents. The `shellcheck source=` line is stripped during compilation since it's no longer needed.
 
+### Embedded programs (`@embed`)
+
+An `awk` or `jq` program of more than a line or two lives in its own file beside the script, and is read
+through `load_program` on a single self-contained line:
+
+```bash
+prog=$(load_program candidates.jq)  # @embed candidates.jq
+jq "${args[@]}" "${prog}" <<<"${status}"
+```
+
+`compile-includes.sh` replaces that whole line with `prog='<file contents>'`, so a published script is
+still one file. A single line rather than the loader/directive pair `@include` uses: the compiler can
+buffer a `source` line and drop it, but buffering every assignment to spot a following directive would be
+far too broad. A shared program goes in `scripts/lib/` and is named by a relative path
+(`# @embed ../../lib/format-size.awk`) — `format-size.awk` is shared by two scripts that report recovered
+space.
+
+Four properties are enforced, each because the alternative fails somewhere expensive:
+
+- **The name in the directive must match the name passed to `load_program`.** The compiler acts on the
+  directive, so a drift publishes a program the development form never ran.
+- **A program under `scripts/` must contain no single quote** — an apostrophe in a comment is the likely
+  way in. It is embedded as a single-quoted literal, which such a quote would end early.
+  `bin/check-programs.sh` says so during `make lint`; the compiler refuses it too, but only at packaging
+  time. Programs under `bin/` are exempt: those tools run theirs with `awk -f` and are never published as
+  one file.
+- **Trailing newlines are stripped when embedding**, because `$(...)` strips them. Otherwise the published
+  variable holds a different string from the one the development form loads.
+- **`load_program` fails loudly** when a program is missing. `awk` and `jq` both accept an empty program
+  and print nothing, so returning "" would turn a packaging mistake into a script that silently reports
+  no results.
+
+`bin/check-programs.sh` syntax-checks every program before it can run — the main reason for extracting
+them, since a typo in a pruning filter otherwise surfaces mid-run, on the server. Two details there are
+established by testing rather than by reading manuals: `awk -f prog /dev/null` *runs* BEGIN and END rather
+than only parsing, and `jq` exits 3 for a syntax error **and** for a variable it never received, so a
+filter using `--arg` values declares them in a `# lint-args:` header. A jq runtime error against the
+checker's `null` input exits 5 and is ignored, since it says nothing about whether the filter compiles.
+
+`bin/check-published-form.sh` compiles a throwaway copy of the tree and asserts that no published script
+still sources the library or reads a program, that each parses, and that every inlined program matches its
+file byte for byte. It must run on an **uncompiled** tree — compiling removes the directives it reads, so
+afterwards it would pass having checked nothing, which is why it refuses a tree that has none.
+
 ### Packaging System
 
 `bin/package-script.sh` reads metadata from `scripts.yaml` (via `yq`) and generates Homebrew formulas (`.rb`), Debian packages (`.deb`), and release tarballs (`.tar.gz`).
@@ -142,9 +192,10 @@ one — it covers the three ways a test reaches the code, the safety rules, and 
 ```bash
 make test      # the suite
 make lint      # ShellCheck, the manifest checks, the declared bash versions
-make check     # both; gate a commit on this
+make check     # all three; gate a commit on this
 make smoke     # package every manifest entry at v0.0.0, catching manifest/packager drift
 make docs      # regenerate the README index tables from the manifest
+make published # compile a throwaway copy and check every published script is self-contained
 make coverage  # the suite under kcov, then the shared gate
 ```
 
@@ -185,7 +236,7 @@ real system. The full set:
 Line coverage is measured by kcov through `bin/run-coverage.sh` and published to
 [the shared site](https://jmerhar.github.io/coverage/scripts/); `coverage.toml` declares the suite and
 its gate, and the reporting is the shared actions from
-[jmerhar/coverage](https://github.com/jmerhar/coverage). Three things about it are not obvious:
+[jmerhar/coverage](https://github.com/jmerhar/coverage). Four things about it are not obvious:
 
 - **The kcov seam lives in `test/test_helper.bash` and nowhere else.** `run_script`, `run_func` and
   `run_snippet` notice `COVERAGE_DIR`; no `.bats` file knows coverage exists. Keep it that way.
@@ -209,11 +260,17 @@ tests cannot drive rather than logic they miss: branches for a tool that is abse
 they should never fire. Set the gate to what is reachable and say why; never lower it to make a build
 pass.
 
-No publishable script has a `\` continuation left. That matters for the figure — bash attributes a
-multi-line command to its final line, so the first line of a continuation reads as never executed and the
-lines between are not instrumented at all, and the closing brace of a redirected group is never reported.
-Keep new code single-statement-per-line for the same reason; `bin/run-coverage.sh` is the exception, since
-it is excluded from the report.
+No publishable script has a `\` continuation left, and no multi-line `awk` or `jq` program is quoted
+inside one. Both mattered for the figure, for the same reason: bash attributes a multi-line command to its
+final line, so the first line reads as never executed and the lines between are not instrumented at all —
+and for a program those lines are not bash in the first place, they run as awk or jq. Programs now live in
+their own files, which are not measured. Keep new code single-statement-per-line, and a program longer than
+a line or two in a file; `bin/run-coverage.sh` is the exception, since it is excluded from the report.
+
+`--exclude-pattern` keeps `.conf` files and the per-script READMEs out of the measurement entirely, because
+kcov's bash parser reads an ordinary prose line as code. Do not reach for `--exclude-line` or
+`--exclude-region` instead: in this build they also disable `--include-path`, and the figure stops meaning
+anything.
 
 ### Testing Locally
 
