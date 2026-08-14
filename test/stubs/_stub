@@ -162,6 +162,36 @@ case "${command_name}" in
     fi
     ;;
 
+  curl)
+    # A JSON-RPC caller sends its request body on stdin (`--data @-`) and needs a different reply per
+    # method: one run authenticates, checks the connection, lists torrents and removes one. The method is
+    # therefore read out of the body and answered from curl.<method>.stdout, with curl.<method>.fail for
+    # a single failing call — the plain curl.fail handled above fails every one of them.
+    #
+    # stdin is read only when the argument list says a body is coming, because the suites that call curl
+    # with the body in an argument have no stdin to read and would block on one.
+    has_body=false
+    for arg in "$@"; do
+      if [[ "${arg}" == "@-" ]]; then
+        has_body=true
+        break
+      fi
+    done
+    if [[ "${has_body}" == true ]]; then
+      body=$(cat)
+      method=$(jq -r '.method // empty' <<<"${body}" 2>/dev/null || true)
+      # Logged as a second line: the argv recorded above cannot show the method, and a suite asserting
+      # which call was made needs it — along with the body, which carries the torrent hash.
+      printf 'curl-rpc %s %s\n' "${method:-unknown}" "${body}" >> "${calls}"
+      if [[ -f "${fixtures}/curl.${method}.fail" ]]; then
+        exit "$(cat "${fixtures}/curl.${method}.fail")"
+      fi
+      if [[ -f "${fixtures}/curl.${method}.stdout" ]]; then
+        cat "${fixtures}/curl.${method}.stdout"
+      fi
+    fi
+    ;;
+
   *whisper*)
     # Matched on a substring because the transcriber's name is configurable (WHISPER_BIN), so a suite
     # checking that the setting is honoured points the script at a double under a different name and
