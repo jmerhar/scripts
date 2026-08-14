@@ -18,12 +18,13 @@ html = "coverage"
 # Set just under the measured figure so a real regression fails while a defensive line here or there is
 # tolerated. Two things hold this down, neither of them a gap in the tests:
 #
-#   * the scripts that move or delete data have no behavioural suites yet — they are the bulk of the
-#     uncovered lines, and TODO #2 is about closing that;
-#   * roughly 115 lines cannot be credited at all. Bash attributes a multi-line command to its final
-#     line, so the first line of each `\` continuation reads as never executed and the continuation
-#     lines are not instrumented; the closing brace of a redirected group is never reported either.
-#     Reshaping those statements is its own change, after which this rises.
+#   * `prune-orphaned-torrents`, `mdcheck-progress`, `local-backup`, `photo-backup`, `nopasswd-sudo` and
+#     `unlock-pdf` have no behavioural suite yet, and are most of the uncovered lines;
+#   * a `\` continuation cannot be credited at all, because bash attributes a multi-line command to its
+#     final line: the first line reads as never executed and the lines between are not instrumented.
+#     The closing brace of a redirected group is never reported either. Each script has its
+#     continuations reshaped into single-line statements as its suite lands, so this shrinks as the list
+#     above does.
 #
 # Raise it as coverage climbs; never lower it to make a red build pass.
-gate = 58.0
+gate = 68.0
