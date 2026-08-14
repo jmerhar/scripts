@@ -17,10 +17,11 @@
 #   <command>.fail      exit with the status held in this file (default 1) instead of succeeding
 #   <command>.stdout    print this file's contents on stdout
 #   <command>.stderr    print this file's contents on stderr
+#   <command>.artifact  the body to write into the output file, for the commands that produce one
 #
-# A command that needs to fabricate output files (qpdf, dpkg-deb) is special-cased at the bottom;
-# anything else simply records the call and succeeds, which is what the scripts expect from a tool
-# that did its job.
+# A command that needs to fabricate output files (qpdf, dpkg-deb, the media tools) is special-cased at
+# the bottom; anything else simply records the call and succeeds, which is what the scripts expect
+# from a tool that did its job.
 set -uo pipefail
 
 command_name=$(basename "$0")
@@ -50,6 +51,33 @@ fi
 #######################################
 last_arg() {
   printf '%s' "${!#}"
+}
+
+#######################################
+# Writes the body a media tool is expected to have produced, from <command>.artifact when the suite
+# supplied one and a minimal two-cue SRT otherwise. The default is an SRT because every file these
+# tools hand back to a script that then parses it is one; the callers that ask for a WAV or a container
+# never look inside.
+# Globals:
+#   fixtures, command_name
+# Arguments:
+#   path: Where to write.
+#######################################
+write_artifact() {
+  local path="$1"
+  if [[ -f "${fixtures}/${command_name}.artifact" ]]; then
+    cat "${fixtures}/${command_name}.artifact" > "${path}"
+    return 0
+  fi
+  cat > "${path}" <<'ARTIFACT'
+1
+00:00:01,000 --> 00:00:03,000
+first line
+
+2
+00:00:05,000 --> 00:00:07,000
+second line
+ARTIFACT
 }
 
 case "${command_name}" in
@@ -87,6 +115,57 @@ case "${command_name}" in
     done
     if (( $# >= 2 )); then
       printf 'stub deb\n' > "$(last_arg "$@")"
+    fi
+    ;;
+
+  ffmpeg)
+    # Every ffmpeg call subtitle-sync makes names its destination last: the extracted WAV, the SRT
+    # pulled out of a container, and the remuxed copy. Only the SRT is read back, but writing all three
+    # keeps the branch to one rule.
+    if (( $# >= 2 )); then
+      out=$(last_arg "$@")
+      case "${out}" in
+        -*) ;;
+        *) write_artifact "${out}" ;;
+      esac
+    fi
+    ;;
+
+  *whisper*)
+    # Matched on a substring because the transcriber's name is configurable (WHISPER_BIN), so a suite
+    # checking that the setting is honoured points the script at a double under a different name and
+    # still needs it to behave like one.
+    #
+    # The caller looks for any *.srt under --output_dir and treats an empty result as a failed
+    # transcription, so the directory must come back with one in it.
+    out_dir=""
+    prev=""
+    for arg in "$@"; do
+      [[ "${prev}" == "--output_dir" ]] && out_dir="${arg}"
+      prev="${arg}"
+    done
+    if [[ -n "${out_dir}" && -d "${out_dir}" ]]; then
+      write_artifact "${out_dir}/audio.srt"
+    fi
+    ;;
+
+  *alass*)
+    # Substring-matched for the same reason as the transcriber above: ALASS_BIN is configurable.
+    #
+    # `alass [options] <reference> <incorrect> <output>` — the corrected file is last, and the caller
+    # parses it. Absent a fixture the input subtitle is echoed through, which leaves the timings alone
+    # so a suite that is not testing the anchor sees no shift from it.
+    if (( $# >= 3 )); then
+      out=$(last_arg "$@")
+      alass_args=("$@")
+      in_sub="${alass_args[$#-2]}"
+      if [[ -f "${fixtures}/alass.artifact" ]]; then
+        write_artifact "${out}"
+      elif [[ -f "${in_sub}" ]]; then
+        cat "${in_sub}" > "${out}"
+      else
+        write_artifact "${out}"
+      fi
     fi
     ;;
 esac
