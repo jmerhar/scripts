@@ -151,6 +151,40 @@ EOF
   [[ "$output" == *"ffmpeg -i in.mkv"* ]]
 }
 
+# The stubs that fabricate an output file infer its path from the argument list, which is a guess: a
+# command may be called with an input last, as `ffmpeg -i in.mkv` is. Writing that guess would put a file
+# wherever the suite happened to be run from — the repository itself, under a relative path.
+@test "a stub never writes outside a temp directory" {
+  # Deliberately not cd-ing anywhere: the cwd a suite actually runs in is the repository, which is what
+  # makes a relative destination dangerous. Both strays are cleared before asserting, so a broken guard
+  # reports itself rather than leaving debris for the next run to trip over.
+  local relative="$PWD/in.mkv" absolute="$PWD/escaped.pdf"
+  local made_relative=no made_absolute=no
+  ffmpeg -i in.mkv
+  qpdf --decrypt --password=x locked.pdf "$absolute"
+  [ -e "$relative" ] && made_relative=yes
+  [ -e "$absolute" ] && made_absolute=yes
+  rm -f "$relative" "$absolute"
+  [ "$made_relative" = no ]
+  [ "$made_absolute" = no ]
+}
+
+@test "a stub still writes an output file inside the test temp directory" {
+  ffmpeg -i "$BATS_TEST_TMPDIR/v.mkv" -f srt "$BATS_TEST_TMPDIR/out.srt"
+  [ -s "$BATS_TEST_TMPDIR/out.srt" ]
+  grep -q ' --> ' "$BATS_TEST_TMPDIR/out.srt"
+}
+
+# A script under test makes its own scratch directory with mktemp, which is not the test temp directory
+# but is still a legitimate destination — refusing it would break every suite whose script works there.
+@test "a stub writes into a scratch directory a script made for itself" {
+  local scratch
+  scratch=$(mktemp -d "${TMPDIR:-/tmp}/harness-bats.XXXXXX")
+  ffmpeg -i "$scratch/v.mkv" -f srt "$scratch/out.srt"
+  [ -s "$scratch/out.srt" ]
+  rm -rf "$scratch"
+}
+
 @test "stub_called matches a recorded call" {
   rsync -a --delete /from /to
   stub_called 'rsync .*--delete'

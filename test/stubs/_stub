@@ -54,10 +54,42 @@ last_arg() {
 }
 
 #######################################
+# Reports whether a path is somewhere a stub may write: under the test temp directory, or under the
+# system temp directory a script under test creates its own scratch space in.
+#
+# The branches below infer their output path from the argument list, which is a guess — a command may be
+# called with something else last, as `ffmpeg -i in.mkv` is, and that argument may be an input, may be
+# relative, and may name something real. Checking where the write would land keeps a misread call from
+# putting a file in the repository, the home directory, or anywhere else outside a scratch area.
+#
+# Resolved with `pwd -P` on both sides, since a temp path and its physical form differ on macOS.
+# Globals:
+#   BATS_TEST_TMPDIR, TMPDIR
+# Arguments:
+#   path: The intended destination.
+# Returns:
+#   0 when the path lies inside a temp root, 1 otherwise.
+#######################################
+may_write() {
+  local path="$1" dir root resolved
+  dir=$(cd "$(dirname "${path}")" 2>/dev/null && pwd -P) || return 1
+  for root in "${BATS_TEST_TMPDIR:-}" "${TMPDIR:-}" /tmp; do
+    [[ -n "${root}" ]] || continue
+    resolved=$(cd "${root}" 2>/dev/null && pwd -P) || continue
+    if [[ "${dir}" == "${resolved}" || "${dir}" == "${resolved}"/* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+#######################################
 # Writes the body a media tool is expected to have produced, from <command>.artifact when the suite
 # supplied one and a minimal two-cue SRT otherwise. The default is an SRT because every file these
 # tools hand back to a script that then parses it is one; the callers that ask for a WAV or a container
 # never look inside.
+#
+# Does nothing when the destination is outside the test temp directory; see may_write.
 # Globals:
 #   fixtures, command_name
 # Arguments:
@@ -65,6 +97,7 @@ last_arg() {
 #######################################
 write_artifact() {
   local path="$1"
+  may_write "${path}" || return 0
   if [[ -f "${fixtures}/${command_name}.artifact" ]]; then
     cat "${fixtures}/${command_name}.artifact" > "${path}"
     return 0
@@ -86,10 +119,9 @@ case "${command_name}" in
     # `qpdf --decrypt --password=… <in> <out>` — the output path is last.
     if (( $# >= 2 )); then
       out=$(last_arg "$@")
-      case "${out}" in
-        -*) ;;
-        *) printf '%%PDF-1.4 stub\n' > "${out}" ;;
-      esac
+      if may_write "${out}"; then
+        printf '%%PDF-1.4 stub\n' > "${out}"
+      fi
     fi
     ;;
 
@@ -114,7 +146,10 @@ case "${command_name}" in
       fi
     done
     if (( $# >= 2 )); then
-      printf 'stub deb\n' > "$(last_arg "$@")"
+      out=$(last_arg "$@")
+      if may_write "${out}"; then
+        printf 'stub deb\n' > "${out}"
+      fi
     fi
     ;;
 
@@ -123,11 +158,7 @@ case "${command_name}" in
     # pulled out of a container, and the remuxed copy. Only the SRT is read back, but writing all three
     # keeps the branch to one rule.
     if (( $# >= 2 )); then
-      out=$(last_arg "$@")
-      case "${out}" in
-        -*) ;;
-        *) write_artifact "${out}" ;;
-      esac
+      write_artifact "$(last_arg "$@")"
     fi
     ;;
 

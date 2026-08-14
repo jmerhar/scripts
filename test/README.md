@@ -103,6 +103,11 @@ The transcriber and `alass` branches match their command name on a *substring*, 
 and `ALASS_BIN` are configurable: a test that checks the setting is honoured points the script at a
 double under another name and still needs it to behave like one.
 
+Those branches take the output path to be the **last argument**, which is a guess — `ffmpeg -i in.mkv`
+ends in an input. So a write only happens when the destination lands under a temp root: the test's own
+directory, or the scratch directory a script made with `mktemp`. Anywhere else, including a relative path
+resolved against the repository, is skipped rather than written.
+
 `dpkg-deb` is stubbed rather than delegated to the real tool for a specific reason: it does not exist
 on macOS, and `package-script.sh` silently skips `.deb` generation when it cannot find it. Without the
 stub the packaging suite would quietly test nothing on a Mac and everything on Linux.
