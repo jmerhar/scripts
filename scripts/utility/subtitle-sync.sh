@@ -513,9 +513,9 @@ cache_key() {
 ########################################
 extract_audio() {
   local video="$1" out_wav="$2"
-  ffmpeg -nostdin -hide_banner -loglevel error -y -i "${video}" \
-    -vn -ar 16000 -ac 1 -c:a pcm_s16le "${out_wav}" \
-    >"${_workdir}/audio_extract.log" 2>&1
+  local -a args=(-nostdin -hide_banner -loglevel error -y -i "${video}")
+  args+=(-vn -ar 16000 -ac 1 -c:a pcm_s16le "${out_wav}")
+  ffmpeg "${args[@]}" >"${_workdir}/audio_extract.log" 2>&1
 }
 
 ########################################
@@ -557,18 +557,14 @@ build_reference() {
   local tdir="${_workdir}/whisper"
   rm -rf "${tdir}"; mkdir -p "${tdir}"
   t0=$(_now)
-  if ! "${_whisper_bin}" \
-      --model "${_model}" \
-      --device "${_device}" \
-      --compute_type "${_compute_type}" \
-      --threads "${_threads}" \
-      --language "${_lang}" \
-      --word_timestamps True \
-      --max_words_per_line "${_max_words}" \
-      --output_format srt \
-      --output_dir "${tdir}" \
-      "${_whisper_extra_args[@]+"${_whisper_extra_args[@]}"}" \
-      "${wav}" >"${_workdir}/whisper.log" 2>&1; then
+  local -a wargs=(--model "${_model}" --device "${_device}")
+  wargs+=(--compute_type "${_compute_type}" --threads "${_threads}")
+  wargs+=(--language "${_lang}" --word_timestamps True)
+  wargs+=(--max_words_per_line "${_max_words}")
+  wargs+=(--output_format srt --output_dir "${tdir}")
+  wargs+=("${_whisper_extra_args[@]+"${_whisper_extra_args[@]}"}")
+  wargs+=("${wav}")
+  if ! "${_whisper_bin}" "${wargs[@]}" >"${_workdir}/whisper.log" 2>&1; then
     log_error "Transcription failed for: ${video}"
     log_debug "$(tail -n 5 "${_workdir}/whisper.log")"
     rm -f "${wav}"
@@ -607,8 +603,8 @@ run_alass() {
   local -a args=(--split-penalty "${_split_penalty}")
   [[ "${_fps_guess}" == true ]] || args+=(-g)
   t0=$(_now)
-  if ! "${_alass_bin}" "${args[@]}" "${ref}" "${sub}" "${out}" \
-      >"${_workdir}/alass.log" 2>&1; then
+  args+=("${ref}" "${sub}" "${out}")
+  if ! "${_alass_bin}" "${args[@]}" >"${_workdir}/alass.log" 2>&1; then
     log_error "alass failed: $(tail -n 3 "${_workdir}/alass.log" | tr '\n' ' ')"
     return 1
   fi
@@ -764,6 +760,9 @@ sync_embedded() {
 
   # Find the first text subtitle stream matching the target language.
   local chosen_index=""
+  local -a probe=(-v error -select_streams s)
+  probe+=(-show_entries "stream=index,codec_name:stream_tags=language")
+  probe+=(-of csv=p=0 -- "${video}")
   while IFS=',' read -r index codec rawlang; do
     [[ -n "${index}" ]] || continue
     case "$(_lower "${codec}")" in
@@ -772,9 +771,7 @@ sync_embedded() {
     esac
     lang="$(normalize_lang "${rawlang}")"
     if lang_matches_target "${lang}"; then chosen_index="${index}"; break; fi
-  done < <(ffprobe -v error -select_streams s \
-    -show_entries stream=index,codec_name:stream_tags=language \
-    -of csv=p=0 -- "${video}" 2>/dev/null)
+  done < <(ffprobe "${probe[@]}" 2>/dev/null)
 
   if [[ -z "${chosen_index}" ]]; then
     log_debug "No embedded ${_lang} text track in: ${video}"
@@ -824,13 +821,12 @@ sync_embedded() {
     # The synced track is appended after any original subtitle streams; tag and
     # default that specific stream (s:N where N = number of original sub streams).
     local n_subs
-    n_subs="$(ffprobe -v error -select_streams s -show_entries stream=index \
-      -of csv=p=0 -- "${video}" 2>/dev/null | grep -c .)"
-    if ! ffmpeg -nostdin -hide_banner -loglevel error -y -i "${video}" -i "${final}" \
-        -map 0 -map 1:0 -c copy -c:s:"${n_subs}" srt \
-        -metadata:s:s:"${n_subs}" language="${target_lang}" \
-        -disposition:s:s:"${n_subs}" default \
-        "${out}" 2>"${_workdir}/remux.log"; then
+    n_subs="$(count_subtitle_streams "${video}")"
+    local -a margs=(-nostdin -hide_banner -loglevel error -y -i "${video}" -i "${final}")
+    margs+=(-map 0 -map 1:0 -c copy -c:s:"${n_subs}" srt)
+    margs+=(-metadata:s:s:"${n_subs}" language="${target_lang}")
+    margs+=(-disposition:s:s:"${n_subs}" default "${out}")
+    if ! ffmpeg "${margs[@]}" 2>"${_workdir}/remux.log"; then
       log_error "Remux failed for: ${video}"
       _n_failed=$(( _n_failed + 1 )); return 0
     fi
@@ -843,10 +839,28 @@ sync_embedded() {
 }
 
 ########################################
+# Counts a video's subtitle streams.
+# Arguments:
+#   video: The video file path.
+# Outputs:
+#   The number of subtitle streams on stdout, 0 when there are none.
+########################################
+count_subtitle_streams() {
+  local video="$1"
+  local -a probe=(-v error -select_streams s -show_entries stream=index)
+  probe+=(-of csv=p=0 -- "${video}")
+  # grep exits 1 on no match, which under errexit would abort the caller mid-assignment, so an empty
+  # stream list is reported as 0 rather than as a failure.
+  ffprobe "${probe[@]}" 2>/dev/null | grep -c . || true
+}
+
+########################################
 # Lists the sidecar subtitles in a video's directory that belong to it and match
 # the target language.
+# A backed-up original is not a candidate, since the backup suffix leaves it without a subtitle
+# extension.
 # Globals:
-#   _subtitle_exts, _backup_suffix
+#   _subtitle_exts
 # Arguments:
 #   video: The video file path.
 # Outputs:
