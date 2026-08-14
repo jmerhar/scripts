@@ -45,10 +45,10 @@ setup_common() {
   : > "$STUB_CALLS"
 
   # The stubs shadow the real binaries, and that is a safety mechanism rather than a convenience.
-  # Several scripts here delete files, drive rsync, or talk to a torrent daemon, and they read their
-  # settings from the repo's own committed .conf files — load_config resolves that path from $0 and
-  # honours no override — so on a developer machine a test can be handed real, populated paths.
-  # The stub directory sitting first on PATH is what keeps that harmless.
+  # Several scripts here delete files, drive rsync, or talk to a torrent daemon, and a test that does
+  # not name its own CONFIG_FILE gets their settings from the repo's own committed .conf files, which
+  # on a developer machine can point at real, populated paths. The stub directory sitting first on
+  # PATH is what keeps that harmless.
   PATH="$BATS_TEST_DIRNAME/stubs:$PATH"
   export PATH
   _assert_stubs_first || return 1

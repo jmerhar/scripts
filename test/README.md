@@ -59,8 +59,14 @@ Two rules follow:
 - Assert on **stub call logs**, not on side effects. `stub_called 'rsync .*--delete'` is both safer
   than checking whether files vanished and a sharper claim about what the script actually tried to do.
 
-Anything that depends on specific config values belongs in `run_func`, with the config globals passed
-as environment so `load_config` is never called at all.
+A test that depends on specific config values should write a fixture file and name it with
+`CONFIG_FILE`, which `load_config` honours ahead of its search. That keeps the test hermetic and is the
+only way to be sure the repo's own committed `.conf` is not what the script read. `run_func` with the
+config globals passed as environment works too, and skips `load_config` entirely.
+
+Passing `CONFIG_FILE` is a **requirement**, not a preference, wherever a config value decides what gets
+written — `subtitle-sync`'s `CACHE_DIR` defaults under `$XDG_CACHE_HOME`, so a test that let it default
+would write into the developer's real cache and read from it on the next run.
 
 ---
 
@@ -79,9 +85,23 @@ stub_called 'rsync .*--delete'   # assert on recorded argv
 stub_calls rsync                 # how many times it ran
 ```
 
+`stub_called` takes a **basic** regular expression, so `(` and `)` match themselves and escaping them
+turns them into a group that matches nothing you meant — write `'movie (2024)\.mkv'`, not
+`'movie \(2024\)\.mkv'`.
+
 To stub a new command, symlink it: `ln -s _stub test/stubs/<name>`. Add a `case` branch in `_stub`
-only if the script under test requires more than an exit status — for example `qpdf` and `dpkg-deb`
-must leave an output file behind, because their callers check for one.
+only if the script under test requires more than an exit status — `qpdf` and `dpkg-deb` must leave an
+output file behind because their callers check for one, and `ffmpeg`, the transcriber and `alass` must
+because their callers *parse* what comes back. Those three write a two-cue SRT by default, or the
+contents of a `<command>.artifact` fixture when a test supplies one:
+
+```bash
+printf '1\n00:00:09,500 --> 00:00:13,000\nx\n' > "$STUB_FIXTURES/alass.artifact"
+```
+
+The transcriber and `alass` branches match their command name on a *substring*, because `WHISPER_BIN`
+and `ALASS_BIN` are configurable: a test that checks the setting is honoured points the script at a
+double under another name and still needs it to behave like one.
 
 `dpkg-deb` is stubbed rather than delegated to the real tool for a specific reason: it does not exist
 on macOS, and `package-script.sh` silently skips `.deb` generation when it cannot find it. Without the
