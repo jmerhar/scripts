@@ -41,8 +41,14 @@ source "$(cd "$(dirname "$0")" && pwd -P)/../lib/common.sh"
 # @include ../lib/common.sh
 
 # --- Constants ---
-readonly MDCHECK_STATE_DIR="/var/lib/mdcheck"
-readonly MDADM_CONF="/etc/mdadm/mdadm.conf"
+# The four paths this tool reads are taken from the environment when set. They are the machine's RAID
+# state, which cannot be conjured on demand, so being able to point them at a fixture tree is what makes
+# the progress arithmetic and the checkpoint resolution exercisable at all; unset, they are the real ones.
+: "${MDSTAT:=/proc/mdstat}"
+: "${SYS_BLOCK:=/sys/block}"
+: "${MDCHECK_STATE_DIR:=/var/lib/mdcheck}"
+: "${MDADM_CONF:=/etc/mdadm/mdadm.conf}"
+readonly MDSTAT SYS_BLOCK MDCHECK_STATE_DIR MDADM_CONF
 readonly CONTINUE_TIMER="mdcheck_continue.timer"
 readonly CONTINUE_SERVICE="mdcheck_continue.service"
 readonly START_SERVICE="mdcheck_start.service"
@@ -179,8 +185,9 @@ human_bytes() {
 ########################################
 load_schedule() {
   local duration_str
-  duration_str=$(systemctl show "${CONTINUE_SERVICE}" -p Environment --value 2>/dev/null \
-    | grep -oE 'MDADM_CHECK_DURATION=[^"]+' | cut -d= -f2- || true)
+  local env_line
+  env_line=$(systemctl show "${CONTINUE_SERVICE}" -p Environment --value 2>/dev/null || true)
+  duration_str=$(grep -oE 'MDADM_CHECK_DURATION=[^"]+' <<<"${env_line}" | cut -d= -f2- || true)
   if [[ -n "${duration_str}" ]]; then
     local secs
     secs=$(date -u -d "1970-01-01 ${duration_str}" +%s 2>/dev/null || true)
@@ -291,7 +298,7 @@ checkpoint_file() {
 
   # Fallback: unambiguous single-array / single-file case.
   local files=("${MDCHECK_STATE_DIR}"/MD_UUID_*)
-  local arrays=(/sys/block/md*)
+  local arrays=("${SYS_BLOCK}"/md*)
   if [[ ${#files[@]} -eq 1 && -f "${files[0]}" && ${#arrays[@]} -eq 1 ]]; then
     echo "${files[0]}"
   fi
@@ -306,8 +313,9 @@ checkpoint_file() {
 ########################################
 live_speed_sectors() {
   local md="$1" kbps
-  kbps=$(sed -n "/^${md} :/,/^$/p" /proc/mdstat \
-    | grep -oE 'speed=[0-9]+K' | grep -oE '[0-9]+' || true)
+  local stanza
+  stanza=$(sed -n "/^${md} :/,/^\$/p" "${MDSTAT}")
+  kbps=$(grep -oE 'speed=[0-9]+K' <<<"${stanza}" | grep -oE '[0-9]+' || true)
   # An `if` (rather than `[[ ]] &&`) guarantees a zero exit even when no speed
   # is found, so the caller's `$(...)` assignment cannot trip `set -o errexit`.
   if [[ -n "${kbps}" ]]; then
@@ -324,7 +332,7 @@ live_speed_sectors() {
 ########################################
 report_array() {
   local md="$1"
-  local sysfs="/sys/block/${md}/md"
+  local sysfs="${SYS_BLOCK}/${md}/md"
   if [[ ! -d "${sysfs}" || ! -r "${sysfs}/level" || ! -r "${sysfs}/component_size" ]]; then
     log_error "${md}: not an MD array."
     return
@@ -375,9 +383,11 @@ report_array() {
   # Progress line.
   local pct
   pct=$(awk -v d="${done_sectors}" -v m="${max_sectors}" 'BEGIN { printf "%.1f", d * 100 / m }')
-  printf '  %-12s %s%s%%%s  (%s / %s per device)\n' "progress" \
-    "${_C_BOLD}" "${pct}" "${_C_RESET}" \
-    "$(human_bytes $(( done_sectors * SECTOR_BYTES )))" "$(human_bytes "${total_bytes}")"
+  local done_h total_h
+  done_h=$(human_bytes $(( done_sectors * SECTOR_BYTES )))
+  total_h=$(human_bytes "${total_bytes}")
+  local progress_line="${_C_BOLD}${pct}%${_C_RESET}  (${done_h} / ${total_h} per device)"
+  printf '  %-12s %s\n' "progress" "${progress_line}"
 
   # State line.
   if [[ "${active}" == "true" ]]; then
@@ -409,8 +419,9 @@ report_array() {
   if (( _next_window > 0 )); then
     local win_h
     win_h=$(awk -v s="${_window_sec}" 'BEGIN { printf "%g", s / 3600 }')
-    printf '  %-12s %s h nightly, next window %s\n' "schedule" "${win_h}" \
-      "$(date -d "@${_next_window}" +'%a %H:%M')"
+    local next_h
+    next_h=$(date -d "@${_next_window}" +'%a %H:%M')
+    printf '  %-12s %s h nightly, next window %s\n' "schedule" "${win_h}" "${next_h}"
   fi
 
   # Finish estimate.
@@ -439,8 +450,9 @@ report_array() {
   read -r finish windows < <(project_finish "${rem_active}" "${start_epoch}")
   local win_note="${windows} more window"
   (( windows != 1 )) && win_note+="s"
-  printf '  %-12s %s%s%s  (%s)\n' "est. finish" \
-    "${_C_BOLD}${_C_YELLOW}" "$(fmt_ts "${finish}")" "${_C_RESET}" "${win_note}"
+  local finish_h
+  finish_h=$(fmt_ts "${finish}")
+  printf '  %-12s %s%s%s  (%s)\n' "est. finish" "${_C_BOLD}${_C_YELLOW}" "${finish_h}" "${_C_RESET}" "${win_note}"
 }
 
 ########################################
@@ -456,7 +468,7 @@ select_arrays() {
     return
   fi
   local path
-  for path in /sys/block/md*; do
+  for path in "${SYS_BLOCK}"/md*; do
     [[ -d "${path}/md" ]] && basename "${path}"
   done
 }
@@ -470,8 +482,8 @@ main() {
   parse_options "$@"
   setup_colors
 
-  if [[ ! -r /proc/mdstat ]]; then
-    log_error "/proc/mdstat not found — this tool requires Linux MD RAID."
+  if [[ ! -r "${MDSTAT}" ]]; then
+    log_error "${MDSTAT} not found — this tool requires Linux MD RAID."
     exit 1
   fi
 

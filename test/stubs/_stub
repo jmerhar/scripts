@@ -192,6 +192,22 @@ case "${command_name}" in
     fi
     ;;
 
+  systemctl)
+    # `systemctl show <unit> -p <Property> --value` is asked for a different property each time, so the
+    # reply comes from systemctl.<Property>.stdout. Without a fixture for the property the output is
+    # empty, which is what systemd itself prints for a property it cannot report — the case the callers
+    # fall back from.
+    prop=""
+    prev=""
+    for arg in "$@"; do
+      [[ "${prev}" == "-p" ]] && prop="${arg}"
+      prev="${arg}"
+    done
+    if [[ -n "${prop}" && -f "${fixtures}/systemctl.${prop}.stdout" ]]; then
+      cat "${fixtures}/systemctl.${prop}.stdout"
+    fi
+    ;;
+
   *whisper*)
     # Matched on a substring because the transcriber's name is configurable (WHISPER_BIN), so a suite
     # checking that the setting is honoured points the script at a double under a different name and
