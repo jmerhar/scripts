@@ -708,6 +708,46 @@ with_conf() {
   [[ "$output" == *"Deleted 0 stray file"* ]]
 }
 
+@test "answering y deletes one stray and leaves the rest to be asked about" {
+  orphan loose/one.mkv 3000
+  orphan loose/two.mkv 3000
+  rpc_reply core.get_torrents_status '{}'
+  prune_run keys=yn
+  # Strays are walked in the order jq emits them; exactly one of the two is gone.
+  local left
+  left=$(find "$TEMP_ROOT/loose" -name '*.mkv' | wc -l | tr -d ' ')
+  [ "$left" -eq 1 ]
+  [[ "$output" == *"Deleted 1 stray file(s)"* ]]
+}
+
+@test "answering a deletes every remaining stray without asking again" {
+  orphan loose/one.mkv 3000
+  orphan loose/two.mkv 3000
+  orphan loose/three.mkv 3000
+  rpc_reply core.get_torrents_status '{}'
+  prune_run keys=na
+  [ "$(find "$TEMP_ROOT/loose" -name '*.mkv' | wc -l | tr -d ' ')" -eq 1 ]
+  [[ "$output" == *"Deleted 2 stray file(s)"* ]]
+}
+
+@test "answering q stops deleting strays and reports what was done" {
+  orphan loose/one.mkv 3000
+  orphan loose/two.mkv 3000
+  orphan loose/three.mkv 3000
+  rpc_reply core.get_torrents_status '{}'
+  prune_run keys=yq
+  [ "$(find "$TEMP_ROOT/loose" -name '*.mkv' | wc -l | tr -d ' ')" -eq 2 ]
+  [[ "$output" == *"Quitting"* ]]
+  [[ "$output" == *"Deleted 1 stray file(s)"* ]]
+}
+
+@test "-d reports the daemon's torrent count" {
+  orphan show/ep1.mkv 5000
+  torrent hashA "Show" "$TEMP_ROOT/show" 1000 "ep1.mkv:5000"
+  prune_run --debug --dry-run
+  [[ "$output" == *"Deluge returned 1 torrent(s)"* ]]
+}
+
 @test "a stray whose name has spaces is deleted correctly" {
   orphan "loose/The Stray (2024).mkv" 3000
   rpc_reply core.get_torrents_status '{}'

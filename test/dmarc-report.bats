@@ -108,6 +108,24 @@ report() {
 
 # --- Parsing a report --------------------------------------------------------------------------
 
+# Each option that takes a value checks for one; without that the next option would be swallowed as the
+# value and the run would proceed on a silently wrong threshold.
+# Invoked without the `report` helper on purpose: that helper appends the reports directory, which would
+# supply the very argument this test is checking for the absence of.
+@test "--warn-rate requires an argument" {
+  run_script "$SCRIPT" -C --warn-rate
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"requires a percentage argument"* ]]
+}
+
+@test "--warn-rate refuses a value that is not a percentage" {
+  report --warn-rate 101
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"between 0 and 100"* ]]
+  report --warn-rate abc
+  [ "$status" -eq 1 ]
+}
+
 @test "a valid report yields one policy row and one record row per record" {
   report_xml "$REPORTS/r.xml" example.com reject google.com 1700000000 \
     "$(record_xml 198.51.100.1 5 none pass pass example.com example.com:pass)" \

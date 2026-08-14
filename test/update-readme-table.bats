@@ -45,6 +45,20 @@ EOF
 
 # --- Argument validation -----------------------------------------------------------------------
 
+# yq reads the manifest, so without it the table would silently come out empty rather than wrong.
+@test "a missing yq is reported rather than producing an empty table" {
+  local readme="$FAKE_REPO/README.md"
+  printf 'intro\n<!-- BEGIN TABLE -->\n<!-- END TABLE -->\n' > "$readme"
+  local minimal="$BATS_TEST_TMPDIR/minimal-bin" cmd
+  mkdir -p "$minimal"
+  for cmd in bash basename dirname sed awk grep mktemp mv cat date printf; do
+    [ -e "$(command -v "$cmd" 2>/dev/null)" ] && ln -sf "$(command -v "$cmd")" "$minimal/$cmd"
+  done
+  run env PATH="$minimal" "$(command -v bash)" "$FAKE_TOOL" "$readme" Script
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"yq"*"required"* ]]
+}
+
 @test "refuses to run without both arguments" {
   run_script "$TOOL"
   [ "$status" -eq 1 ]
