@@ -5,17 +5,11 @@
 # A published script is a single file: it carries the shared library inline instead of sourcing it, and
 # each awk or jq program inline instead of reading it from beside the script. Neither the library nor the
 # programs are shipped, so a script that still refers to them is one that fails on a user's machine at
-# the first line that needs it. Nothing else checks this: package-script.sh does not compile, so
-# `make smoke` alone packages the development form, and the release workflow compiles as a separate step.
+# the first line that needs it.
 #
-# The compiler rewrites in place, which is right for a disposable CI checkout and wrong for a working
-# tree — so this copies the tree to a temporary directory and compiles the copy, leaving the working tree
-# untouched.
-#
-# It must therefore run against an *uncompiled* tree. The @embed directives are what it reads to know
-# which program belongs to which script, and compiling removes them: run after an in-place compile, it
-# would find no directives and report success having checked nothing. Hence its position before the
-# compile step in the lint workflow.
+# The compiler writes to dist/compiled/ and never touches the sources, so this just compiles and inspects
+# the result. It reads the `@embed` directives out of the source tree to know which program belongs to
+# which script, and compares each against the compiled copy.
 #
 # Checked, per published script:
 #   * no `# @include` or `# @embed` directive, and no `load_program` call, survives;
@@ -76,9 +70,9 @@ cleanup() {
 compile_copy() {
   WORK=$(mktemp -d)
   trap cleanup EXIT
-  # The working tree rather than HEAD, so this checks what is about to be committed.
-  tar cf - -C "${REPO_ROOT}" --exclude=.git --exclude=dist --exclude=coverage . | tar xf - -C "${WORK}"
-  ( cd "${WORK}" && ./bin/compile-all-includes.sh >/dev/null )
+  # Into a temporary directory rather than dist/compiled, so a check never disturbs an artefact a release
+  # is about to package.
+  "${SCRIPT_DIR}/compile-all-includes.sh" -o "${WORK}" >/dev/null
 }
 
 #######################################
@@ -92,7 +86,8 @@ compile_copy() {
 #######################################
 check_self_contained() {
   local rel="$1"
-  local compiled="${WORK}/${rel}"
+  local compiled
+  compiled="${WORK}/$(basename "${rel}")"
   local failed=0 found
 
   # A real directive is an assignment, so a line whose first non-blank character is `#` is documentation
@@ -144,7 +139,8 @@ check_self_contained() {
 check_embedded_text() {
   local rel="$1"
   local source_file="${REPO_ROOT}/${rel}"
-  local compiled="${WORK}/${rel}"
+  local compiled
+  compiled="${WORK}/$(basename "${rel}")"
   local script_dir
   script_dir=$(dirname "${source_file}")
   local failed=0 count=0
@@ -172,20 +168,6 @@ check_embedded_text() {
 }
 
 #######################################
-# Reports whether the source tree still carries the directives this check reads.
-#
-# A tree that has already been compiled has none, and every check below would then pass having verified
-# nothing. Saying so is the difference between a green run that means something and one that does not.
-# Globals:
-#   REPO_ROOT
-# Returns:
-#   0 when the tree is in its development form, 1 when it appears already compiled.
-#######################################
-tree_is_uncompiled() {
-  grep -rqE '^[[:space:]]*#[[:space:]]*@(include|embed)[[:space:]]' "${REPO_ROOT}/scripts" --include='*.sh'
-}
-
-#######################################
 # Checks every publishable script.
 # Globals:
 #   REPO_ROOT, WORK
@@ -202,6 +184,11 @@ check_all() {
     n=$(check_embedded_text "${rel}") || failed=1
     programs=$(( programs + n ))
   done < <(find "${REPO_ROOT}/scripts" -mindepth 2 -type f -name '*.sh' -not -path '*/lib/*' -print0 | sort -z)
+
+  if (( scripts == 0 )); then
+    log_error "No publishable script found under scripts/: nothing was checked."
+    return 1
+  fi
 
   if (( failed )); then
     log_error "Published form check failed."
@@ -225,12 +212,6 @@ Options:
   -h    Show this help message.
 EOF
     exit 0
-  fi
-
-  if ! tree_is_uncompiled; then
-    log_error "No @include or @embed directive found under scripts/: this tree looks already compiled."
-    log_error "Run this against a development tree, or the check passes without verifying anything."
-    exit 1
   fi
 
   compile_copy

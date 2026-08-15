@@ -12,8 +12,8 @@ load ../test_helper
 
 setup() {
   setup_common
-  fake_repo_tool compile-includes.sh
-  fake_repo_tool compile-all-includes.sh
+  # One call is enough: fake_repo_tool mirrors the whole of bin/, including the two compilers this shells
+  # out to.
   fake_repo_tool check-published-form.sh
   TOOL="$FAKE_TOOL"
   mkdir -p "$FAKE_REPO/scripts/lib"
@@ -98,25 +98,14 @@ publishable() {
   [[ "$output" != *"good.sh still reads"* ]]
 }
 
-# --- The vacuous-pass guard --------------------------------------------------------------------
+# --- The empty-run guard -----------------------------------------------------------------------
 
-# The directives are how the check knows which program belongs to which script. A tree that has already
-# been compiled has none, so every assertion would hold trivially — which is worse than a failure,
-# because it looks like a pass.
-@test "an already-compiled tree is refused rather than passing vacuously" {
-  publishable alpha 'PROG=$(load_program prog.awk)  # @embed prog.awk'
-  run_script "$FAKE_REPO/bin/compile-all-includes.sh"
-  [ "$status" -eq 0 ]
+# "All 0 published scripts are self-contained" is true of an empty tree and says nothing, so a walk that
+# found nothing is a failure rather than a pass. For this repository, zero means the walk is broken.
+@test "a run that finds no scripts is refused rather than passing vacuously" {
   run_script "$TOOL"
   [ "$status" -ne 0 ]
-  [[ "$output" == *"looks already compiled"* ]]
-  [[ "$output" == *"without verifying anything"* ]]
-}
-
-@test "a tree with no publishable scripts at all is refused" {
-  run_script "$TOOL"
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"looks already compiled"* ]]
+  [[ "$output" == *"nothing was checked"* ]]
 }
 
 # --- Usage ------------------------------------------------------------------------------------

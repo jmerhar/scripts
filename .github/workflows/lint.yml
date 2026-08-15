@@ -64,17 +64,13 @@ jobs:
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.52.4/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
 
-      # Runs first, on the pristine checkout: it reads each @embed directive out of the source tree to
-      # confirm the compiled form holds that program's text, and the compile step below removes those
-      # directives. After it, the check would pass having verified nothing.
+      # Both steps are scripts rather than inline shell so they run from `make lint` before a push and
+      # are covered by test/bin/compile-all-includes.bats and test/bin/smoke-package-all.bats.
       - name: Verify the published scripts are self-contained
         run: ./bin/check-published-form.sh
 
-      # Both steps are scripts rather than inline shell so they run from `make lint` before a push and
-      # are covered by test/bin/compile-all-includes.bats and test/bin/smoke-package-all.bats.
-      - name: Compile @include directives
-        run: ./bin/compile-all-includes.sh
-
+      # No separate compile step: the packager compiles each script it packages into dist/compiled, so the
+      # artefacts cannot be built from the development form.
       - name: Run package-script against each manifest entry
         run: ./bin/smoke-package-all.sh
 

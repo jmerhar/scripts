@@ -103,10 +103,16 @@ minimum and a package that installs but cannot run.
 
 Scripts can share code via `scripts/lib/common.sh`. In development, scripts `source` the library directly. For publishing, `bin/compile-includes.sh` inlines the library contents at build time so published scripts are fully self-contained.
 
-`bin/compile-all-includes.sh` walks the tree and compiles every script that carries a directive; both
-workflows call it, so the walk is one tested thing rather than two copies of inline YAML shell. It
-rewrites in place, which is right for a disposable CI checkout and wrong for a working tree — so it is
-deliberately **not** in `make lint`, and `test/bin/compile-all-includes.bats` is what exercises it locally.
+**There is one compile path, and it writes to `dist/compiled/`.** `bin/compile-all-includes.sh` compiles
+every publishable script there — a script with no directives is copied, so the directory is the complete
+set — and never touches the sources. That is what lets the same command run in a working tree
+(`make compile`), in the lint workflow and in a release, instead of one arrangement for CI and none for a
+developer.
+
+`bin/package-script.sh` compiles the script it is packaging into that directory before packaging it, so an
+artefact can never be built from the development form and there is no freshness rule to get wrong.
+`bin/check-published-form.sh` compiles into a throwaway directory and asserts the result is self-contained.
+Neither workflow has a separate compile step.
 
 The convention uses a two-line pattern in scripts:
 ```bash
@@ -202,6 +208,7 @@ make lint      # ShellCheck, the manifest checks, the declared bash versions, th
 make check     # all three; gate a commit on this
 make smoke     # package every manifest entry at v0.0.0, catching manifest/packager drift
 make docs      # regenerate the README index tables from the manifest
+make compile   # compile every script into dist/compiled/, the form that gets published
 make published # compile a throwaway copy and check every published script is self-contained
 make coverage  # the suite under kcov, then the shared gate
 ```

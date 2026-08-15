@@ -25,6 +25,8 @@ MANIFEST="${REPO_ROOT}/scripts.yaml"
 TARBALL_DIR="${REPO_ROOT}/dist/tarballs"
 HOMEBREW_DIR="${REPO_ROOT}/dist/homebrew"
 DEB_DIR="${REPO_ROOT}/dist/debian"
+COMPILED_DIR="${REPO_ROOT}/dist/compiled"
+COMPILER="${SCRIPT_DIR}/compile-includes.sh"
 
 #######################################
 # Prints a timestamped info message to stderr.
@@ -120,7 +122,35 @@ GUARD
 }
 
 #######################################
-# Writes the published form of a script — the source, preceded by a bash-version guard when the
+# Compiles one script into dist/compiled/ and prints the path of the result.
+#
+# Always recompiles rather than reusing what is there: the transform is a cheap text pass, and the
+# alternatives are a freshness rule that would have to know the script depends on the library and on every
+# program it embeds, or an artefact quietly built from a stale copy.
+# Globals:
+#   COMPILED_DIR, COMPILER
+# Arguments:
+#   source_script: Path of the development form of the script.
+# Outputs:
+#   Prints the path of the compiled script.
+# Returns:
+#   1 when compilation fails.
+#######################################
+compile_for_packaging() {
+  local source_script="$1"
+  local out
+  out="${COMPILED_DIR}/$(basename "${source_script}")"
+
+  mkdir -p "${COMPILED_DIR}"
+  if ! "${COMPILER}" "${source_script}" "${out}"; then
+    log_error "Failed to compile ${source_script}."
+    return 1
+  fi
+  printf '%s' "${out}"
+}
+
+#######################################
+# Writes the published form of a script — the compiled source, preceded by a bash-version guard when the
 # manifest declares one — and prints its path.
 #
 # The guard is generated here rather than kept in the source so that the required version is stated
@@ -496,11 +526,17 @@ main() {
   fi
 
   # Resolve script path relative to repo root
-  local full_script_path="${REPO_ROOT}/${script_path}"
-  if [[ ! -f "${full_script_path}" ]]; then
-    log_error "Script file not found: ${full_script_path}"
+  local source_script_path="${REPO_ROOT}/${script_path}"
+  if [[ ! -f "${source_script_path}" ]]; then
+    log_error "Script file not found: ${source_script_path}"
     exit 1
   fi
+
+  # What gets packaged is the compiled form — the single file carrying the library and any awk or jq
+  # programs inline, since none of those is shipped beside it. Compiled here rather than assumed to exist:
+  # an artefact built from the development form installs and then fails on its first missing include.
+  local full_script_path
+  full_script_path=$(compile_for_packaging "${source_script_path}")
 
   local description
   description=$(read_manifest ".scripts.\"${name}\".description")
@@ -535,9 +571,10 @@ main() {
   local min_bash
   min_bash=$(read_manifest "(.scripts.\"${name}\".min_bash // \"\")")
 
-  # Find config file by convention
+  # Find config file by convention, beside the script in the source tree — dist/compiled holds scripts
+  # only.
   local script_dir
-  script_dir=$(dirname "${full_script_path}")
+  script_dir=$(dirname "${source_script_path}")
   local config_path
   config_path=$(find_config_file "${script_dir}" "${name}")
 

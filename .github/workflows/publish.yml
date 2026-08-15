@@ -48,10 +48,6 @@ jobs:
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.52.4/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
 
-      - name: Compile @include directives
-        working-directory: scripts
-        run: ./bin/compile-all-includes.sh
-
       - name: Package scripts
         id: package
         working-directory: scripts

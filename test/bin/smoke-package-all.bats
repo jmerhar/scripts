@@ -12,12 +12,9 @@ load ../test_helper
 
 setup() {
   setup_common
+  # fake_repo_tool mirrors the real bin/, so the packager and the compiler this walk shells out to are
+  # already beside it.
   fake_repo_tool smoke-package-all.sh
-  # The walk shells out to the packager, which in turn needs the compiler and the manifest beside it.
-  local tool
-  for tool in package-script.sh compile-includes.sh; do
-    ln -s "$REPO_ROOT/bin/$tool" "$FAKE_REPO/bin/$tool"
-  done
   MANIFEST="$FAKE_REPO/scripts.yaml"
   mkdir -p "$FAKE_REPO/scripts/utility"
 }

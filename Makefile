@@ -1,4 +1,4 @@
-.PHONY: coverage-tooling docs docs-check help install lint published smoke test test-coverage coverage check clean
+.PHONY: compile coverage-tooling docs docs-check help install lint published smoke test test-coverage coverage check clean
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*##|^##@' $(MAKEFILE_LIST) | \
@@ -37,19 +37,21 @@ lint: ## ShellCheck everything, and validate the manifest and declared bash vers
 	bin/check-programs.sh
 	$(MAKE) docs-check
 
+# Compiles every script into dist/compiled/ — the single file per script that gets published, carrying the
+# library and any awk or jq programs inline. Safe in a working tree: it writes only to dist/.
+compile: ## Compile every script into dist/compiled/
+	bin/compile-all-includes.sh
+
 # Packages every manifest entry at a throwaway version, which is what catches a manifest and a packager
 # that have stopped agreeing. Writes into dist/, which `make clean` removes.
 #
-# bin/compile-all-includes.sh is deliberately NOT run here. It inlines the library into each script in
-# place, which is right for a disposable CI checkout and wrong for a working tree — it would replace the
-# development form of every script. Its logic is covered by test/bin/compile-all-includes.bats instead, so a
-# mistake in it still fails locally.
+# The packager compiles each script into dist/compiled before packaging it, so what this smoke-tests is the
+# published form rather than the development one.
 smoke: ## Package every manifest entry at v0.0.0 as a smoke test
 	bin/smoke-package-all.sh
 
-# package-script.sh does not compile, so `make smoke` alone packages the development form — which still
-# sources the library and reads its programs from disk. Compiling a throwaway copy is what checks the
-# thing users actually install.
+# Compiles into a throwaway directory and asserts the result is self-contained: no script still sources the
+# library or reads a program, and every inlined program matches its file.
 published: ## Verify every published script compiles to a self-contained file
 	bin/check-published-form.sh
 

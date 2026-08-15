@@ -274,14 +274,15 @@ fake_repo_tool() {
   mkdir -p "$FAKE_REPO/bin"
   ln -sf "$REPO_ROOT/bin/$1" "$FAKE_TOOL"
 
-  # The awk programs the bin/ tools run with `awk -f` are resolved beside the tool, so the fake bin has
-  # to hold them as well — otherwise a tool linked here fails for want of a program rather than for the
-  # reason under test. All of them are linked rather than just one tool's: this directory stands in for
-  # the real bin/, and mapping each tool to its programs would be a second thing to keep in step.
-  local program
-  for program in "$REPO_ROOT"/bin/*.awk "$REPO_ROOT"/bin/*.jq; do
-    [ -e "$program" ] || continue
-    ln -sf "$program" "$FAKE_REPO/bin/$(basename "$program")"
+  # This directory stands in for the real bin/, so it mirrors it: the awk and jq programs a tool runs with
+  # `awk -f`, and the sibling tools one shells out to — package-script.sh compiles through
+  # compile-includes.sh, and compile-all-includes.sh does the same. Linking the lot rather than mapping
+  # each tool to its dependencies keeps one thing in step instead of two, and a test still invokes only
+  # what it names.
+  local sibling
+  for sibling in "$REPO_ROOT"/bin/*.sh "$REPO_ROOT"/bin/*.awk "$REPO_ROOT"/bin/*.jq; do
+    [ -e "$sibling" ] || continue
+    ln -sf "$sibling" "$FAKE_REPO/bin/$(basename "$sibling")"
   done
 }
 
