@@ -14,7 +14,7 @@
 # would take a different branch and one of them would prove nothing. The cost is that the two
 # "command not found, skipping" paths are never exercised, and they only log.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

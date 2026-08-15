@@ -9,7 +9,7 @@
 # assertion for a script whose job is removing files is which files are gone afterwards. Every test also
 # keeps a directory the script was never pointed at, to prove the traversal stays where it was sent.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

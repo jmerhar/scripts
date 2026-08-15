@@ -8,7 +8,7 @@
 #
 # Runs a copy of the tool in a fake repository, so the fixtures are the manifest and tree it sees.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

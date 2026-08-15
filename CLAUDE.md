@@ -106,7 +106,7 @@ Scripts can share code via `scripts/lib/common.sh`. In development, scripts `sou
 `bin/compile-all-includes.sh` walks the tree and compiles every script that carries a directive; both
 workflows call it, so the walk is one tested thing rather than two copies of inline YAML shell. It
 rewrites in place, which is right for a disposable CI checkout and wrong for a working tree — so it is
-deliberately **not** in `make lint`, and `test/compile-all-includes.bats` is what exercises it locally.
+deliberately **not** in `make lint`, and `test/bin/compile-all-includes.bats` is what exercises it locally.
 
 The convention uses a two-line pattern in scripts:
 ```bash
@@ -185,13 +185,20 @@ longer matches the tree — before a release does. It runs in CI and from `make 
 
 ### Automated Tests
 
-[bats-core](https://github.com/bats-core/bats-core) suites live in `test/`, one per area, and run on
-Linux and macOS via `.github/workflows/ci.yml`. See [`test/README.md`](test/README.md) before writing
-one — it covers the three ways a test reaches the code, the safety rules, and how the stubs work.
+[bats-core](https://github.com/bats-core/bats-core) suites live in `test/`, grouped to mirror the tree
+they cover — `test/scripts/` per publishable script, `test/bin/` per internal tool, `test/shared/` for
+what spans them — and run on Linux and macOS via `.github/workflows/ci.yml`. See
+[`test/README.md`](test/README.md) before writing one: it covers the three ways a test reaches the code,
+the safety rules, and how the stubs work.
+
+Two consequences of the grouping. `bats` does not recurse by default, so every runner passes
+`--recursive`; and a suite loads the helper as `load ../test_helper`. `setup_common` derives the
+repository root and the stub directory from the **helper's** location, exported as `TEST_DIR` — assert
+against that rather than `BATS_TEST_DIRNAME`, which is the suite's own directory and a level deeper.
 
 ```bash
 make test      # the suite
-make lint      # ShellCheck, the manifest checks, the declared bash versions
+make lint      # ShellCheck, the manifest checks, the declared bash versions, the awk/jq programs
 make check     # all three; gate a commit on this
 make smoke     # package every manifest entry at v0.0.0, catching manifest/packager drift
 make docs      # regenerate the README index tables from the manifest
@@ -204,7 +211,8 @@ Two rules matter most:
 - **Code under test is reached only through `run_script`, `run_func` or `run_snippet`.** All three run
   it in a subprocess with `$0` set to the script's own path, because every script derives its library
   include, `SCRIPT_NAME`, install prefix, config search path and usage text from `$0`.
-- **`test/stubs` must stay first on `PATH`** — `setup_common` fails the test otherwise. A test that does
+- **`test/stubs` must stay first on `PATH`** — `setup_common` fails the test otherwise, and the stubs
+  are shared by every suite regardless of which subdirectory it sits in. A test that does
   not name its own `CONFIG_FILE` reads the repo's own committed `.conf` files, which on a real machine
   can name real volumes, so pass one wherever a config value decides what gets written. Assert on stub
   call logs, never on side effects, and write nothing outside `$BATS_TEST_TMPDIR`.

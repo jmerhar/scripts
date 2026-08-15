@@ -5,7 +5,7 @@
 # This is what proves the manifest and the packager still agree — a new entry with a missing field, or a
 # script whose metadata no longer matches the tree, fails here rather than during a release. It lives in a
 # script rather than in workflow YAML so `make lint` can run it before a push and
-# test/smoke-package-all.bats can cover it.
+# test/bin/smoke-package-all.bats can cover it.
 #
 # Usage:
 #   ./smoke-package-all.sh [version]

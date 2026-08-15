@@ -9,7 +9,7 @@
 # feature is the dangerous error, but claiming one that is not there would make the check impossible
 # to satisfy.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

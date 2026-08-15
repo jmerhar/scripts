@@ -25,8 +25,12 @@
 #   Writes a diagnostic to stderr and fails the test if the stubs are not first on PATH.
 ########################################
 setup_common() {
-  REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
-  export REPO_ROOT
+  # Derived from this file rather than from the suite's directory: the suites are grouped in
+  # subdirectories, so BATS_TEST_DIRNAME is a level deeper for most of them and would put the repository
+  # root and the stub directory in the wrong place. TEST_DIR is always the directory holding this helper.
+  TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  REPO_ROOT="$(cd "$TEST_DIR/.." && pwd)"
+  export TEST_DIR REPO_ROOT
 
   LIB="$REPO_ROOT/scripts/lib/common.sh"
   export LIB
@@ -49,7 +53,7 @@ setup_common() {
   # not name its own CONFIG_FILE gets their settings from the repo's own committed .conf files, which
   # on a developer machine can point at real, populated paths. The stub directory sitting first on
   # PATH is what keeps that harmless.
-  PATH="$BATS_TEST_DIRNAME/stubs:$PATH"
+  PATH="$TEST_DIR/stubs:$PATH"
   export PATH
   _assert_stubs_first || return 1
 
@@ -66,13 +70,13 @@ setup_common() {
 ########################################
 # Verifies the stub directory is the first PATH entry, so no test can reach a real binary.
 # Globals:
-#   PATH, BATS_TEST_DIRNAME
+#   PATH, TEST_DIR
 # Returns:
 #   0 when the stubs are first, 1 otherwise.
 ########################################
 _assert_stubs_first() {
   local first="${PATH%%:*}"
-  if [[ "${first}" != "$BATS_TEST_DIRNAME/stubs" ]]; then
+  if [[ "${first}" != "$TEST_DIR/stubs" ]]; then
     printf 'test_helper: stub directory is not first on PATH (found %s)\n' "${first}" >&2
     return 1
   fi

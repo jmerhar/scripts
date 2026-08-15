@@ -9,7 +9,7 @@
 # makes the Debian half testable at all: the real tool does not exist on macOS, and the script
 # silently skips .deb generation when it cannot find it.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

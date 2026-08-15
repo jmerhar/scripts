@@ -8,7 +8,7 @@
 # Runs against a copy of both tools in a fake repository, so a fixture manifest and fixture READMEs
 # stand in for the real ones.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

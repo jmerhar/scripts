@@ -14,7 +14,7 @@
 # argv. `install -o root -g root` genuinely needs root, so the tests that reach it skip when not root;
 # they run in the Linux coverage job, which is where this Debian-only script is measured.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

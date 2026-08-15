@@ -5,7 +5,7 @@
 # has an @include, so a fault here ships broken packages for the whole repository at once, and would
 # most likely show up only when a user ran the installed script.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

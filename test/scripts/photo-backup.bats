@@ -13,7 +13,7 @@
 # Linux, so without a stub the cleaning tests would take a different branch on each CI runner. The cost is
 # that the "command not found" log line is never reached; it reports nothing a test could assert anyway.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

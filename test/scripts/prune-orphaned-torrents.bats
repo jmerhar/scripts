@@ -13,7 +13,7 @@
 # and find are the real tools, working inside the temp tree, because whether a file survived is the
 # actual contract and a stub could only show that rm was invoked.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

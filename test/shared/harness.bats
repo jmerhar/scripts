@@ -8,7 +8,7 @@
 # rsync. These assertions are what keep the rest of the suite meaningful, so they check the harness's
 # guarantees rather than any script's behaviour.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common
@@ -118,14 +118,18 @@ EOF
 }
 
 # --- The PATH guarantee ------------------------------------------------------------------------
+#
+# Asserted against TEST_DIR, the directory holding the helper, rather than the suite's own directory: the
+# suites are grouped in subdirectories and the stubs are shared by all of them, so the two are not the
+# same place.
 
 @test "the stub directory is first on PATH" {
-  [ "${PATH%%:*}" = "$BATS_TEST_DIRNAME/stubs" ]
+  [ "${PATH%%:*}" = "$TEST_DIR/stubs" ]
 }
 
 @test "a stubbed command resolves to the stub, not the real binary" {
   run command -v rsync
-  [ "$output" = "$BATS_TEST_DIRNAME/stubs/rsync" ]
+  [ "$output" = "$TEST_DIR/stubs/rsync" ]
 }
 
 @test "the PATH assertion fails when the stubs are not first" {

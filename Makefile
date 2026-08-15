@@ -42,7 +42,7 @@ lint: ## ShellCheck everything, and validate the manifest and declared bash vers
 #
 # bin/compile-all-includes.sh is deliberately NOT run here. It inlines the library into each script in
 # place, which is right for a disposable CI checkout and wrong for a working tree — it would replace the
-# development form of every script. Its logic is covered by test/compile-all-includes.bats instead, so a
+# development form of every script. Its logic is covered by test/bin/compile-all-includes.bats instead, so a
 # mistake in it still fails locally.
 smoke: ## Package every manifest entry at v0.0.0 as a smoke test
 	bin/smoke-package-all.sh
@@ -63,7 +63,7 @@ docs-check: ## Fail if any README index table is out of date
 	@bin/update-all-tables.sh --check
 
 test: ## Run the bats suite
-	bats test/
+	bats --recursive test/
 
 # Measured in the pinned kcov container, even locally: kcov's macOS build ignores the shebang and execs
 # /bin/bash, which is 3.2, and most of these scripts need 4.0 or newer. run-coverage.sh detects that and

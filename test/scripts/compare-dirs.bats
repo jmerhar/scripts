@@ -8,7 +8,7 @@
 # It shells out to nothing that needs stubbing — find, sort, stat and a checksum tool — so the fixtures
 # are real trees under $BATS_TEST_TMPDIR.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

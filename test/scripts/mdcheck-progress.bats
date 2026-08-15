@@ -13,7 +13,7 @@
 # project_finish) is tested directly with fixed epochs, and the report is tested for the decisions it
 # makes: which branch it takes, and whether it says "unavailable" rather than inventing a number.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

@@ -75,4 +75,4 @@ jobs:
       # a run would report failures from constructs the scripts legitimately use — and the site takes one
       # report per commit anyway, so a second figure would only need reconciling with the first.
       - name: Run the bats suite
-        run: bats --print-output-on-failure test/
+        run: bats --recursive --print-output-on-failure test/

@@ -10,7 +10,7 @@
 # fails at run time when handed the null this checker feeds it. Reading either as "broken" would make the
 # check unusable for exactly the filters it exists to protect.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

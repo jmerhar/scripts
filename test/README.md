@@ -3,13 +3,33 @@
 [bats-core](https://github.com/bats-core/bats-core) suites for the scripts in this repository.
 
 ```bash
-make test                              # everything
-bats test/lib-common.bats              # one suite
-bats --filter 'format_size' test/      # one concern, across suites
-bats --print-output-on-failure test/   # show a failing test's output
+make test                                          # everything
+bats test/shared/lib-common.bats                   # one suite
+bats --recursive --filter 'format_size' test/      # one concern, across suites
+bats --recursive --print-output-on-failure test/   # show a failing test's output
 ```
 
 `make install` installs the toolchain (`brew install bats-core`).
+
+## Layout
+
+The suites mirror the tree they cover, so finding one means knowing where the code lives rather than
+learning a second taxonomy:
+
+```
+test/
+  test_helper.bash    # the three ways a test reaches the code, and setup_common
+  stubs/              # the command stubs, shared by every suite
+  scripts/            # one suite per publishable script
+  bin/                # one suite per internal tool
+  shared/             # what spans them: the library, pure helpers, the CLI contract,
+                      # the smoke checks, and the harness itself
+```
+
+`bats` does not recurse by default, so every runner passes `--recursive`. The helper resolves the
+repository root and the stub directory from **its own** location rather than from the suite's, since the
+suites sit a level deeper than it does — assert against `$TEST_DIR` rather than `$BATS_TEST_DIRNAME` when
+a test needs either.
 
 ---
 
@@ -151,11 +171,14 @@ the common case; the hazard is specific to text that also lives in a multi-line 
 
 ## Adding a suite
 
+Put it beside its peers — `scripts/` for a publishable script, `bin/` for an internal tool, `shared/` for
+something that spans them — and load the helper from the parent directory:
+
 ```bash
 #!/usr/bin/env bats
 # One line on what makes this script worth testing.
 
-load test_helper
+load ../test_helper
 
 setup() { setup_common; }
 
@@ -169,7 +192,7 @@ setup() { setup_common; }
 Name tests as the behaviour being asserted, not the function being called — `refuses a negative
 timeout` rather than `test parse_options 3`.
 
-`harness.bats` covers the helper itself — the three seams, `$0` fidelity, the `PATH` guarantee and
+`shared/harness.bats` covers the helper itself — the three seams, `$0` fidelity, the `PATH` guarantee and
 every stub control. Change `test_helper.bash` or `_stub` and that suite is what tells you whether the
 guarantees the other suites rely on still hold.
 

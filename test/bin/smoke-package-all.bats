@@ -8,7 +8,7 @@
 # dpkg-deb is stubbed (absent on macOS), so the packager behaves the same on both platforms; yq is real,
 # because reading the manifest is the point.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

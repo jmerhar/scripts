@@ -7,7 +7,7 @@
 # Byte and duration formats are asserted under the C locale and UTC that setup_common pins; several
 # of them are locale- or timezone-sensitive and would otherwise differ per machine.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

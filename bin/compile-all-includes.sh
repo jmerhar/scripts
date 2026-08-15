@@ -4,7 +4,7 @@
 #
 # Publishing and the packaging smoke test both need the whole tree inlined before packaging, so the walk
 # lives here rather than in each workflow: the same code then runs locally, is checked by ShellCheck, and
-# is covered by test/compile-all-includes.bats.
+# is covered by test/bin/compile-all-includes.bats.
 #
 # The library itself is skipped — it is what gets inlined, and it is not published as a package.
 #

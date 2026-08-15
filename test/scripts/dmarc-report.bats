@@ -12,7 +12,7 @@
 # them directly keeps each assertion about one decision rather than about an entire pipeline. Only curl
 # is stubbed, for the country lookup.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

@@ -7,7 +7,7 @@
 # Runs against a copy of the tool in a fake repository, so it reads a fixture manifest rather than
 # the real one.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

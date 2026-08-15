@@ -10,7 +10,7 @@
 #
 # The bin/ tooling has its own suites; only user-facing scripts are covered here.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

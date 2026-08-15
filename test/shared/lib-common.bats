@@ -5,7 +5,7 @@
 # config search path all come from it — so most tests here link the library under a chosen
 # path and source it there, which is the only way to exercise those branches.
 
-load test_helper
+load ../test_helper
 
 setup() { setup_common; }
 

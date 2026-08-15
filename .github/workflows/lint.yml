@@ -31,7 +31,7 @@ jobs:
 
       # Registered scripts exist, are executable and have a shebang; the library is not executable;
       # unregistered scripts are reported. A script rather than inline shell so the same checks run
-      # from `make lint` before a push, and are covered by test/check-manifest.bats.
+      # from `make lint` before a push, and are covered by test/bin/check-manifest.bats.
       - name: Validate the manifest against the tree
         run: ./bin/check-manifest.sh
 
@@ -71,7 +71,7 @@ jobs:
         run: ./bin/check-published-form.sh
 
       # Both steps are scripts rather than inline shell so they run from `make lint` before a push and
-      # are covered by test/compile-all-includes.bats and test/smoke-package-all.bats.
+      # are covered by test/bin/compile-all-includes.bats and test/bin/smoke-package-all.bats.
       - name: Compile @include directives
         run: ./bin/compile-all-includes.sh
 

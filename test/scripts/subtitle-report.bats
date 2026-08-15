@@ -8,7 +8,7 @@
 # nothing. Embedded tracks come from a stubbed ffprobe, which is the only thing this script shells out
 # to. Config-driven extension lists are supplied through CONFIG_FILE rather than the repo's own .conf.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

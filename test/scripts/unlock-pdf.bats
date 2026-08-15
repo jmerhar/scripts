@@ -5,7 +5,7 @@
 # argument list — anyone on the machine can read another process's argv — and an existing output file is
 # never overwritten, since the unlocked copy is the one worth keeping.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

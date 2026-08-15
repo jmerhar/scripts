@@ -7,7 +7,7 @@
 #
 # Every test works in a fixture tree, so the repository's own scripts are never rewritten in place.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

@@ -8,7 +8,7 @@
 # @embed directives out of the source tree, and compiling removes them, so run on an already-compiled tree
 # it would find no programs and report success.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

@@ -13,7 +13,7 @@
 # defaults under $XDG_CACHE_HOME, and a test that let it default would write into the developer's real
 # cache and then read from it on the next run.
 
-load test_helper
+load ../test_helper
 
 setup() {
   setup_common

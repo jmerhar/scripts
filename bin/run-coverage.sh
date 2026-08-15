@@ -114,7 +114,7 @@ fi
 
 if [[ "${use_local}" == true ]]; then
   echo "Running the suite under the locally installed kcov …"
-  COVERAGE_DIR="${ROOT}/coverage" bats "${bats_report[@]}" test/
+  COVERAGE_DIR="${ROOT}/coverage" bats --recursive "${bats_report[@]}" test/
 else
   if [[ -n "${KCOV_FORCE_DOCKER:-}" ]]; then
     echo "KCOV_FORCE_DOCKER is set; running the suite in ${KCOV_IMAGE} …"
@@ -146,7 +146,7 @@ else
     chmod +x /usr/local/bin/yq
     report=()
     if [ -n "$JUNIT_DIR" ]; then report=(--report-formatter junit --output "/src/$JUNIT_DIR"); fi
-    COVERAGE_DIR=/src/coverage bats "${report[@]}" test/
+    COVERAGE_DIR=/src/coverage bats --recursive "${report[@]}" test/
     # The container runs as root; keep what it wrote readable by the host user and later CI steps.
     chmod -R a+rX /src/coverage
     if [ -n "$JUNIT_DIR" ]; then chmod -R a+rX "/src/$JUNIT_DIR"; fi

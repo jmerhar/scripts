@@ -10,7 +10,7 @@
 # Nothing here should reach an external command; if a stub records a call, an invocation chosen as
 # "harmless" has started doing real work and needs revisiting.
 
-load test_helper
+load ../test_helper
 
 setup() { setup_common; }
 
