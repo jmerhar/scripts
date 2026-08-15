@@ -64,9 +64,14 @@ compare() {
   [[ "$output" == *"identical"* ]]
 }
 
+# The mtimes are made equal rather than assumed equal: get_mtime has one-second resolution, so two files
+# written by consecutive commands differ whenever the pair straddles a second tick, and with --timestamps
+# on that is a real difference for the script to report. Left to chance this fails about once in thirty
+# runs.
 @test "a file present on both sides with the same content is not reported" {
   put LEFT a.txt hello
   put RIGHT a.txt hello
+  touch -r "$LEFT/a.txt" "$RIGHT/a.txt"
   compare --checksums --timestamps
   [ "$status" -eq 0 ]
 }
