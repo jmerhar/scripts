@@ -8,7 +8,7 @@ Creates and automatically prunes incremental rsync-based system backups. Designe
 * **Automatic Pruning** — Keeps a configurable number of recent backups and deletes the oldest.
 * **RAID Awareness** — Detects active RAID operations (resync, check) via `/proc/mdstat` and waits for them to finish before starting the backup.
 * **Low I/O Priority** — Optionally lowers the process I/O priority to idle (`ionice -c3`) so backups yield to other workloads.
-* **Concurrent Run Protection** — Uses `flock` to prevent overlapping backup runs.
+* **Concurrent Run Protection** — Uses `flock` to prevent overlapping backup runs, where it is available.
 * **Centralized Configuration** — All settings are managed in a single config file (`/etc/local-backup.conf`).
 * **Flexible Exclusions** — Exclusion patterns are defined as a Bash array in the config file.
 * **Cron-Friendly** — Logs to a file and only sends errors to `stderr` (for cron email notifications).
@@ -17,6 +17,9 @@ Creates and automatically prunes incremental rsync-based system backups. Designe
 
 * `bash` 4.0+
 * `rsync`
+* `flock` (optional, from `util-linux`) — prevents two runs from overlapping. Without it the backup still
+  runs and says that the protection is off, which is the case on macOS.
+* `ionice` (optional, Linux) — lets the backup yield I/O to other processes.
 
 ### Usage
 

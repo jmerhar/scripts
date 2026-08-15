@@ -190,6 +190,37 @@ wait_for_raid() {
 }
 
 #######################################
+# Takes an exclusive lock on the backup directory, so two runs cannot overlap.
+#
+# Overlapping runs would have two rsyncs writing the same destination with --delete between them, so the
+# lock matters. It is not available everywhere, though: flock is part of util-linux and macOS has no
+# equivalent. Where it is missing the backup proceeds unprotected and says so, because a backup that runs
+# without the guard is worth more than one that refuses to run at all — and the alternative, calling flock
+# regardless, reports a concurrent run that is not happening and never backs anything up.
+# Globals:
+#   BACKUP_DIR
+# Arguments:
+#   None
+# Returns:
+#   Exits 1 when another run holds the lock.
+#######################################
+acquire_lock() {
+  local lock_file="${BACKUP_DIR}/.local-backup.lock"
+
+  if ! command -v flock &> /dev/null; then
+    log_info "flock not found; running without concurrent-run protection."
+    return
+  fi
+
+  exec 9>"${lock_file}"
+  if ! flock -n 9; then
+    log_error "Another backup is already running (lockfile: ${lock_file}). Exiting."
+    exit 1
+  fi
+  log_debug "Lock acquired: ${lock_file}"
+}
+
+#######################################
 # Lowers the I/O scheduling priority of the current process to idle.
 # This ensures the backup yields I/O to other processes.
 # Globals:
@@ -222,14 +253,7 @@ main() {
   log_debug "Configuration loaded: SOURCE_DIR=${SOURCE_DIR}, BACKUP_DIR=${BACKUP_DIR}, KEEP_BACKUPS=${KEEP_BACKUPS}"
   log_debug "Exclude patterns: ${EXCLUDES[*]}"
 
-  # Prevent concurrent backup runs using a lockfile.
-  local lock_file="${BACKUP_DIR}/.local-backup.lock"
-  exec 9>"${lock_file}"
-  if ! flock -n 9; then
-    log_error "Another backup is already running (lockfile: ${lock_file}). Exiting."
-    exit 1
-  fi
-  log_debug "Lock acquired: ${lock_file}"
+  acquire_lock
 
   if [[ -n "${LOG_FILE:-}" ]]; then
     log_info "Logging to: ${LOG_FILE}"

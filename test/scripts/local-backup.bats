@@ -182,6 +182,37 @@ with_conf() {
   [ "$(stub_calls rsync)" -eq 0 ]
 }
 
+# flock is util-linux and macOS has none, so the backup has to run without it rather than mistake its
+# absence for a held lock — which is what calling flock regardless produces: exit 127, the failure branch,
+# and "Another backup is already running" on a machine where nothing is.
+#
+# PATH is replaced rather than prepended: the stub directory would otherwise still be on it, and on the
+# Linux runner so would the real /usr/bin/flock, leaving nothing hidden. The notice is read from the log
+# file because this script runs quiet, as the header above explains.
+@test "a missing flock does not stop the backup" {
+  local minimal="$BATS_TEST_TMPDIR/no-flock" stub cmd
+  mkdir -p "$minimal"
+  for stub in "$TEST_DIR"/stubs/*; do
+    cmd=$(basename "$stub")
+    [ "$cmd" = "flock" ] && continue
+    [ "$cmd" = "_stub" ] && continue
+    ln -sf "$stub" "$minimal/$cmd"
+  done
+  for cmd in bash date basename dirname mkdir ls ln readlink sort tail head rm mv cp touch cat cut grep sed tr wc find printf stat du df awk tee sleep uname id; do
+    [ -e "$minimal/$cmd" ] && continue
+    [ -e "$(command -v "$cmd" 2>/dev/null)" ] && ln -sf "$(command -v "$cmd")" "$minimal/$cmd"
+  done
+  [ ! -e "$minimal/flock" ]
+
+  PATH="$minimal" CONFIG_FILE="$CONF" MDSTAT="$BATS_TEST_TMPDIR/no-mdstat" run_script "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Another backup is already running"* ]]
+  run cat "$LOG"
+  [[ "$output" == *"flock not found"* ]]
+  [[ "$output" == *"without concurrent-run protection"* ]]
+  [ "$(stub_calls rsync)" -eq 1 ]
+}
+
 @test "a backup directory that does not exist stops the run" {
   write_conf
   printf 'BACKUP_DIR="%s"\n' "$BATS_TEST_TMPDIR/absent-root" >> "$CONF"
