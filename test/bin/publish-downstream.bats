@@ -19,6 +19,10 @@ setup() {
   REMOTE="$BATS_TEST_TMPDIR/remote.git"
   CHECKOUT="$BATS_TEST_TMPDIR/downstream"
   git init --quiet --bare "$REMOTE"
+  # The bare repository's HEAD follows init.defaultBranch, which is `main` on some machines and `master` on
+  # others — including the CI runners. Pointed at main explicitly so that reading its log below resolves to
+  # the branch the publisher pushes, rather than to a branch that does not exist.
+  git -C "$REMOTE" symbolic-ref HEAD refs/heads/main
 
   git clone --quiet "$REMOTE" "$CHECKOUT" 2>/dev/null
   git_fixture_init "$CHECKOUT"
