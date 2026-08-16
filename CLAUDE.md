@@ -114,12 +114,23 @@ for publishing, `bin/compile-includes.sh` inlines it at build time so published 
 | `core.sh` | `SCRIPT_NAME`, the install prefix, `log_info`/`log_error`/`log_debug`, `enable_debug_mode`, `default_log_file`, `log_command` |
 | `config.sh` | `load_config`, `load_optional_config`, `validate_config` — needs `core.sh` |
 | `program.sh` | `load_program` — needs `core.sh` |
+| `colors.sh` | the `_C_*` palette and `setup_colors <wanted>` |
+| `platform.sh` | `stat_size`, `stat_mtime`, `file_checksum`, `has_checksum_tool` — the GNU/BSD differences |
+| `prompt.sh` | `prompt_line` and `prompt_key` — needs `colors.sh` |
 
 **A script lists only the libraries it uses directly.** A library declares its own dependencies and the
 compiler follows them, so nobody has to know that a config needs a logger. Each library carries a
 double-source guard, which is what makes that safe at development time — and why the compiler inlines each
 file exactly once: a guard inlined twice puts a `return` at the top level of the published script, where it
 is an error, and the script would exit 2 before doing anything.
+
+Three of those replaced copies rather than adding anything. `setup_colors` existed six times, each defining
+a different subset of one palette and one spelling its flag differently — so the flag is an argument now,
+rather than a global the library reads by name. `detect_platform` existed three times, and `stat`'s flags
+differ entirely between Linux and macOS, which is the difference worth hiding once. The two `read_answer`
+variants became `prompt_line` and `prompt_key`, under names that say which is which: the first treats
+end-of-input as an empty answer, the second passes it back, because a script looping over candidates has to
+be able to stop.
 
 `bin/check-includes.sh` is the backstop, in `make lint` and the lint workflow. It computes the same closure
 the compiler does and fails when a script calls a library function nothing it includes provides — which

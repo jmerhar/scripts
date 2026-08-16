@@ -17,6 +17,15 @@ set -o nounset
 set -o pipefail
 
 # --- Shared Library ---
+# shellcheck source=../../lib/colors.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/colors.sh"
+# @include ../../lib/colors.sh
+# shellcheck source=../../lib/platform.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/platform.sh"
+# @include ../../lib/platform.sh
+# shellcheck source=../../lib/prompt.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/prompt.sh"
+# @include ../../lib/prompt.sh
 # shellcheck source=../../lib/core.sh
 source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
 # @include ../../lib/core.sh
@@ -44,18 +53,9 @@ _del_exts=()
 # by print_report(). Populated once per run (deletion is not recursive).
 declare -A _ext_size=()
 
-# --- Color Variables (set by setup_colors) ---
-_C_CYAN=""
-_C_GREEN=""
-_C_BRIGHT_GREEN=""
-_C_YELLOW=""
-_C_MAGENTA=""
-_C_WHITE=""
-_C_DIM=""
-_C_BOLD=""
-_C_RESET=""
+# --- Color Variables (set by setup_colors "${_no_color}") ---
 
-# Holds the most recent line entered by the user (set by read_answer).
+# Holds the most recent line entered by the user (set by prompt_line).
 _answer=""
 
 ########################################
@@ -143,24 +143,6 @@ parse_options() {
 #   _C_WHITE, _C_DIM, _C_BOLD, _C_RESET
 # Arguments:
 #   None
-########################################
-setup_colors() {
-  if [[ "${_no_color}" == true ]]; then
-    return
-  fi
-  if [[ ! -t 1 ]]; then
-    return
-  fi
-  _C_CYAN=$'\033[36m'
-  _C_GREEN=$'\033[32m'
-  _C_BRIGHT_GREEN=$'\033[92m'
-  _C_YELLOW=$'\033[33m'
-  _C_MAGENTA=$'\033[35m'
-  _C_WHITE=$'\033[97m'
-  _C_DIM=$'\033[2m'
-  _C_BOLD=$'\033[1m'
-  _C_RESET=$'\033[0m'
-}
 
 ########################################
 # Detects the platform's stat flavor and defines get_size().
@@ -168,14 +150,6 @@ setup_colors() {
 #   None
 # Arguments:
 #   None
-########################################
-detect_platform() {
-  if stat -c '%s' / &>/dev/null; then
-    get_size() { stat -c '%s' "$1"; }
-  else
-    get_size() { stat -f '%z' "$1"; }
-  fi
-}
 
 ########################################
 # Reads a single line of input from the user into the global _answer.
@@ -187,14 +161,6 @@ detect_platform() {
 #   _answer, _C_WHITE, _C_RESET
 # Arguments:
 #   None
-########################################
-read_answer() {
-  printf '%s' "${_C_WHITE}"
-  _answer=""
-  # Guard against EOF (e.g., piped/empty input) which would trip errexit.
-  read -r _answer || true
-  printf '%s' "${_C_RESET}"
-}
 
 ########################################
 # Prompts the user to define which extensions are sidecars and which are RAW.
@@ -211,12 +177,12 @@ define_extensions() {
 
   printf '%s' "${_C_BOLD}${_C_CYAN}What extensions do your sidecars have? ${_C_RESET}"
   printf '%s' "${_C_DIM}[${sidecars_default}] ${_C_RESET}"
-  read_answer
+  prompt_line
   read -ra _sidecar_exts <<<"${_answer:-${sidecars_default}}"
 
   printf '%s' "${_C_BOLD}${_C_CYAN}What extensions do your raw photos have? ${_C_RESET}"
   printf '%s' "${_C_DIM}[${raws_default}] ${_C_RESET}"
-  read_answer
+  prompt_line
   read -ra _raw_exts <<<"${_answer:-${raws_default}}"
 
   printf '\n'
@@ -404,7 +370,7 @@ prompt_action() {
   while [[ "${answer}" == "s" ]]; do
     printf '\n%s' "${_C_BOLD}${_C_CYAN}Would you like to (d)elete them, (s)ee a list of directories, or (q)uit? ${_C_RESET}"
     printf '%s' "${_C_DIM}[d/s/Q] ${_C_RESET}"
-    read_answer
+    prompt_line
     answer="${_answer,,}"
     [[ "${answer}" == "s" ]] && print_directories
   done
@@ -432,7 +398,7 @@ delete_files() {
     for i in "${!_del_paths[@]}"; do
       [[ "${_del_exts[i]}" == "${raw_ext}" ]] || continue
       file="${_del_paths[i]}"
-      size="$(get_size "${file}" 2>/dev/null || echo 0)"
+      size="$(stat_size "${file}" 2>/dev/null || echo 0)"
 
       local human message
       human="$(format_size "${size}")"
@@ -490,8 +456,7 @@ print_report() {
 ########################################
 main() {
   parse_options "$@"
-  setup_colors
-  detect_platform
+  setup_colors "${_no_color}"
 
   define_extensions
   traverse_tree "${_target_dir}"

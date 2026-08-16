@@ -64,7 +64,7 @@ answers() {
 #   snippet: Bash to evaluate after the globals are set.
 ########################################
 with_exts() {
-  run_snippet "$SCRIPT" "_sidecar_exts=(JPG jpg); _raw_exts=(DNG RW2); detect_platform; $1"
+  run_snippet "$SCRIPT" "_sidecar_exts=(JPG jpg); _raw_exts=(DNG RW2); $1"
 }
 
 # --- Extension prompts -------------------------------------------------------------------------
@@ -84,12 +84,6 @@ with_exts() {
     'define_extensions >/dev/null; echo "${_sidecar_exts[*]}"; echo "${_raw_exts[*]}"' < "$input"
   [ "${lines[0]}" = "png tif" ]
   [ "${lines[1]}" = "nef" ]
-}
-
-@test "read_answer survives end of input rather than tripping errexit" {
-  run_snippet "$SCRIPT" 'set -o errexit; read_answer; echo "answer=[${_answer}]"' < /dev/null
-  [ "$status" -eq 0 ]
-  [ "$output" = "answer=[]" ]
 }
 
 # --- Pairing, which is where a mistake costs a photograph --------------------------------------
@@ -128,7 +122,7 @@ with_exts() {
   fixture a.JPG
   fixture a.JPEG
   run_snippet "$SCRIPT" \
-    "_sidecar_exts=(JPG JPEG); _raw_exts=(DNG); detect_platform
+    "_sidecar_exts=(JPG JPEG); _raw_exts=(DNG)
      traverse_tree '$TREE' >/dev/null; echo \"\${#_del_paths[@]}\""
   [ "$output" = "2" ]
 }
@@ -360,7 +354,7 @@ with_exts() {
 
 @test "a sidecar that cannot be deleted is reported rather than passed over silently" {
   run_snippet "$SCRIPT" \
-    'detect_platform; _del_paths=("'"$TREE"'/absent.JPG"); _del_exts=(DNG); delete_files 2>&1'
+    '_del_paths=("'"$TREE"'/absent.JPG"); _del_exts=(DNG); delete_files 2>&1'
   [[ "$output" == *"Could not delete"*"absent.JPG"* ]]
 }
 
@@ -369,13 +363,7 @@ with_exts() {
   [ "$output" = "done" ]
 }
 
-# --- get_size and colours ----------------------------------------------------------------------
-
-@test "detect_platform defines a get_size that reads a real byte count" {
-  fixture sized.JPG 0123456789
-  run_snippet "$SCRIPT" 'detect_platform; get_size "'"$TREE"'/sized.JPG"'
-  [ "$output" = "10" ]
-}
+# --- stat_size and colours ----------------------------------------------------------------------
 
 @test "colours stay off when not writing to a terminal" {
   run_snippet "$SCRIPT" 'setup_colors; printf "[%s]" "${_C_GREEN}"'

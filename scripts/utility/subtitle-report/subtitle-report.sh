@@ -18,6 +18,9 @@ set -o nounset
 set -o pipefail
 
 # --- Shared Library ---
+# shellcheck source=../../lib/colors.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/colors.sh"
+# @include ../../lib/colors.sh
 # shellcheck source=../../lib/core.sh
 source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
 # @include ../../lib/core.sh
@@ -70,16 +73,7 @@ _emb_only=0
 _side_only=0
 _both=0
 
-# --- Color Variables (set by setup_colors) ---
-_C_CYAN=""
-_C_GREEN=""
-_C_BRIGHT_GREEN=""
-_C_YELLOW=""
-_C_MAGENTA=""
-_C_WHITE=""
-_C_DIM=""
-_C_BOLD=""
-_C_RESET=""
+# --- Color Variables (set by setup_colors "${_no_color}") ---
 
 ########################################
 # Prints the script's usage instructions to stdout.
@@ -227,24 +221,6 @@ parse_options() {
 #   _C_WHITE, _C_DIM, _C_BOLD, _C_RESET
 # Arguments:
 #   None
-########################################
-setup_colors() {
-  if [[ "${_no_color}" == true ]]; then
-    return
-  fi
-  if [[ ! -t 1 ]]; then
-    return
-  fi
-  _C_CYAN=$'\033[36m'
-  _C_GREEN=$'\033[32m'
-  _C_BRIGHT_GREEN=$'\033[92m'
-  _C_YELLOW=$'\033[33m'
-  _C_MAGENTA=$'\033[35m'
-  _C_WHITE=$'\033[97m'
-  _C_DIM=$'\033[2m'
-  _C_BOLD=$'\033[1m'
-  _C_RESET=$'\033[0m'
-}
 
 ########################################
 # Applies optional MEDIA_EXTS / SUBTITLE_EXTS overrides from a loaded config
@@ -1004,7 +980,7 @@ sorted_file_indices() {
 ########################################
 main() {
   parse_options "$@"
-  setup_colors
+  setup_colors "${_no_color}"
 
   if ! command -v ffprobe &>/dev/null && [[ "${_no_embedded}" != true ]]; then
     log_error "ffprobe (from ffmpeg) is required for embedded detection; install it or pass --no-embedded."

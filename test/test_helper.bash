@@ -139,6 +139,34 @@ _sourceable_path() {
 }
 
 ########################################
+# Links every library into a directory inside the test's temp dir, with one of them also linked under a
+# chosen name, and prints that path.
+#
+# Sourcing it through that name is what lets a test choose $0, and with it SCRIPT_NAME, the config search
+# path and the detected install prefix. All the libraries are linked, not just the chosen one, because a
+# library sources its dependencies from beside itself: config.sh loads core.sh that way.
+#
+# Links rather than copies so kcov credits scripts/lib: a copy would leave these tests exercising the
+# library while the coverage landed on a temp path nothing measures.
+# Arguments:
+#   dir: Directory relative to BATS_TEST_TMPDIR.
+#   name: Basename without the .sh suffix; becomes SCRIPT_NAME.
+#   library: Library to link under that name, e.g. core.sh.
+# Outputs:
+#   Prints the absolute path of the link.
+########################################
+lib_at() {
+  local dir="$BATS_TEST_TMPDIR/$1"
+  mkdir -p "$dir"
+  local f
+  for f in "$LIB_DIR"/*.sh; do
+    ln -sf "$f" "$dir/$(basename "$f")"
+  done
+  ln -sf "$LIB_DIR/$3" "$dir/$2.sh"
+  printf '%s' "$dir/$2.sh"
+}
+
+########################################
 # Initialises a git repository for a fixture, with a deterministic identity.
 #
 # Signing is turned off explicitly: a developer with commit.gpgsign or gpg.ssh configured globally would

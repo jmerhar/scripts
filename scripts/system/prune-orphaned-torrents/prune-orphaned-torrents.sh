@@ -29,6 +29,15 @@ set -o nounset
 set -o pipefail
 
 # --- Shared Library ---
+# shellcheck source=../../lib/colors.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/colors.sh"
+# @include ../../lib/colors.sh
+# shellcheck source=../../lib/platform.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/platform.sh"
+# @include ../../lib/platform.sh
+# shellcheck source=../../lib/prompt.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/prompt.sh"
+# @include ../../lib/prompt.sh
 # shellcheck source=../../lib/core.sh
 source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
 # @include ../../lib/core.sh
@@ -53,23 +62,14 @@ _scan_dirs=()
 # Path to the curl cookie jar holding the Deluge session (created in main).
 _cookie_jar=""
 
-# Holds the most recent line entered by the user (set by read_answer).
+# Holds the most recent line entered by the user (set by prompt_key).
 _answer=""
 
 # Turns a NUL-delimited stream on stdin into a JSON array of its non-empty entries. Shared by the two
 # places that read NUL-delimited data, so they cannot drift apart.
 readonly _JQ_SPLIT_NUL='split("\u0000") | map(select(length > 0))'
 
-# --- Color Variables (set by setup_colors) ---
-_C_CYAN=""
-_C_GREEN=""
-_C_BRIGHT_GREEN=""
-_C_YELLOW=""
-_C_MAGENTA=""
-_C_WHITE=""
-_C_DIM=""
-_C_BOLD=""
-_C_RESET=""
+# --- Color Variables (set by setup_colors "${_no_color}") ---
 
 ########################################
 # Prints the script's usage instructions to stdout.
@@ -144,24 +144,6 @@ parse_options() {
 #   _C_WHITE, _C_DIM, _C_BOLD, _C_RESET
 # Arguments:
 #   None
-########################################
-setup_colors() {
-  if [[ "${_no_color}" == true ]]; then
-    return
-  fi
-  if [[ ! -t 1 ]]; then
-    return
-  fi
-  _C_CYAN=$'\033[36m'
-  _C_GREEN=$'\033[32m'
-  _C_BRIGHT_GREEN=$'\033[92m'
-  _C_YELLOW=$'\033[33m'
-  _C_MAGENTA=$'\033[35m'
-  _C_WHITE=$'\033[97m'
-  _C_DIM=$'\033[2m'
-  _C_BOLD=$'\033[1m'
-  _C_RESET=$'\033[0m'
-}
 
 ########################################
 # Reads a single keypress from the user into the global _answer, without
@@ -174,20 +156,6 @@ setup_colors() {
 #   None
 # Returns:
 #   0 if a key was read, non-zero on EOF.
-########################################
-read_answer() {
-  _answer=""
-  local rc=0
-  # Read one character with no trailing Enter. Propagate EOF (e.g. Ctrl-D, or
-  # non-interactive/empty stdin) so callers can stop instead of spinning forever
-  # re-prompting. The `|| rc=$?` also keeps errexit from firing on a failed read.
-  read -rsn1 _answer || rc=$?
-  if (( rc == 0 )); then
-    # read -s suppresses the terminal echo, so print the key ourselves.
-    printf '%s%s%s\n' "${_C_WHITE}" "${_answer}" "${_C_RESET}"
-  fi
-  return "${rc}"
-}
 
 ########################################
 # Formats a size in bytes into a human-readable string (KB, MB, GB, etc.).
@@ -232,14 +200,6 @@ format_age() {
 #   None
 # Arguments:
 #   None
-########################################
-detect_platform() {
-  if stat -c '%s' / &>/dev/null; then
-    get_size() { stat -c '%s' "$1" 2>/dev/null || echo 0; }
-  else
-    get_size() { stat -f '%z' "$1" 2>/dev/null || echo 0; }
-  fi
-}
 
 ########################################
 # Validates the configured SCAN_DIRS, keeping only directories that exist.
@@ -552,7 +512,7 @@ print_candidate() {
 # --dry-run), performs removals, and prints a final report.
 #
 # Candidates are passed as an argument (not via stdin) so that the interactive
-# read_answer prompt keeps reading from the terminal.
+# prompt_key prompt keeps reading from the terminal.
 # Globals:
 #   _dry_run, _assume_yes, _C_*
 # Arguments:
@@ -591,7 +551,7 @@ prompt_and_remove() {
     else
       while true; do
         printf '%s' "${_C_BOLD}${_C_CYAN}  Remove this torrent and its data? ${_C_RESET}${_C_DIM}[(y)es/(n)o/(a)ll/(q)uit] ${_C_RESET}"
-        if ! read_answer; then
+        if ! prompt_key; then
           printf '\n%s\n' "${_C_DIM}No more input; quitting.${_C_RESET}"
           print_report "${removed}" "${freed_total}"
           return 0
@@ -691,7 +651,9 @@ prompt_and_remove_strays() {
 
   for f in "${strays[@]}"; do
     [[ -n "${f}" ]] || continue
-    size=$(get_size "${f}")
+    # A file that vanished between the scan and here counts as zero rather than aborting the run:
+    # the point of the walk is to total what is still there.
+    size=$(stat_size "${f}" 2>/dev/null || echo 0)
 
     printf '\n%s\n' "${_C_DIM}  ${f} ($(format_size "${size}"))${_C_RESET}"
 
@@ -708,7 +670,7 @@ prompt_and_remove_strays() {
     else
       while true; do
         printf '%s' "${_C_BOLD}${_C_CYAN}  Delete this file? ${_C_RESET}${_C_DIM}[(y)es/(n)o/(a)ll/(q)uit] ${_C_RESET}"
-        if ! read_answer; then
+        if ! prompt_key; then
           printf '\n%s\n' "${_C_DIM}No more input; quitting.${_C_RESET}"
           print_stray_report "${deleted}" "${freed_total}"
           return 0
@@ -773,7 +735,7 @@ main() {
     log_error "MIN_MEDIA_RATIO must be a number between 0 and 1 (got '${MIN_MEDIA_RATIO}')."
     exit 1
   fi
-  setup_colors
+  setup_colors "${_no_color}"
 
   # Convert the configured exclusion globs into a JSON array for the matcher.
   local -a patterns=("${EXCLUDE_PATTERNS[@]+"${EXCLUDE_PATTERNS[@]}"}")
@@ -795,7 +757,6 @@ main() {
   trap 'rm -f "${_cookie_jar}"' EXIT
 
   deluge_connect
-  detect_platform
 
   local status
   status=$(fetch_torrent_status) || exit 1

@@ -12,6 +12,12 @@ set -o nounset
 set -o pipefail
 
 # --- Shared Library ---
+# shellcheck source=../../lib/colors.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/colors.sh"
+# @include ../../lib/colors.sh
+# shellcheck source=../../lib/platform.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/platform.sh"
+# @include ../../lib/platform.sh
 # shellcheck source=../../lib/core.sh
 source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
 # @include ../../lib/core.sh
@@ -31,13 +37,7 @@ _count_left_only=0
 _count_right_only=0
 _count_differences=0
 
-# --- Color Variables (set by setup_colors) ---
-_C_RED=""
-_C_GREEN=""
-_C_YELLOW=""
-_C_CYAN=""
-_C_BOLD=""
-_C_RESET=""
+# --- Color Variables (set by setup_colors "${_opt_no_color}") ---
 
 ########################################
 # Prints the script's usage instructions.
@@ -189,50 +189,11 @@ parse_options() {
 # available system utilities.
 # Globals:
 #   _opt_checksums
-########################################
-detect_platform() {
-  # Detect stat flavor
-  if stat -c '%s' / &>/dev/null; then
-    get_size() { stat -c '%s' "$1"; }
-    get_mtime() { stat -c '%Y' "$1"; }
-  else
-    get_size() { stat -f '%z' "$1"; }
-    get_mtime() { stat -f '%m' "$1"; }
-  fi
-
-  # Detect checksum tool
-  if command -v sha256sum &>/dev/null; then
-    get_checksum() { sha256sum "$1" | cut -d' ' -f1; }
-  elif command -v shasum &>/dev/null; then
-    get_checksum() { shasum -a 256 "$1" | cut -d' ' -f1; }
-  else
-    if [[ "${_opt_checksums}" == true ]]; then
-      log_error "No checksum tool found (sha256sum or shasum). Checksum comparison disabled."
-      _opt_checksums=false
-    fi
-    get_checksum() { echo "NO_CHECKSUM_TOOL"; }
-  fi
-}
 
 ########################################
 # Configures color variables based on terminal capability and user preference.
 # Globals:
 #   _opt_no_color, _C_RED, _C_GREEN, _C_YELLOW, _C_CYAN, _C_BOLD, _C_RESET
-########################################
-setup_colors() {
-  if [[ "${_opt_no_color}" == true ]]; then
-    return
-  fi
-  if [[ ! -t 1 ]]; then
-    return
-  fi
-  _C_RED=$'\033[31m'
-  _C_GREEN=$'\033[32m'
-  _C_YELLOW=$'\033[33m'
-  _C_CYAN=$'\033[36m'
-  _C_BOLD=$'\033[1m'
-  _C_RESET=$'\033[0m'
-}
 
 ########################################
 # Formats an epoch timestamp as a human-readable date string.
@@ -542,15 +503,15 @@ compare_dirs() {
         fi
       elif [[ "${type_l}" == "file" ]]; then
         local size_l size_r
-        size_l="$(get_size "${left_path}")"
-        size_r="$(get_size "${right_path}")"
+        size_l="$(stat_size "${left_path}")"
+        size_r="$(stat_size "${right_path}")"
 
         if [[ "${size_l}" != "${size_r}" ]]; then
           print_size_diff "${rel_path}" "${size_l}" "${size_r}"
         elif [[ "${_opt_checksums}" == true ]]; then
           local cksum_l cksum_r
-          cksum_l="$(get_checksum "${left_path}")"
-          cksum_r="$(get_checksum "${right_path}")"
+          cksum_l="$(file_checksum "${left_path}")"
+          cksum_r="$(file_checksum "${right_path}")"
           if [[ "${cksum_l}" != "${cksum_r}" ]]; then
             print_checksum_diff "${rel_path}"
           fi
@@ -558,8 +519,8 @@ compare_dirs() {
 
         if [[ "${_opt_timestamps}" == true ]]; then
           local mtime_l mtime_r
-          mtime_l="$(get_mtime "${left_path}")"
-          mtime_r="$(get_mtime "${right_path}")"
+          mtime_l="$(stat_mtime "${left_path}")"
+          mtime_r="$(stat_mtime "${right_path}")"
           if [[ "${mtime_l}" != "${mtime_r}" ]]; then
             print_mtime_diff "${rel_path}" "${mtime_l}" "${mtime_r}"
           fi
@@ -576,8 +537,14 @@ compare_dirs() {
 ########################################
 main() {
   parse_options "$@"
-  detect_platform
-  setup_colors
+
+  # Checked once, up front: without a checksum tool every comparison would fail one file at a time,
+  # and the option promises something the machine cannot deliver.
+  if [[ "${_opt_checksums}" == true ]] && ! has_checksum_tool; then
+    log_error "No checksum tool found (sha256sum or shasum). Checksum comparison disabled."
+    _opt_checksums=false
+  fi
+  setup_colors "${_opt_no_color}"
 
   # Print header
   echo "${_C_CYAN}Comparing:${_C_RESET}"

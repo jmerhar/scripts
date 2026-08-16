@@ -36,6 +36,9 @@ set -o nounset
 set -o pipefail
 
 # --- Shared Library ---
+# shellcheck source=../../lib/colors.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/colors.sh"
+# @include ../../lib/colors.sh
 # shellcheck source=../../lib/core.sh
 source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
 # @include ../../lib/core.sh
@@ -97,17 +100,6 @@ EOF
 # Initialise the colour palette, honouring --no-color and TTY detection.
 # Globals:
 #   _no_color, _C_*
-########################################
-setup_colors() {
-  if [[ "${_no_color}" == "true" || ! -t 1 ]]; then
-    return
-  fi
-  _C_RESET=$(tput sgr0)
-  _C_BOLD=$(tput bold)
-  _C_DIM=$(tput setaf 8)
-  _C_GREEN=$(tput setaf 2)
-  _C_YELLOW=$(tput setaf 3)
-}
 
 ########################################
 # Parse command-line options into option-state globals.
@@ -478,7 +470,7 @@ select_arrays() {
 ########################################
 main() {
   parse_options "$@"
-  setup_colors
+  setup_colors "${_no_color}"
 
   if [[ ! -r "${MDSTAT}" ]]; then
     log_error "${MDSTAT} not found — this tool requires Linux MD RAID."

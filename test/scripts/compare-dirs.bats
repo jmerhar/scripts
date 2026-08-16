@@ -64,7 +64,7 @@ compare() {
   [[ "$output" == *"identical"* ]]
 }
 
-# The mtimes are made equal rather than assumed equal: get_mtime has one-second resolution, so two files
+# The mtimes are made equal rather than assumed equal: stat_mtime has one-second resolution, so two files
 # written by consecutive commands differ whenever the pair straddles a second tick, and with --timestamps
 # on that is a real difference for the script to report. Left to chance this fails about once in thirty
 # runs.
@@ -352,17 +352,6 @@ compare() {
     'print_checksum_diff a; print_mtime_diff b 0 1; print_type_mismatch c file directory
      print_symlink_diff d /x /y; echo "diffs=${_count_differences}"'
   [[ "$output" == *"diffs=4"* ]]
-}
-
-@test "detect_platform defines size, mtime and checksum helpers that work" {
-  printf '0123456789' > "$LEFT/sized.txt"
-  run_snippet "$SCRIPT" \
-    'detect_platform; get_size "'"$LEFT"'/sized.txt"; echo
-     get_mtime "'"$LEFT"'/sized.txt" | grep -qE "^[0-9]+$" && echo mtime-ok
-     get_checksum "'"$LEFT"'/sized.txt" | grep -qE "^[0-9a-f]{64}$" && echo checksum-ok'
-  [ "${lines[0]}" = "10" ]
-  [ "${lines[1]}" = "mtime-ok" ]
-  [ "${lines[2]}" = "checksum-ok" ]
 }
 
 @test "colours stay off when not writing to a terminal" {
