@@ -11,6 +11,9 @@ This handles the hard case that simple tools (ffsubsync, Bazarr) cannot: **segme
 * **Self-protecting anchor** — Removes Whisper's ~0.5s onset bias, but stands down when the opening is genuinely offset, so global-offset subtitles are corrected rather than re-broken.
 * **Sidecars and embedded** — Syncs external `.srt`/`.ass`/`.ssa`/`.vtt` sidecars in place (backing up the original); optionally extracts and syncs embedded tracks (`--embedded`), as a sidecar or remuxed into a container copy (`--remux`).
 * **Language-aware** — Targets one language (English by default); only matching subtitles are synced.
+  A language may be given as a two- or three-letter ISO 639 code or by its English name — `vi`, `vie`
+  and `vietnamese` all mean the same thing — and an untagged subtitle matches whichever language you
+  asked for, since single-language releases are frequently untagged.
 * **Cached & idempotent** — Caches the (expensive) Whisper reference per video; skips already-synced files unless `--force`.
 * **Timing stats** — Reports per-step (extract / transcribe / align), per-episode, and whole-batch durations, plus an average per episode — handy for estimating a large backlog.
 * **Safe** — `--dry-run` previews the work; originals are backed up before being overwritten.
@@ -38,7 +41,7 @@ subtitle-sync [OPTIONS] [PATH]
 |------|-------------|
 | `--embedded` | Also sync embedded subtitle tracks (off by default) |
 | `--remux` | With `--embedded`, mux the corrected track into a container copy instead of writing a sidecar |
-| `-g`, `--lang LANG` | Target subtitle language (default `en`) |
+| `-g`, `--lang LANG` | Target subtitle language: ISO 639 code or English name (default `en`) |
 | `-m`, `--model NAME` | Whisper model (default `base.en`); use a multilingual model for other languages |
 | `-p`, `--split-penalty N` | alass split penalty; lower splits more aggressively (default `5`) |
 | `--max-words N` | Reference cue granularity, words per line (default `8`) |

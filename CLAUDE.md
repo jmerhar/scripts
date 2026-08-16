@@ -117,6 +117,7 @@ for publishing, `bin/compile-includes.sh` inlines it at build time so published 
 | `colors.sh` | the `_C_*` palette and `setup_colors <wanted>` |
 | `platform.sh` | `stat_size`, `stat_mtime`, `file_checksum`, `has_checksum_tool` — the GNU/BSD differences |
 | `prompt.sh` | `prompt_line` and `prompt_key` — needs `colors.sh` |
+| `lang.sh` | the ISO 639 table, `normalize_lang`, `lang_from_tokens` |
 
 **A script lists only the libraries it uses directly.** A library declares its own dependencies and the
 compiler follows them, so nobody has to know that a config needs a logger. Each library carries a
@@ -131,6 +132,11 @@ differ entirely between Linux and macOS, which is the difference worth hiding on
 variants became `prompt_line` and `prompt_key`, under names that say which is which: the first treats
 end-of-input as an empty answer, the second passes it back, because a script looping over candidates has to
 be able to stop.
+
+`lang.sh` is there for a sharper reason than duplication: two scripts read the same media libraries, and
+one canonicalised languages from a 183-row table while the other used a 24-arm `case`. `--lang vietnamese`
+therefore could not match a track tagged `vi`. `test/shared/lib-lang.bats` asks both scripts and requires
+the same answer, which is what keeps a second copy of that table from appearing.
 
 `bin/check-includes.sh` is the backstop, in `make lint` and the lint workflow. It computes the same closure
 the compiler does and fails when a script calls a library function nothing it includes provides — which

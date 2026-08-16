@@ -24,6 +24,9 @@ set -o nounset
 set -o pipefail
 
 # --- Shared Library ---
+# shellcheck source=../../lib/lang.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/lang.sh"
+# @include ../../lib/lang.sh
 # shellcheck source=../../lib/core.sh
 source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
 # @include ../../lib/core.sh
@@ -384,38 +387,6 @@ _fmt_dur() {
 #   raw: A language tag, code, or name (any case).
 # Outputs:
 #   The normalized token on stdout.
-########################################
-normalize_lang() {
-  local raw; raw="$(_lower "${1//[[:space:]]/}")"
-  case "${raw}" in
-    ""|und|undetermined) printf 'und' ;;
-    en|eng|english) printf 'en' ;;
-    es|spa|spanish|castilian) printf 'es' ;;
-    fr|fra|fre|french) printf 'fr' ;;
-    de|deu|ger|german) printf 'de' ;;
-    it|ita|italian) printf 'it' ;;
-    pt|por|portuguese) printf 'pt' ;;
-    nl|nld|dut|dutch|flemish) printf 'nl' ;;
-    ru|rus|russian) printf 'ru' ;;
-    ja|jpn|japanese) printf 'ja' ;;
-    zh|zho|chi|chinese) printf 'zh' ;;
-    ko|kor|korean) printf 'ko' ;;
-    ar|ara|arabic) printf 'ar' ;;
-    pl|pol|polish) printf 'pl' ;;
-    sv|swe|swedish) printf 'sv' ;;
-    da|dan|danish) printf 'da' ;;
-    fi|fin|finnish) printf 'fi' ;;
-    no|nor|norwegian) printf 'no' ;;
-    cs|ces|cze|czech) printf 'cs' ;;
-    el|ell|gre|greek) printf 'el' ;;
-    he|heb|hebrew) printf 'he' ;;
-    hu|hun|hungarian) printf 'hu' ;;
-    tr|tur|turkish) printf 'tr' ;;
-    uk|ukr|ukrainian) printf 'uk' ;;
-    ro|ron|rum|romanian|moldavian|moldovan) printf 'ro' ;;
-    *) printf '%s' "${raw}" ;;
-  esac
-}
 
 ########################################
 # Determines a sidecar subtitle's language from the dot-separated tokens between
@@ -428,24 +399,6 @@ normalize_lang() {
 #   middle: The dot-separated token string (may be empty).
 # Outputs:
 #   The normalized language token on stdout.
-########################################
-lang_from_tokens() {
-  local middle="$1" token tl f is_flag lang=""
-  local -a tokens
-  [[ -n "${middle}" ]] || { normalize_lang ""; return; }
-
-  IFS='.' read -ra tokens <<<"${middle}"
-  for token in "${tokens[@]}"; do
-    tl="$(_lower "${token}")"
-    is_flag=false
-    for f in "${_sidecar_flags[@]}"; do
-      [[ "${tl}" == "${f}" ]] && { is_flag=true; break; }
-    done
-    [[ "${is_flag}" == true ]] && continue
-    lang="${token}"; break
-  done
-  normalize_lang "${lang}"
-}
 
 ########################################
 # Tests whether a detected language matches the target language. An undetermined
