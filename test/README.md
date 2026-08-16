@@ -11,6 +11,11 @@ bats --recursive --print-output-on-failure test/   # show a failing test's outpu
 
 `make install` installs the toolchain (`brew install bats-core`).
 
+`make test-ci` runs the same suite with the environment the runners have — `GITHUB_ACTIONS` set, and git's
+default branch forced to `master`. Both have caused tests that passed locally to fail in CI: one asserting
+that no Actions annotations are emitted, and several reading a bare fixture repository's `HEAD`. Run it
+before a push.
+
 ## Layout
 
 The suites mirror the tree they cover, so finding one means knowing where the code lives rather than

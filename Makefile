@@ -1,4 +1,4 @@
-.PHONY: compile coverage-tooling docs docs-check help install lint published smoke test test-coverage coverage check clean
+.PHONY: compile coverage-tooling docs docs-check help install lint published smoke test test-ci test-coverage coverage check clean
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*##|^##@' $(MAKEFILE_LIST) | \
@@ -65,6 +65,16 @@ docs-check: ## Fail if any README index table is out of date
 	@bin/update-all-tables.sh --check
 
 test: ## Run the bats suite
+	bats --recursive test/
+
+# The suite passing locally is not the same as it passing in CI, and the difference has bitten repeatedly:
+# GITHUB_ACTIONS is set for the whole job, so a test asserting no annotations must clear it; and the
+# runners' git defaults to `master` where a developer's may default to `main`, which changes what a bare
+# fixture repository's HEAD points at. This runs the suite with both, so that class of failure surfaces
+# before a push rather than after.
+test-ci: ## Run the suite with the environment CI has
+	GITHUB_ACTIONS=true \
+	GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=init.defaultBranch GIT_CONFIG_VALUE_0=master \
 	bats --recursive test/
 
 # Measured in the pinned kcov container, even locally: kcov's macOS build ignores the shebang and execs
