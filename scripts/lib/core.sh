@@ -154,6 +154,24 @@ log_debug() {
 
 
 ########################################
+# Turns off the colouring of log messages.
+#
+# core.sh picks its log colours when it loads, from whether stdout is a terminal. A script with its own
+# --no-color option needs a way to say so afterwards, and doing it by assigning to _color_info and friends
+# means every such script has to know the library's internal names — which is how one script came to blank
+# five variables by hand.
+# Globals:
+#   _color_info, _color_debug, _color_error, _color_reset, _text_bold
+########################################
+disable_log_colors() {
+  _color_info=""
+  _color_debug=""
+  _color_error=""
+  _color_reset=""
+  _text_bold=""
+}
+
+########################################
 # Prints the log file a script should use when the caller names none.
 #
 # Only an installed copy gets one: under a prefix the convention is <prefix>/var/log/<script>.log, and a

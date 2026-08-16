@@ -23,6 +23,10 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+# shellcheck source=../../lib/core.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
+# @include ../../lib/core.sh
+
 # The two paths this writes to are taken from the environment when set. Both are system-wide and one of
 # them governs sudo itself, so being able to point them elsewhere is what allows the grant, the revoke and
 # the boot unit to be exercised without touching a real machine's sudoers; unset, they are the real ones.
@@ -36,12 +40,6 @@ readonly DEFAULT_TIMEOUT_MIN=30
 #######################################
 # Log an informational message to stdout.
 #######################################
-log_info() { printf '%s\n' "$*"; }
-
-#######################################
-# Log an error message to stderr.
-#######################################
-log_error() { printf 'ERROR: %s\n' "$*" >&2; }
 
 #######################################
 # Print usage information.

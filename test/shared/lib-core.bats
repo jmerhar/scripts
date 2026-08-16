@@ -150,3 +150,94 @@ setup() { setup_common; }
   run_snippet "$LIB_DIR/core.sh" "LOG_FILE='$log'; log_debug 'hidden'"
   [ ! -f "$log" ]
 }
+
+# --- log_command -------------------------------------------------------------------------------
+#
+# What the script decided goes through log_message; what the commands it ran had to say goes through this.
+# The distinction matters on failure: without it a log records "rsync exited 23" and nothing about the path
+# it could not read.
+
+@test "log_command runs the command and passes its output through" {
+  local tool; tool=$(lib_at opt/tools cmdtool core.sh)
+  run_snippet "$tool" 'log_command printf "hello\n"'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"hello"* ]]
+}
+
+# Callers map particular statuses to meaning — rsync's 24 is a warning, not a failure — so the status has to
+# be the command's own and not tee's.
+@test "log_command returns the command's exit status, not tee's" {
+  local tool; tool=$(lib_at opt/tools cmdtool core.sh)
+  run_snippet "$tool" 'LOG_FILE="'"$BATS_TEST_TMPDIR/cmd.log"'"
+    log_command bash -c "exit 24" || echo "status=$?"'
+  [[ "$output" == *"status=24"* ]]
+}
+
+@test "log_command works with no log file, running the command plainly" {
+  local tool; tool=$(lib_at opt/tools cmdtool core.sh)
+  run_snippet "$tool" 'log_command printf "no log\n"'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no log"* ]]
+}
+
+# The reason this exists. `tee` writes asynchronously, so the log is waited for rather than read at once —
+# which is the same caution any caller reading it back needs.
+@test "log_command copies a command's stdout and stderr into the log file" {
+  local tool log
+  tool=$(lib_at opt/tools cmdtool core.sh)
+  log="$BATS_TEST_TMPDIR/cmd.log"
+  run_snippet "$tool" 'LOG_FILE="'"$log"'"
+    log_command bash -c "printf out; printf err >&2" || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      grep -q out "'"$log"'" && grep -q err "'"$log"'" && break
+      sleep 0.1
+    done'
+  run cat "$log"
+  [[ "$output" == *"out"* ]]
+  [[ "$output" == *"err"* ]]
+}
+
+@test "log_command creates the log file's directory" {
+  local tool log
+  tool=$(lib_at opt/tools cmdtool core.sh)
+  log="$BATS_TEST_TMPDIR/nested/deeper/cmd.log"
+  run_snippet "$tool" 'LOG_FILE="'"$log"'"
+    log_command printf "x\n" >/dev/null
+    for _ in 1 2 3 4 5; do [ -s "'"$log"'" ] && break; sleep 0.1; done'
+  [ -f "$log" ]
+}
+
+# --- default_log_file --------------------------------------------------------------------------
+
+@test "default_log_file names a path under the install prefix" {
+  local tool; tool=$(lib_at opt/bin logtool core.sh)
+  run_snippet "$tool" 'default_log_file'
+  # Compared against the physical path, as the prefix tests above do: the prefix comes from `pwd -P`, and on
+  # macOS the temp directory is reached through a symlink.
+  [ "$output" = "$(cd "$BATS_TEST_TMPDIR/opt" && pwd -P)/var/log/logtool.log" ]
+}
+
+# A checkout has no prefix, and scattering log files through a working tree is worse than logging to the
+# terminal — so nothing is named, which the callers read as "no log file".
+@test "default_log_file names nothing outside an install prefix" {
+  local tool; tool=$(lib_at opt/tools logtool core.sh)
+  run_snippet "$tool" 'printf "[%s]" "$(default_log_file)"'
+  [ "$output" = "[]" ]
+}
+
+# --- disable_log_colors ------------------------------------------------------------------------
+
+# A script with its own --no-color option should not have to know the names of the library's internals, which
+# is how one script came to blank five variables by hand.
+@test "disable_log_colors empties the log colours" {
+  local tool; tool=$(lib_at opt/tools colourtool core.sh)
+  run_snippet "$tool" 'disable_log_colors
+    printf "[%s%s%s%s%s]" "${_color_info}" "${_color_debug}" "${_color_error}" "${_color_reset}" "${_text_bold}"'
+  [ "$output" = "[]" ]
+}
+
+@test "log_info still prints its message with colours disabled" {
+  local tool; tool=$(lib_at opt/tools colourtool core.sh)
+  run_snippet "$tool" 'disable_log_colors; log_info "plain message"'
+  [[ "$output" == *"plain message"* ]]
+}

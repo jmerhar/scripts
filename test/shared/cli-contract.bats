@@ -323,13 +323,20 @@ require_non_root() {
   [[ "$output" == *"Password cannot be empty."* ]]
 }
 
+# The PATH holds the few tools the shared library needs to load and timestamp a message, and nothing else —
+# in particular no qpdf and no stubs. An entirely empty PATH was the earlier premise, and no longer works:
+# every script logs through the library now, and the library resolves its own location and calls date. That
+# is the cost of one logging format across all eleven scripts, and worth it — a machine with no dirname is
+# not a machine anyone is unlocking a PDF on.
 @test "unlock-pdf explains itself when qpdf is missing" {
-  # An empty directory as the only PATH entry, so nothing — not even the stubs — is reachable. bash
-  # itself is named absolutely, since it could not be found on that PATH either.
-  local empty="$BATS_TEST_TMPDIR/empty-path" bash_path
-  mkdir -p "$empty"
+  local minimal="$BATS_TEST_TMPDIR/minimal-path" bash_path cmd
+  mkdir -p "$minimal"
   bash_path=$(command -v bash)
-  run env PATH="$empty" "$bash_path" "$UNLOCK" some.pdf
+  for cmd in basename dirname uname date tput; do
+    [ -e "$(command -v "$cmd" 2>/dev/null)" ] && ln -sf "$(command -v "$cmd")" "$minimal/$cmd"
+  done
+  [ ! -e "$minimal/qpdf" ]
+  run env PATH="$minimal" "$bash_path" "$UNLOCK" some.pdf
   [ "$status" -eq 1 ]
   [[ "$output" == *"'qpdf' is not installed"* ]]
 }

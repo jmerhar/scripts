@@ -163,6 +163,44 @@ with_conf() {
   [[ "$output" == *"EXCLUDES"* ]]
 }
 
+# --- What reaches the log ----------------------------------------------------------------------
+
+# The log used to record the script's own narration only, so a failed transfer left "code 23" in it and
+# rsync's explanation — the path, the permission, the full disk — on a terminal nobody was watching.
+@test "rsync's own output reaches the log file" {
+  printf 'rsync: [sender] send_files failed: Permission denied (13)\n' > "$STUB_FIXTURES/rsync.stderr"
+  stub_fails rsync 23
+  backup_run
+  [ "$status" -ne 0 ]
+  # tee writes asynchronously, so the content is waited for rather than assumed present.
+  local attempt
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    grep -q 'Permission denied' "$LOG" && break
+    sleep 0.1
+  done
+  run cat "$LOG"
+  [[ "$output" == *"Permission denied"* ]]
+  [[ "$output" == *"Rsync failed with a critical error (code 23)"* ]]
+}
+
+@test "a successful run still logs its own narration" {
+  backup_run
+  [ "$status" -eq 0 ]
+  # Waited for, not read at once: log_command's tee writes asynchronously, so the last lines may not have
+  # landed yet.
+  local attempt
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    grep -q 'pruning' "$LOG" && break
+    sleep 0.1
+  done
+  run cat "$LOG"
+  [[ "$output" == *"Running rsync..."* ]]
+  # The fixture keeps fewer backups than the retention limit, so the prune reports that it had nothing to do
+  # rather than reporting deletions.
+  [[ "$output" == *"Starting automatic backup pruning"* ]]
+  [[ "$output" == *"No pruning needed"* ]]
+}
+
 # --- The lock ----------------------------------------------------------------------------------
 
 @test "the lock is taken inside the backup directory" {

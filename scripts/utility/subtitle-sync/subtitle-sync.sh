@@ -302,7 +302,7 @@ setup_runtime() {
   fi
 
   if [[ "${_no_color}" == true ]]; then
-    _color_info=""; _color_debug=""; _color_error=""; _color_reset=""; _text_bold=""
+    disable_log_colors
   fi
 
   _workdir="$(mktemp -d "${TMPDIR:-/tmp}/subtitle-sync.XXXXXX")"

@@ -117,7 +117,7 @@ with_script() {
 @test "a missing qpdf is explained with an instruction for this platform" {
   local minimal="$BATS_TEST_TMPDIR/minimal-bin" cmd
   mkdir -p "$minimal"
-  for cmd in bash basename uname printf echo; do
+  for cmd in bash basename dirname uname printf echo date tput; do
     [ -e "$(command -v "$cmd" 2>/dev/null)" ] && ln -sf "$(command -v "$cmd")" "$minimal/$cmd"
   done
   run env PATH="$minimal" "$(command -v bash)" "$SCRIPT" "$PDF"
@@ -135,7 +135,7 @@ with_script() {
 @test "the dependency is checked before the argument count" {
   local minimal="$BATS_TEST_TMPDIR/minimal-bin" cmd
   mkdir -p "$minimal"
-  for cmd in bash basename uname printf echo; do
+  for cmd in bash basename dirname uname printf echo date tput; do
     [ -e "$(command -v "$cmd" 2>/dev/null)" ] && ln -sf "$(command -v "$cmd")" "$minimal/$cmd"
   done
   run env PATH="$minimal" "$(command -v bash)" "$SCRIPT"

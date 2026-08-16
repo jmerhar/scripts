@@ -12,13 +12,17 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+# shellcheck source=../../lib/core.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
+# @include ../../lib/core.sh
+
 #######################################
 # Prints an error message to stderr and exits.
 # Arguments:
 #   Message to print.
 #######################################
 die() {
-  echo "Error: $*" >&2
+  log_error "$*"
   exit 1
 }
 
@@ -29,16 +33,16 @@ die() {
 #######################################
 check_dependencies() {
   if ! command -v qpdf &> /dev/null; then
-    echo "Error: 'qpdf' is not installed or not in your PATH." >&2
+    log_error "'qpdf' is not installed or not in your PATH."
     case "$(uname)" in
       "Darwin")
-        echo "Install it with: brew install qpdf" >&2
+        log_error "Install it with: brew install qpdf"
         ;;
       "Linux")
-        echo "Install it with: sudo apt-get install qpdf" >&2
+        log_error "Install it with: sudo apt-get install qpdf"
         ;;
       *)
-        echo "Please install 'qpdf' using your system's package manager." >&2
+        log_error "Please install 'qpdf' using your system's package manager."
         ;;
     esac
     exit 1

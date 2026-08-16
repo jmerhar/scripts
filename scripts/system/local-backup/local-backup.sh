@@ -114,7 +114,9 @@ run_backup() {
   # Logged from the array that is actually run, so the two cannot describe different commands.
   log_debug "rsync command: rsync ${rsync_args[*]}"
 
-  rsync "${rsync_args[@]}" || rsync_exit_code=$?
+  # Through log_command so rsync's own output — the path it could not read, the disk that filled — reaches
+  # LOG_FILE as well as the terminal. Without it the log records "code 23" and nothing about why.
+  log_command rsync "${rsync_args[@]}" || rsync_exit_code=$?
 
   if [[ ${rsync_exit_code} -eq 0 ]]; then
     log_info "Rsync process completed successfully."
@@ -258,6 +260,11 @@ main() {
 
   acquire_lock
 
+  # An installed copy logs to the install prefix unless the config named a file; a checkout logs to the
+  # terminal only.
+  if [[ -z "${LOG_FILE:-}" ]]; then
+    LOG_FILE=$(default_log_file)
+  fi
   if [[ -n "${LOG_FILE:-}" ]]; then
     log_info "Logging to: ${LOG_FILE}"
   fi
