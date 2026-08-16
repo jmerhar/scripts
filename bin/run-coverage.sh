@@ -132,7 +132,9 @@ else
     # step with what the suites exercise.
     # procps is for bats, not for the scripts: its per-test timeout shells out to ps/pkill, and without
     # them every test in a file that sets BATS_TEST_TIMEOUT aborts with "Cannot execute timeout".
-    packages="wget libxml2-utils zip unzip jq procps"
+    # git is for the release suites: they drive real repositories rather than stubbing git, because what
+    # they check is that a fetch-reset really discards a failed commit and a rejected push really retries.
+    packages="wget libxml2-utils zip unzip jq procps git"
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $packages >/dev/null
     # Not the distribution package: see the BATS_VERSION note above.
     wget -qO /tmp/bats.tar.gz \
