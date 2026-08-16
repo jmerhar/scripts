@@ -48,157 +48,27 @@ jobs:
           sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.52.4/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
 
-      - name: Package scripts
+      - name: Package scripts and upload the release asset
         id: package
         working-directory: scripts
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -e
+        run: ./bin/release-package.sh "${{ github.event_name }}" "${{ github.event.release.tag_name }}"
 
-          # Packages a script and uploads its tarball as a release asset.
-          # Arguments:
-          #   name    - Script name from the manifest
-          #   version - Version string (e.g., "v1.3.0")
-          #   tag     - Git tag (e.g., "local-backup-v1.3.0")
-          package_and_upload() {
-            local name="$1"
-            local version="$2"
-            local tag="$3"
-
-            echo "--- Packaging ${name} ${version} ---"
-            ./bin/package-script.sh "${name}" "${version}"
-
-            local tarball="dist/tarballs/scripts-${name}-${version}.tar.gz"
-            if [[ -f "${tarball}" ]]; then
-              gh release upload "${tag}" "${tarball}" --clobber
-            fi
-          }
-
-          # --- Single script release (from tag) ---
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            TAG="${{ github.event.release.tag_name }}"
-            echo "--- Processing release for tag: ${TAG} ---"
-
-            if [[ ! "${TAG}" =~ ^([a-zA-Z0-9_-]+)-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-              echo "::error::Tag format is invalid. Expected 'script-name-vX.Y.Z', got '${TAG}'."
-              exit 1
-            fi
-
-            SCRIPT_NAME="${BASH_REMATCH[1]}"
-            VERSION="v${BASH_REMATCH[2]}"
-
-            package_and_upload "${SCRIPT_NAME}" "${VERSION}" "${TAG}"
-
-            echo "commit_message=feat(${SCRIPT_NAME}): Release version ${VERSION}" >> $GITHUB_OUTPUT
-          fi
-
-          # --- Republish all scripts (manual trigger) ---
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "--- Republishing latest version of all scripts ---"
-
-            while IFS= read -r name; do
-              latest_tag=$(git tag --list "${name}-v*" --sort=-v:refname | head -n 1)
-              if [[ -z "${latest_tag}" ]]; then
-                echo "--- Skipping ${name}: no version tags found ---"
-                continue
-              fi
-
-              version=$(echo "${latest_tag}" | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+')
-              package_and_upload "${name}" "${version}" "${latest_tag}"
-            done < <(yq eval '.scripts | keys | .[]' scripts.yaml)
-
-            echo "commit_message=chore: Republish latest version of all scripts" >> $GITHUB_OUTPUT
-          fi
-
-      # Fetch-reset-regenerate retry loop:
-      #
-      # When multiple releases are created at once, parallel workflow runs all
-      # push to the same downstream repo. A naive rebase-based retry fails
-      # because generated files (formulas, APT metadata) always conflict.
-      #
-      # Instead, each retry attempt:
-      #   1. Fetches the latest remote state
-      #   2. Hard-resets to origin/main (discards the failed local commit)
-      #   3. Re-copies artifacts from dist/ and regenerates all derived files
-      #   4. Commits and attempts to push
-      #
-      # This always produces a clean, conflict-free commit because the
-      # generated content is derived from the full repo state (pool/ contents,
-      # Formula/ directory) plus our new artifacts — not from a rebase merge.
-      #
-      # We use cp (not mv) so artifacts survive across retries.
-
+      # Both pushes run the same fetch-reset-regenerate-push cycle, which lives in
+      # bin/publish-downstream.sh: 49 lines of retry logic that could otherwise only be exercised by
+      # cutting a release. It is covered by test/bin/publish-downstream.bats.
       - name: Commit and push Homebrew changes
         if: success() && (steps.package.outputs.commit_message != '')
-        working-directory: homebrew-scripts
         run: |
-          for attempt in $(seq 1 10); do
-            # Reset to the latest remote state so we start clean
-            git fetch origin
-            git reset --hard origin/main
-
-            # Copy formula(s) from the packager output (a Debian-only release
-            # produces none — skip the copy so the step doesn't abort).
-            if compgen -G "../scripts/dist/homebrew/*.rb" > /dev/null; then
-              cp ../scripts/dist/homebrew/*.rb Formula/
-            fi
-
-            # Regenerate README table from the current Formula/ directory
-            ../scripts/bin/update-readme-table.sh README.md "Formula"
-
-            # Commit — if nothing changed (e.g., identical rebuild), stop early
-            git add .
-            git commit -m "${{ steps.package.outputs.commit_message }}" || { echo "No Homebrew changes to commit."; break; }
-
-            # Push — if it succeeds we're done; otherwise loop and retry
-            git push && break
-            echo "Push failed (attempt ${attempt}/10), retrying..."
-          done
+          ./scripts/bin/publish-downstream.sh homebrew homebrew-scripts \
+            "${{ steps.package.outputs.commit_message }}"
 
       - name: Sign and commit APT repository changes
         if: success() && (steps.package.outputs.commit_message != '')
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        working-directory: apt-scripts
         run: |
-          # Import GPG key (once, before the retry loop)
-          echo "$GPG_PRIVATE_KEY" | gpg --batch --import --passphrase "$GPG_PASSPHRASE"
-
-          for attempt in $(seq 1 10); do
-            # Reset to the latest remote state so we start clean
-            git fetch origin
-            git reset --hard origin/main
-
-            # Copy .deb package(s) from the packager output into the pool (a
-            # Homebrew-only release produces none — skip so the step won't abort).
-            if compgen -G "../scripts/dist/debian/*.deb" > /dev/null; then
-              cp ../scripts/dist/debian/*.deb pool/main/
-            fi
-
-            # Regenerate APT package index from the full pool contents
-            apt-ftparchive packages pool/ > dists/stable/main/binary-all/Packages
-            gzip -c dists/stable/main/binary-all/Packages > dists/stable/main/binary-all/Packages.gz
-
-            # Generate release file (remove old ones first to prevent
-            # self-referencing checksum)
-            rm -f dists/stable/Release dists/stable/InRelease
-            apt-ftparchive -c apt-ftparchive.conf release dists/stable/ > dists/stable/Release
-            test -s dists/stable/Release || { echo "::error::Failed to generate valid Release file."; exit 1; }
-
-            # Sign the release file
-            gpg --batch --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
-              --default-key "jmerhar-bot" --clearsign -o dists/stable/InRelease dists/stable/Release
-
-            # Regenerate README table from the current pool/ contents
-            ../scripts/bin/update-readme-table.sh README.md "Package"
-
-            # Commit — if nothing changed (e.g., identical rebuild), stop early
-            git add .
-            git commit -m "${{ steps.package.outputs.commit_message }}" || { echo "No APT changes to commit."; break; }
-
-            # Push — if it succeeds we're done; otherwise loop and retry
-            git push && break
-            echo "Push failed (attempt ${attempt}/10), retrying..."
-          done
+          ./scripts/bin/publish-downstream.sh apt apt-scripts \
+            "${{ steps.package.outputs.commit_message }}"

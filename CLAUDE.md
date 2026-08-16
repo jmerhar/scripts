@@ -185,7 +185,9 @@ longer matches the tree — before a release does. It runs in CI and from `make 
 
 - **Per-script versioning**: tags follow `script-name-vX.Y.Z` (e.g., `unlock-pdf-v1.5.0`)
 - **Always `git fetch --tags` before creating a new release** to avoid version collisions with existing remote tags.
-- `.github/workflows/publish.yml` packages on release or manual dispatch, then pushes formulas to `jmerhar/homebrew-scripts` and signed `.deb` packages to `jmerhar/apt-scripts`
+- `.github/workflows/publish.yml` packages on release or manual dispatch, then pushes formulas to `jmerhar/homebrew-scripts` and signed `.deb` packages to `jmerhar/apt-scripts`. **The workflow holds no logic**: every step is a one-line call into `bin/`, so the release path is ShellCheck-clean, covered by tests, and runnable by hand.
+  - `bin/release-package.sh <event> [tag]` — takes `github.event_name` straight through, so the choice between publishing one script from a tag and republishing the latest of every script is made in tested code. It validates the `script-name-vX.Y.Z` tag, packages, uploads the tarball, and prints the commit message the downstream repositories carry.
+  - `bin/publish-downstream.sh <homebrew|apt> <checkout> <message>` — the fetch-reset-regenerate-push cycle both downstream repositories share, including the APT index rebuild and signing. It retries against a moving remote, which is what parallel releases produce; a failed fetch is another attempt rather than the end of the run.
 - `bin/update-readme-table.sh` regenerates README tables in downstream repos from the manifest
 - **Release notes**: every GitHub Release should include a summary of user-facing changes (new features, fixes, breaking changes). Use markdown headers (`### New features`, `### Fixes`, etc.) for multi-item releases, or a plain bullet list for single-item releases.
 

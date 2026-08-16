@@ -139,6 +139,23 @@ _sourceable_path() {
 }
 
 ########################################
+# Initialises a git repository for a fixture, with a deterministic identity.
+#
+# Signing is turned off explicitly: a developer with commit.gpgsign or gpg.ssh configured globally would
+# otherwise have every fixture commit fail for want of a key, and the failure would look like a fault in
+# the code under test rather than in the environment.
+# Arguments:
+#   dir: Directory to initialise.
+########################################
+git_fixture_init() {
+  git -C "$1" init --quiet
+  git -C "$1" config user.email "test@example.com"
+  git -C "$1" config user.name "Test Fixture"
+  git -C "$1" config commit.gpgsign false
+  git -C "$1" config tag.gpgsign false
+}
+
+########################################
 # Writes the sourcing harness kcov executes, at the given path.
 # Created next to its target on demand, because it must live beside the script it sources: $0 is the
 # harness, and the scripts resolve their library relative to "$(dirname "$0")". Written here
@@ -284,6 +301,24 @@ fake_repo_tool() {
     [ -e "$sibling" ] || continue
     ln -sf "$sibling" "$FAKE_REPO/bin/$(basename "$sibling")"
   done
+}
+
+########################################
+# Replaces one tool in the fake repository's bin/ with a script read from stdin.
+#
+# The mirrored entries are symlinks into the real bin/, so writing to one with `cat >` would follow the
+# link and overwrite the repository's own tool. This removes the link first, which is the difference
+# between a fixture and a destroyed working tree.
+# Arguments:
+#   name: Tool filename, e.g. package-script.sh.
+# Inputs:
+#   The replacement script, read from stdin.
+########################################
+fake_repo_replace_tool() {
+  local target="$FAKE_REPO/bin/$1"
+  rm -f "$target"
+  cat > "$target"
+  chmod +x "$target"
 }
 
 ########################################
