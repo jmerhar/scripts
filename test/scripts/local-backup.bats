@@ -189,6 +189,10 @@ with_conf() {
 # PATH is replaced rather than prepended: the stub directory would otherwise still be on it, and on the
 # Linux runner so would the real /usr/bin/flock, leaving nothing hidden. The notice is read from the log
 # file because this script runs quiet, as the header above explains.
+#
+# Invoked with a bare `run` rather than run_script, which is the idiom the other absence tests use: under
+# coverage run_script prefixes the command with kcov, and a replaced PATH hides kcov too. The cost is that
+# this branch is not measured, which coverage.toml already accounts for.
 @test "a missing flock does not stop the backup" {
   local minimal="$BATS_TEST_TMPDIR/no-flock" stub cmd
   mkdir -p "$minimal"
@@ -204,7 +208,8 @@ with_conf() {
   done
   [ ! -e "$minimal/flock" ]
 
-  PATH="$minimal" CONFIG_FILE="$CONF" MDSTAT="$BATS_TEST_TMPDIR/no-mdstat" run_script "$SCRIPT"
+  run env PATH="$minimal" CONFIG_FILE="$CONF" MDSTAT="$BATS_TEST_TMPDIR/no-mdstat" \
+    "$(command -v bash)" "$SCRIPT"
   [ "$status" -eq 0 ]
   [[ "$output" != *"Another backup is already running"* ]]
   run cat "$LOG"
