@@ -4,6 +4,17 @@
 # the contents of the referenced file. Also strips `# shellcheck source=`
 # directives that are no longer needed after inlining.
 #
+# Includes are resolved transitively: an included file's own directives are processed as well, each
+# relative to that file's directory. A library therefore declares what it needs and a script lists only
+# what it uses directly, rather than every script having to know the whole dependency graph.
+#
+# Each file is inlined at most once. That is not tidiness: every library guards itself with
+# `if [[ -n "${_X_LOADED:-}" ]]; then return; fi`, and a second copy of that guard puts a `return` at the
+# top level of the published script, where it is an error — the script would exit 2 before doing anything.
+#
+# A cycle is refused rather than quietly broken, so a mistake in the graph is reported instead of
+# producing a script missing whichever file the cycle cut off.
+#
 # Usage:
 #   ./compile-includes.sh <input-file> [output-file]
 #   ./compile-includes.sh <input-file> -i
@@ -18,6 +29,11 @@
 set -o errexit
 set -o nounset
 set -o pipefail
+
+# Canonical paths already inlined, and those currently being processed. The first gives dedup, the second
+# tells a legitimate diamond (two libraries needing a third) from a cycle.
+declare -A INLINED=()
+declare -A IN_PROGRESS=()
 
 #######################################
 # Prints a timestamped error message to stderr.
@@ -46,6 +62,23 @@ Options:
   -i    Modify the input file in place.
   -h    Show this help message.
 EOF
+}
+
+#######################################
+# Prints a file's canonical path, with symlinks and `..` resolved.
+#
+# Dedup compares paths, so `../lib/common.sh` and `../../topic/../lib/common.sh` have to come out the same
+# or the same library is inlined twice — which publishes a broken script.
+# Arguments:
+#   path: File to canonicalise.
+# Outputs:
+#   The canonical path.
+#######################################
+canonical_path() {
+  local dir base
+  dir=$(cd "$(dirname "$1")" && pwd -P)
+  base=$(basename "$1")
+  printf '%s/%s' "${dir}" "${base}"
 }
 
 #######################################
@@ -105,6 +138,19 @@ embed_program() {
 }
 
 #######################################
+# Writes out any held-back loader lines, in the order they appeared.
+# Globals:
+#   pending_shellcheck, pending_source — read and cleared.
+#######################################
+flush_pending() {
+  [[ -n "${pending_shellcheck}" ]] && printf '%s\n' "${pending_shellcheck}"
+  [[ -n "${pending_source}" ]] && printf '%s\n' "${pending_source}"
+  pending_shellcheck=""
+  pending_source=""
+  return 0
+}
+
+#######################################
 # Processes a single file, expanding @include directives.
 # When a `# @include <path>` line is found, it is replaced with the file
 # contents. Any `source`/`.` command or `# shellcheck source=` directive
@@ -118,8 +164,14 @@ embed_program() {
 process_file() {
   local input_file="$1"
   local base_dir="$2"
-  local pending_line=""
-  local has_pending="false"
+  # The development-time loader for an @include is two lines — a `# shellcheck source=` hint and a
+  # `source` command — and both are meaningless once the file is inlined. They are held back rather than
+  # dropped on sight, because the same two lines appear inside the library around a `source "$1"` that
+  # stays: there, no @include follows, so both are written out again.
+  local pending_shellcheck=""
+  local pending_source=""
+  # Local because this function recurses: a nested call must not consume the caller's current line.
+  local line
 
   while IFS= read -r line || [[ -n "${line}" ]]; do
     # Match an assignment carrying an # @embed directive. Matched before the buffered-line flush below
@@ -132,11 +184,7 @@ process_file() {
       call_name="${call_name%"${call_name##*[![:space:]]}"}"
       directive_name="${directive_name%"${directive_name##*[![:space:]]}"}"
 
-      if [[ "${has_pending}" == "true" ]]; then
-        printf '%s\n' "${pending_line}"
-        has_pending="false"
-        pending_line=""
-      fi
+      flush_pending
 
       embed_program "${prefix}" "${call_name}" "${directive_name}" "${base_dir}" "${input_file}"
       continue
@@ -157,40 +205,52 @@ process_file() {
         exit 1
       fi
 
-      # Drop the pending source/. line — it was the dev-time loader for this include
-      has_pending="false"
-      pending_line=""
+      # Drop the held-back loader lines: they were the development-time form of this include.
+      pending_shellcheck=""
+      pending_source=""
 
-      cat "${resolved_path}"
+      local canonical
+      canonical=$(canonical_path "${resolved_path}")
+
+      if [[ -n "${IN_PROGRESS[${canonical}]:-}" ]]; then
+        log_error "Include cycle: ${include_path} is already being inlined (referenced from ${input_file})."
+        exit 1
+      fi
+
+      # A file reached twice is a diamond, not a fault: two libraries may both need a third. Inlining it
+      # once is what keeps its include guard from returning at the top level of the published script.
+      if [[ -n "${INLINED[${canonical}]:-}" ]]; then
+        continue
+      fi
+
+      IN_PROGRESS[${canonical}]=1
+      process_file "${resolved_path}" "$(dirname "${resolved_path}")"
+      unset "IN_PROGRESS[${canonical}]"
+      INLINED[${canonical}]=1
       continue
     fi
 
-    # Flush any pending line that wasn't followed by @include
-    if [[ "${has_pending}" == "true" ]]; then
-      printf '%s\n' "${pending_line}"
-      has_pending="false"
-      pending_line=""
-    fi
-
-    # Strip shellcheck source= directives (not needed after inlining)
+    # A `# shellcheck source=` hint may be the first half of a loader pair, so it is held back. Any pair
+    # already held is written out first, since two hints in a row cannot both belong to one include.
     if [[ "${line}" =~ ^[[:space:]]*#[[:space:]]*shellcheck[[:space:]]+source= ]]; then
+      flush_pending
+      pending_shellcheck="${line}"
       continue
     fi
 
-    # Buffer source/. commands — they may be dev-time loaders for a following @include
+    # A `source`/`.` command is the second half. The hint above it stays held: whether either is dropped
+    # depends on an @include following, which the next iteration decides.
     if [[ "${line}" =~ ^[[:space:]]*(source|\.)[[:space:]]+ ]]; then
-      pending_line="${line}"
-      has_pending="true"
+      [[ -n "${pending_source}" ]] && printf '%s\n' "${pending_source}"
+      pending_source="${line}"
       continue
     fi
 
+    flush_pending
     printf '%s\n' "${line}"
   done < "${input_file}"
 
-  # Flush any trailing pending line
-  if [[ "${has_pending}" == "true" ]]; then
-    printf '%s\n' "${pending_line}"
-  fi
+  flush_pending
 }
 
 #######################################

@@ -130,7 +130,10 @@ EOF
   [ "${lines[0]}" = "LIBRARY LINE ONE" ]
 }
 
-@test "expands the same include more than once" {
+# Each file is inlined once, however many times it is reached. Not tidiness: every library guards itself
+# with `if [[ -n "${_X_LOADED:-}" ]]; then return; fi`, and a second copy of that guard puts a `return` at
+# the top level of the published script, where it is an error — the script exits 2 before doing anything.
+@test "a file included twice is inlined once" {
   local f; f=$(script_fixture main.sh <<'EOF'
 # @include lib/common.sh
 middle
@@ -139,13 +142,34 @@ EOF
 )
   run_script "$TOOL" "$f"
   run bash -c "printf '%s\n' \"\$1\" | grep -c 'LIBRARY LINE ONE'" _ "$output"
-  [ "$output" = "2" ]
+  [ "$output" = "1" ]
 }
 
-# Includes are expanded by concatenation, not recursively, so a directive inside an included file is
-# emitted as text. Nothing in this repository nests includes; the assertion records the boundary so a
-# script that tried to would fail visibly here rather than ship a literal comment.
-@test "does not expand an @include nested inside an included file" {
+# The whole reason dedup is not cosmetic: a guarded library inlined twice produces a script that dies on
+# its second guard. Asserted by running the result, not by reading it.
+@test "a doubly-included guarded library still runs" {
+  printf 'if [[ -n "${_GUARD:-}" ]]; then return; fi\n_GUARD=1\nlib_fn() { echo "from lib"; }\n' \
+    > "$WORK/lib/guarded.sh"
+  local f; f=$(script_fixture main.sh <<'EOF'
+#!/usr/bin/env bash
+set -o errexit -o nounset -o pipefail
+# @include lib/guarded.sh
+# @include lib/guarded.sh
+lib_fn
+EOF
+)
+  run_script "$TOOL" "$f" "$WORK/out.sh"
+  run bash "$WORK/out.sh"
+  [ "$status" -eq 0 ]
+  [ "$output" = "from lib" ]
+}
+
+# --- Transitive includes -----------------------------------------------------------------------
+#
+# A library declares what it needs and the compiler follows it, so a script lists only what it uses
+# directly rather than having to know the whole dependency graph.
+
+@test "an include inside an included file is expanded too" {
   printf 'OUTER LIB\n# @include deeper.sh\n' > "$WORK/lib/outer.sh"
   printf 'DEEPER\n' > "$WORK/lib/deeper.sh"
   local f; f=$(script_fixture main.sh <<'EOF'
@@ -153,9 +177,93 @@ EOF
 EOF
 )
   run_script "$TOOL" "$f"
-  [ "${lines[0]}" = "OUTER LIB" ]
-  [ "${lines[1]}" = "# @include deeper.sh" ]
-  [[ "$output" != *"DEEPER"* ]]
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"OUTER LIB"* ]]
+  [[ "$output" == *"DEEPER"* ]]
+  [[ "$output" != *"# @include"* ]]
+}
+
+# A nested directive is relative to the file that holds it, not to the script being compiled — otherwise a
+# library could only be included from one depth.
+@test "a nested include is resolved against the file that declares it" {
+  mkdir -p "$WORK/lib/inner"
+  printf 'OUTER\n# @include inner/deep.sh\n' > "$WORK/lib/outer.sh"
+  printf 'DEEP\n' > "$WORK/lib/inner/deep.sh"
+  local f; f=$(script_fixture main.sh <<'EOF'
+# @include lib/outer.sh
+EOF
+)
+  run_script "$TOOL" "$f"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"DEEP"* ]]
+}
+
+# The diamond: two libraries both needing a third. It is the shape the split library produces, and the one
+# dedup has to get right.
+@test "a file reached through two paths is inlined once" {
+  printf 'BASE\n' > "$WORK/lib/base.sh"
+  printf 'ONE\n# @include base.sh\n' > "$WORK/lib/one.sh"
+  printf 'TWO\n# @include base.sh\n' > "$WORK/lib/two.sh"
+  local f; f=$(script_fixture main.sh <<'EOF'
+# @include lib/one.sh
+# @include lib/two.sh
+EOF
+)
+  run_script "$TOOL" "$f"
+  [ "$status" -eq 0 ]
+  run bash -c "printf '%s\n' \"\$1\" | grep -c '^BASE$'" _ "$output"
+  [ "$output" = "1" ]
+}
+
+# Two spellings of one path are one file, or the same library is inlined twice and the guard fires.
+@test "the same file reached by different paths is inlined once" {
+  printf 'BASE\n' > "$WORK/lib/base.sh"
+  local f; f=$(script_fixture main.sh <<'EOF'
+# @include lib/base.sh
+# @include lib/../lib/base.sh
+EOF
+)
+  run_script "$TOOL" "$f"
+  run bash -c "printf '%s\n' \"\$1\" | grep -c '^BASE$'" _ "$output"
+  [ "$output" = "1" ]
+}
+
+# A cycle is a mistake in the graph. Skipping it silently would publish a script missing whichever file
+# the cycle cut off, so it is refused.
+@test "a cycle between two libraries is refused" {
+  printf 'A\n# @include b.sh\n' > "$WORK/lib/a.sh"
+  printf 'B\n# @include a.sh\n' > "$WORK/lib/b.sh"
+  local f; f=$(script_fixture main.sh <<'EOF'
+# @include lib/a.sh
+EOF
+)
+  run_script "$TOOL" "$f"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Include cycle"* ]]
+}
+
+@test "a file including itself is refused" {
+  printf 'SELF\n# @include self.sh\n' > "$WORK/lib/self.sh"
+  local f; f=$(script_fixture main.sh <<'EOF'
+# @include lib/self.sh
+EOF
+)
+  run_script "$TOOL" "$f"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Include cycle"* ]]
+}
+
+# The loader pair belongs to the include it precedes. Inside a library the same two lines sit above a
+# `source "$1"` that stays, so dropping them on sight would strip a directive that is still needed.
+@test "a shellcheck hint not followed by an include is kept" {
+  printf 'LIB\n# shellcheck source=/dev/null\nsource "$1"\n' > "$WORK/lib/keeps.sh"
+  local f; f=$(script_fixture main.sh <<'EOF'
+# @include lib/keeps.sh
+EOF
+)
+  run_script "$TOOL" "$f"
+  [[ "$output" == *"# shellcheck source=/dev/null"* ]]
+  [[ "$output" == *'source "$1"'* ]]
 }
 
 @test "fails when an include target is missing" {
