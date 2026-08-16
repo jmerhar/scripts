@@ -24,9 +24,15 @@ set -o nounset
 set -o pipefail
 
 # --- Shared Library ---
-# shellcheck source=../../lib/common.sh
-source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/common.sh"
-# @include ../../lib/common.sh
+# shellcheck source=../../lib/core.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
+# @include ../../lib/core.sh
+# shellcheck source=../../lib/config.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/config.sh"
+# @include ../../lib/config.sh
+# shellcheck source=../../lib/program.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/program.sh"
+# @include ../../lib/program.sh
 
 # --- Global State (option flags; defaults may be overridden by config) ---
 _embedded=false        # also sync embedded subtitle tracks

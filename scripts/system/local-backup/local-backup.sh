@@ -19,9 +19,12 @@ readonly MDSTAT MDSTAT_CHECK_INTERVAL
 
 # --- Shared Library ---
 _LOG_QUIET="true"
-# shellcheck source=../../lib/common.sh
-source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/common.sh"
-# @include ../../lib/common.sh
+# shellcheck source=../../lib/core.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
+# @include ../../lib/core.sh
+# shellcheck source=../../lib/config.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/config.sh"
+# @include ../../lib/config.sh
 
 #######################################
 # Prints the script's usage instructions to stderr.

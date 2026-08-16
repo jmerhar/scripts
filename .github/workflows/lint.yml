@@ -47,6 +47,12 @@ jobs:
       - name: Syntax-check the awk and jq programs
         run: ./bin/check-programs.sh
 
+      # A script lists the libraries it uses and the compiler resolves their dependencies, so nothing
+      # stops a script calling a function no included library provides — it works while some other
+      # include happens to pull that library in, and breaks when it stops.
+      - name: Check every script includes the libraries it uses
+        run: ./bin/check-includes.sh
+
       # The README index tables are generated from the manifest, so a hand-edit or a manifest change
       # without a `make docs` leaves them stale. Regenerating into a temp file and diffing turns that
       # into a build failure rather than something a reader notices later.

@@ -20,7 +20,7 @@ artefact is a single file named after the script, so the repetition is invisible
   - `scripts/system/` — System administration tools (e.g., backups)
   - `scripts/utility/` — General-purpose utilities
   - `scripts/photography/` — Photography workflow automation
-  - `scripts/lib/` — Shared library sourced by other scripts (not published as a package)
+  - `scripts/lib/` — Shared libraries, sourced by the scripts and inlined when published
 
 ```
 scripts/system/
@@ -44,6 +44,11 @@ scripts/system/
 Config files (`.conf`) live next to their scripts (e.g., `scripts/system/local-backup/local-backup.conf`). They are discovered by convention — no metadata field needed.
 
 `load_config` searches, in order: `$CONFIG_FILE`, the script's own directory, `<install-prefix>/etc/`, then `/etc/`. Setting `CONFIG_FILE` names a file outright, so an unreadable one is an error rather than a fall back to the search — naming a file excludes the alternatives, and quietly loading a different config could mean different backup targets or credentials.
+
+`default_log_file` is the same idea for logs: under an install prefix it names
+`<prefix>/var/log/<script>.log`, and from a checkout it names nothing, so a working tree does not collect
+log files. `log_command` runs a command with its output copied into `LOG_FILE`, which is what puts a failing
+`rsync`'s own explanation in the log beside the script's "exit code 23".
 
 ### Documentation (READMEs)
 
@@ -99,9 +104,28 @@ declaration is missing or too low. It runs in `make lint` and in CI, so the fiel
 a pattern there when adopting a newer construct**, since an undetected feature means an under-declared
 minimum and a package that installs but cannot run.
 
-### Shared Library (`@include`)
+### Shared Libraries (`@include`)
 
-Scripts can share code via `scripts/lib/common.sh`. In development, scripts `source` the library directly. For publishing, `bin/compile-includes.sh` inlines the library contents at build time so published scripts are fully self-contained.
+Shared code lives in `scripts/lib/`, one file per concern. In development a script `source`s what it needs;
+for publishing, `bin/compile-includes.sh` inlines it at build time so published scripts are self-contained.
+
+| Library | Holds |
+|---|---|
+| `core.sh` | `SCRIPT_NAME`, the install prefix, `log_info`/`log_error`/`log_debug`, `enable_debug_mode`, `default_log_file`, `log_command` |
+| `config.sh` | `load_config`, `load_optional_config`, `validate_config` — needs `core.sh` |
+| `program.sh` | `load_program` — needs `core.sh` |
+
+**A script lists only the libraries it uses directly.** A library declares its own dependencies and the
+compiler follows them, so nobody has to know that a config needs a logger. Each library carries a
+double-source guard, which is what makes that safe at development time — and why the compiler inlines each
+file exactly once: a guard inlined twice puts a `return` at the top level of the published script, where it
+is an error, and the script would exit 2 before doing anything.
+
+`bin/check-includes.sh` is the backstop, in `make lint` and the lint workflow. It computes the same closure
+the compiler does and fails when a script calls a library function nothing it includes provides — which
+otherwise works only for as long as some other include happens to pull that library in. It also checks that
+the `# shellcheck source=` hint, the `source` line and the `# @include` directive in a loader pair all name
+one file, since only the directive is acted on.
 
 **There is one compile path, and it writes to `dist/compiled/`.** `bin/compile-all-includes.sh` compiles
 every publishable script there — a script with no directives is copied, so the directory is the complete
@@ -206,7 +230,7 @@ against that rather than `BATS_TEST_DIRNAME`, which is the suite's own directory
 
 ```bash
 make test      # the suite
-make lint      # ShellCheck, the manifest checks, the declared bash versions, the awk/jq programs
+make lint      # ShellCheck, the manifest, bash versions, the awk/jq programs, the includes
 make check     # all three; gate a commit on this
 make smoke     # package every manifest entry at v0.0.0, catching manifest/packager drift
 make docs      # regenerate the README index tables from the manifest

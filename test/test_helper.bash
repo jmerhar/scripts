@@ -32,8 +32,8 @@ setup_common() {
   REPO_ROOT="$(cd "$TEST_DIR/.." && pwd)"
   export TEST_DIR REPO_ROOT
 
-  LIB="$REPO_ROOT/scripts/lib/common.sh"
-  export LIB
+  LIB_DIR="$REPO_ROOT/scripts/lib"
+  export LIB_DIR
 
   # Basename of the harness bin/run-coverage.sh places beside each script while measuring. Named here
   # because both the seams below and the runner that creates them need to agree on it.

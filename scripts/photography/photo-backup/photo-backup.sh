@@ -15,9 +15,12 @@ TEMP_DIR=$(mktemp -d)
 readonly TEMP_DIR
 
 # --- Shared Library ---
-# shellcheck source=../../lib/common.sh
-source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/common.sh"
-# @include ../../lib/common.sh
+# shellcheck source=../../lib/core.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
+# @include ../../lib/core.sh
+# shellcheck source=../../lib/config.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/config.sh"
+# @include ../../lib/config.sh
 
 # --- Configuration (initialized as empty) ---
 SOURCES=()
@@ -100,22 +103,6 @@ parse_options() {
   fi
 }
 
-#######################################
-# Logs a command to debug, then executes it, capturing output to the log file.
-# Globals:
-#   LOG_FILE
-# Arguments:
-#   Command and its arguments.
-#######################################
-run_command() {
-  log_debug "Running command: $*"
-  if [[ -n "${LOG_FILE}" ]]; then
-    # Log both streams to the file while preserving stderr/stdout separation
-    "$@" > >(tee -a "${LOG_FILE}") 2> >(tee -a "${LOG_FILE}" >&2)
-  else
-    "$@"
-  fi
-}
 
 #######################################
 # Verifies that a source directory exists and is not empty.
@@ -147,7 +134,7 @@ remove_files() {
   local pattern="$2"
 
   log_info "Deleting '${pattern}' files from '${dir}'..."
-  run_command find "${dir}" -name "${pattern}" -delete -print
+  log_command find "${dir}" -name "${pattern}" -delete -print
 }
 
 #######################################
@@ -168,7 +155,7 @@ clean_directory() {
   remove_files "${dir}" '*_original'
 
   if command -v dot_clean &> /dev/null; then
-    run_command dot_clean -v "${dir}"
+    log_command dot_clean -v "${dir}"
   else
     log_info "Skipping 'dot_clean': command not found (expected on non-macOS)."
   fi
@@ -191,7 +178,7 @@ generate_protection_filter() {
   for protect_src in "${protect_dirs[@]}"; do
     log_info "Generating protection rules for '${protect_src}'"
     # Use sh to create a subshell, ensuring path variables are handled correctly
-    run_command bash -c '
+    log_command bash -c '
       set -o errexit
       set -o pipefail
       # The find command lists all items, and the while loop creates relative paths
@@ -255,7 +242,7 @@ perform_backup() {
     rsync_args+=(--filter="merge ${filter_file}")
   fi
 
-  run_command rsync "${rsync_args[@]}" "${source_dir}/" "${DESTINATION}"
+  log_command rsync "${rsync_args[@]}" "${source_dir}/" "${DESTINATION}"
 }
 
 #######################################
@@ -270,12 +257,10 @@ main() {
   parse_options "$@"
   validate_config "HOST" "DEST_PATH" "array:SOURCES" || { show_usage; exit 1; }
 
-  # If LOG_FILE is not set, determine a default location based on the script's prefix
+  # An installed copy logs to the install prefix unless told otherwise; a checkout logs to the terminal.
   if [[ -z "${LOG_FILE}" ]]; then
-    local prefix
-    prefix=$(get_script_prefix)
-    if [[ -n "${prefix}" ]]; then
-      LOG_FILE="${prefix}/var/log/${SCRIPT_NAME}.log"
+    LOG_FILE=$(default_log_file)
+    if [[ -n "${LOG_FILE}" ]]; then
       log_info "No log file specified. Defaulting to: ${LOG_FILE}"
     fi
   fi

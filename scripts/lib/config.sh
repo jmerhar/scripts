@@ -1,154 +1,21 @@
 # shellcheck shell=bash
 #
-# Common library for shared shell script functions.
-# This file is not meant to be executed directly. It is sourced by other
-# scripts at development time and inlined by compile-includes.sh at build time.
+# Finding and validating a script's configuration.
+#
+# Sourced at development time and inlined by compile-includes.sh at build time.
 
 # Double-source guard
-if [[ "${_COMMON_SH_LOADED:-}" == "true" ]]; then
+if [[ "${_CONFIG_SH_LOADED:-}" == "true" ]]; then
   return 0
 fi
-_COMMON_SH_LOADED="true"
+_CONFIG_SH_LOADED="true"
 
-# --- Color Setup (only when connected to a terminal) ---
-if [[ -t 1 ]]; then
-  _color_info=$(tput setaf 4)    # Blue for info
-  _color_debug=$(tput setaf 8)   # Grey for debug
-  _color_error=$(tput setaf 1)   # Red for errors
-  _color_reset=$(tput sgr0)
-  _text_bold=$(tput bold)
-else
-  _color_info=""
-  _color_debug=""
-  _color_error=""
-  _color_reset=""
-  _text_bold=""
-fi
-
-# --- Script Identity ---
-# Derived from $0; callers may override by setting SCRIPT_NAME before sourcing.
-SCRIPT_NAME="${SCRIPT_NAME:-$(basename "$0" .sh)}"
-readonly SCRIPT_NAME
-
-# --- Behavioral Flags (callers may override before sourcing or after) ---
-_LOG_QUIET="${_LOG_QUIET:-false}"
-IS_DEBUG_MODE="${IS_DEBUG_MODE:-false}"
-
-########################################
-# Enables debug mode (verbose log_debug output).
-# Globals:
-#   IS_DEBUG_MODE
-# Arguments:
-#   None
-########################################
-enable_debug_mode() {
-  IS_DEBUG_MODE="true"
-}
-
-########################################
-# Determines the installation prefix of the script (e.g., /usr/local).
-# Globals:
-#   None
-# Arguments:
-#   None
-# Outputs:
-#   Prints the install prefix to stdout.
-########################################
-get_script_prefix() {
-  local script_dir
-  script_dir=$(dirname "$0")
-  local script_path
-  script_path=$( (cd "${script_dir}" && pwd -P) )
-
-  if [[ -z "${script_path}" ]]; then
-    return
-  fi
-
-  local bin_dir
-  bin_dir=$(basename "${script_path}")
-  if [[ "${bin_dir}" =~ ^(bin|sbin)$ ]]; then
-    dirname "${script_path}"
-  fi
-}
-
-########################################
-# Writes a log message to LOG_FILE with an ISO 8601 timestamp.
-# Does nothing if LOG_FILE is unset or empty.
-# Globals:
-#   LOG_FILE
-# Arguments:
-#   level: The log level (e.g., INFO, ERROR).
-#   message: The message to log.
-########################################
-log_message() {
-  if [[ -z "${LOG_FILE:-}" ]]; then
-    return
-  fi
-
-  local level="$1"
-  shift
-  local message="$*"
-  local msg
-  msg="[$(date +'%Y-%m-%dT%H:%M:%S%z')] [${level}]: ${message}"
-
-  mkdir -p "$(dirname "${LOG_FILE}")"
-  echo "${msg}" >> "${LOG_FILE}"
-}
-
-########################################
-# Logs an info message to the log file and to stdout (unless _LOG_QUIET).
-# When connected to a terminal, output is colorized.
-# Globals:
-#   _LOG_QUIET, _color_info, _text_bold, _color_reset
-# Arguments:
-#   Message to print.
-########################################
-log_info() {
-  log_message "INFO" "$*"
-  if [[ "${_LOG_QUIET}" != "true" ]]; then
-    if [[ -t 1 ]]; then
-      printf "%b\n" "${_color_info}${_text_bold}[INFO]: $*${_color_reset}"
-    else
-      printf "%s\n" "[INFO]: $*"
-    fi
-  fi
-}
-
-########################################
-# Logs an error message to the log file and to stderr.
-# When connected to a terminal, output is colorized.
-# Globals:
-#   _color_error, _text_bold, _color_reset
-# Arguments:
-#   Message to print.
-########################################
-log_error() {
-  log_message "ERROR" "$*"
-  if [[ -t 2 ]]; then
-    printf "%b\n" "${_color_error}${_text_bold}[ERROR]: $*${_color_reset}" >&2
-  else
-    printf "%s\n" "[ERROR]: $*" >&2
-  fi
-}
-
-########################################
-# Logs a debug message if IS_DEBUG_MODE is enabled.
-# Writes to the log file and to stdout when connected to a terminal.
-# Globals:
-#   IS_DEBUG_MODE, _color_debug, _color_reset
-# Arguments:
-#   Message to print.
-########################################
-log_debug() {
-  if [[ "${IS_DEBUG_MODE}" == "true" ]]; then
-    log_message "DEBUG" "$*"
-    if [[ -t 1 ]]; then
-      printf "%b\n" "${_color_debug}[DEBUG]: $*${_color_reset}"
-    else
-      printf "%s\n" "[DEBUG]: $*"
-    fi
-  fi
-}
+# Logging, and the install prefix the search below uses. Declared here rather than left to each script:
+# the compiler follows this and inlines core.sh once, so a script that wants a config need not know that a
+# config needs a logger.
+# shellcheck source=./core.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/core.sh"
+# @include core.sh
 
 ########################################
 # Sources a configuration file, announcing which one.
@@ -200,7 +67,7 @@ load_config() {
   local config_path_local="${script_dir}/${SCRIPT_NAME}.conf"
 
   local prefix
-  prefix=$(get_script_prefix)
+  prefix=$(_get_script_prefix)
   local config_path_prefix=""
   local config_path_system="/etc/${SCRIPT_NAME}.conf"
 
@@ -239,45 +106,6 @@ load_optional_config() {
   local status=0
   load_config || status=$?
   (( status != 2 ))
-}
-
-########################################
-# Reads an awk or jq program stored beside the script, and prints it.
-#
-# A program held in a file gets syntax highlighting, is checked by bin/check-programs.sh before it ever
-# runs, and is not counted as never-executed bash by kcov — none of which is true of the same program
-# quoted inside the script. The file is resolved against the script's own directory, the same derivation
-# load_config uses, so a script invoked by any path finds its own programs.
-#
-# Every call site is a single line ending in an `# @embed <name>` directive, which
-# bin/compile-includes.sh replaces with the program text at build time. A published script therefore
-# never calls this function — it is the development form of a literal — which is why it can assume the
-# file sits beside the script rather than searching an install prefix the way load_config does.
-#
-# An absent or unreadable program is fatal rather than empty: awk and jq both accept an empty program
-# and produce nothing, so returning "" would turn a packaging mistake into a script that silently
-# reports no results.
-# Globals:
-#   None
-# Arguments:
-#   name: File name of the program, relative to the script's directory.
-# Outputs:
-#   The program text on stdout.
-# Returns:
-#   0 on success; exits 1 if the program cannot be read.
-########################################
-load_program() {
-  local name="$1"
-  local script_dir
-  script_dir=$(cd "$(dirname "$0")" && pwd -P)
-  local path="${script_dir}/${name}"
-
-  if [[ ! -r "${path}" ]]; then
-    log_error "Program file not found or not readable: ${path}"
-    exit 1
-  fi
-
-  cat "${path}"
 }
 
 ########################################

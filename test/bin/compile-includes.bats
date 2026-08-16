@@ -357,11 +357,13 @@ EOF
   cp -R "$REPO_ROOT/scripts" "$BATS_TEST_TMPDIR/scripts"
   run_script "$TOOL" "$BATS_TEST_TMPDIR/scripts/system/local-backup/local-backup.sh"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"_COMMON_SH_LOADED"* ]]
+  # config.sh declares core.sh, and the compiler follows it, so both arrive from one directive each.
+  [[ "$output" == *"_CORE_SH_LOADED"* ]]
+  [[ "$output" == *"_CONFIG_SH_LOADED"* ]]
   [[ "$output" == *"validate_config()"* ]]
   [[ "$output" != *"@include"* ]]
-  # The script's own directive naming the library is gone, since there is nothing left to resolve.
-  [[ "$output" != *"shellcheck source=../lib/common.sh"* ]]
+  # The script's own directives naming the libraries are gone, since there is nothing left to resolve.
+  [[ "$output" != *"shellcheck source=../../lib/"* ]]
   # The library's own `shellcheck source=/dev/null` must survive: included files are concatenated
   # verbatim, and the published script still sources a config file at that point.
   [[ "$output" == *"shellcheck source=/dev/null"* ]]
@@ -414,12 +416,14 @@ EOF
 { total += $1 }
 END { print total + 0 }
 EOF
-  cp "$REPO_ROOT/scripts/lib/common.sh" "$WORK/common.sh"
+  # Both libraries under their real names: load_program lives in program.sh, which sources core.sh from
+  # beside itself.
+  cp "$REPO_ROOT/scripts/lib/core.sh" "$REPO_ROOT/scripts/lib/program.sh" "$WORK/"
   cat > "$WORK/dev.sh" <<'EOF'
 #!/usr/bin/env bash
 set -o errexit -o nounset -o pipefail
 SCRIPT_NAME="$(basename "$0" .sh)"
-source "$(cd "$(dirname "$0")" && pwd -P)/common.sh"
+source "$(cd "$(dirname "$0")" && pwd -P)/program.sh"
 _AWK_SUM=$(load_program sum.awk)  # @embed sum.awk
 printf '%s
 ' 4 5 6 | awk "${_AWK_SUM}"
