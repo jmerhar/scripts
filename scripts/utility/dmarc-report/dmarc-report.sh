@@ -170,13 +170,6 @@ parse_options() {
 }
 
 ########################################
-# Configures color variables based on terminal capability and user preference.
-# Globals:
-#   _no_color and all _C_* color variables.
-# Arguments:
-#   None
-
-########################################
 # Converts a Unix epoch timestamp to a UTC date, portably across BSD (macOS) and
 # GNU (Linux) date implementations.
 # Globals:

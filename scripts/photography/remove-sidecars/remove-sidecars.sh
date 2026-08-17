@@ -139,32 +139,6 @@ parse_options() {
 }
 
 ########################################
-# Configures color variables based on terminal capability and user preference.
-# Globals:
-#   _no_color, _C_CYAN, _C_GREEN, _C_BRIGHT_GREEN, _C_YELLOW, _C_MAGENTA,
-#   _C_WHITE, _C_DIM, _C_BOLD, _C_RESET
-# Arguments:
-#   None
-
-########################################
-# Detects the platform's stat flavor and defines get_size().
-# Globals:
-#   None
-# Arguments:
-#   None
-
-########################################
-# Reads a single line of input from the user into the global _answer.
-# The color escapes are written straight to the terminal (not captured) so the
-# user's typed input appears in bright white; the input itself is returned via
-# the _answer global rather than stdout, so callers must not use command
-# substitution (which would capture the escape codes too).
-# Globals:
-#   _answer, _C_WHITE, _C_RESET
-# Arguments:
-#   None
-
-########################################
 # Prompts the user to define which extensions are sidecars and which are RAW.
 # Globals:
 #   _sidecar_exts, _raw_exts, _C_CYAN, _C_DIM, _C_BOLD, _C_RESET

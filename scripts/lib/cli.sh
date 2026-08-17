@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 #
-# The three things every option parser here does the same way, and had been doing slightly differently.
+# The three ways a command line can be wrong, handled once so that every script reports them alike.
 #
 # Not a general option parser. Each script's option table stays in its own parse_options, and each writes its
 # own usage text: a generated one reads worse than a hand-written one, and a generic parser would have to

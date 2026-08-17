@@ -100,11 +100,6 @@ EOF
 }
 
 ########################################
-# Initialise the colour palette, honouring --no-color and TTY detection.
-# Globals:
-#   _no_color, _C_*
-
-########################################
 # Parse command-line options into option-state globals.
 # Globals:
 #   _no_color, _filters

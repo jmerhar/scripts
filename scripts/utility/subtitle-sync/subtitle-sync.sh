@@ -219,12 +219,6 @@ parse_options() {
 }
 
 ########################################
-# Validates that an option that takes a value was given one.
-# Arguments:
-#   The current option and the remaining args ("$@" from the caller).
-########################################
-
-########################################
 # Applies optional overrides from a loaded config file onto the defaults.
 # Each scalar is honored only when set and non-empty; arrays only when declared
 # non-empty, so a partial or absent config leaves built-in defaults intact.
@@ -375,27 +369,6 @@ _fmt_dur() {
     printf '%ds' "${s}"
   fi
 }
-
-########################################
-# Normalizes a language code or English name to an ISO 639-1 code for the common
-# languages, so equivalent forms compare equal (en == eng == english). Unknown
-# input is returned lowercased; empty input becomes "und".
-# Arguments:
-#   raw: A language tag, code, or name (any case).
-# Outputs:
-#   The normalized token on stdout.
-
-########################################
-# Determines a sidecar subtitle's language from the dot-separated tokens between
-# the media base name and the extension (e.g. the "en" in "Movie.en.forced.srt").
-# The first token that is not a known role flag is taken as the language; an
-# empty token string yields "und".
-# Globals:
-#   _sidecar_flags
-# Arguments:
-#   middle: The dot-separated token string (may be empty).
-# Outputs:
-#   The normalized language token on stdout.
 
 ########################################
 # Tests whether a detected language matches the target language. An undetermined

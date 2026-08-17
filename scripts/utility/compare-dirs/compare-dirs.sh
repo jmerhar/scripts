@@ -183,18 +183,6 @@ parse_options() {
 }
 
 ########################################
-# Detects platform-specific tools and defines helper functions.
-# Defines get_size(), get_mtime(), and get_checksum() based on
-# available system utilities.
-# Globals:
-#   _opt_checksums
-
-########################################
-# Configures color variables based on terminal capability and user preference.
-# Globals:
-#   _opt_no_color, _C_RED, _C_GREEN, _C_YELLOW, _C_CYAN, _C_BOLD, _C_RESET
-
-########################################
 # Formats an epoch timestamp as a human-readable date string.
 # Arguments:
 #   ts: Unix epoch timestamp.

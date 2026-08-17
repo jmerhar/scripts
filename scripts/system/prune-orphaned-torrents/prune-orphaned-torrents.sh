@@ -138,26 +138,6 @@ parse_options() {
 }
 
 ########################################
-# Configures color variables based on terminal capability and user preference.
-# Globals:
-#   _no_color, _C_CYAN, _C_GREEN, _C_BRIGHT_GREEN, _C_YELLOW, _C_MAGENTA,
-#   _C_WHITE, _C_DIM, _C_BOLD, _C_RESET
-# Arguments:
-#   None
-
-########################################
-# Reads a single keypress from the user into the global _answer, without
-# requiring Enter. The key is read silently (-s) and echoed back in bright white
-# so the prompt line stays readable; callers must not use command substitution
-# (which would capture the escape codes too).
-# Globals:
-#   _answer, _C_WHITE, _C_RESET
-# Arguments:
-#   None
-# Returns:
-#   0 if a key was read, non-zero on EOF.
-
-########################################
 # Formats a size in bytes into a human-readable string (KB, MB, GB, etc.).
 # Globals:
 #   None
@@ -193,13 +173,6 @@ format_age() {
     printf '%dh %dm' "${hours}" "${mins}"
   fi
 }
-
-########################################
-# Detects the platform's stat flavor and defines get_size().
-# Globals:
-#   None
-# Arguments:
-#   None
 
 ########################################
 # Validates the configured SCAN_DIRS, keeping only directories that exist.

@@ -43,7 +43,7 @@ _langs_norm=()     # Normalized, de-duplicated requested languages (for matching
 _target_dir="."
 
 # Media and subtitle extensions. Defaults below may be overridden by a config
-# file (MEDIA_EXTS / SUBTITLE_EXTS arrays); see load_config in common.sh.
+# file (MEDIA_EXTS / SUBTITLE_EXTS arrays); see load_config in config.sh.
 _media_exts=(mkv mp4 m4v avi mov wmv mpg mpeg ts m2ts webm flv ogv 3gp divx vob)
 _subtitle_exts=(srt ass ssa sub idx vtt sup)
 
@@ -216,14 +216,6 @@ parse_options() {
 }
 
 ########################################
-# Configures color variables based on terminal capability and user preference.
-# Globals:
-#   _no_color, _C_CYAN, _C_GREEN, _C_BRIGHT_GREEN, _C_YELLOW, _C_MAGENTA,
-#   _C_WHITE, _C_DIM, _C_BOLD, _C_RESET
-# Arguments:
-#   None
-
-########################################
 # Applies optional MEDIA_EXTS / SUBTITLE_EXTS overrides from a loaded config
 # file. Each is honored only when declared as a non-empty array, so a config
 # that sets neither (or none at all) leaves the built-in defaults intact.
@@ -240,48 +232,6 @@ apply_config() {
     _subtitle_exts=("${SUBTITLE_EXTS[@]}")
   fi
 }
-
-########################################
-# Populates the canonical-language lookup table (_lang_canon) from the embedded
-# ISO 639 dataset. Every alpha-2 code, both alpha-3 forms (bibliographic and
-# terminologic), and the registry's English name(s) map to the alpha-2 code.
-# Guarded by _lang_map_ready so it builds at most once; call it directly in the
-# parent shell before scanning so command-substitution subshells (which inherit
-# the populated array) only ever do lookups, never rebuilds.
-#
-# The dataset is generated from the Library of Congress ISO 639-2 registry
-# (https://www.loc.gov/standards/iso639-2/), limited to languages that have an
-# alpha-2 code; columns are "alpha2|alpha3-bib|alpha3-term|name[,name...]".
-# Name forms that would be ambiguous (map to more than one language) are omitted.
-# Globals:
-#   _lang_canon, _lang_map_ready
-# Arguments:
-#   None
-
-########################################
-# Normalizes a language code or name to a canonical token so that equivalent
-# forms compare equal (e.g. en == eng == english). Recognized languages
-# canonicalize to their ISO 639-1 code via the lookup table; unrecognized input
-# is returned lowercased and whitespace-stripped, and empty or explicitly
-# undetermined input becomes "und" (or "en" when --und-as-english is set).
-# Globals:
-#   _lang_canon, _und_as_english
-# Arguments:
-#   raw: A language tag, code, or name (any case).
-# Outputs:
-#   The canonical token on stdout.
-
-########################################
-# Determines a sidecar subtitle's language from the dot-separated tokens that
-# sit between the media base name and the subtitle extension (e.g. the
-# "en.forced" in "Movie.en.forced.srt"). The first token that is not a known
-# role flag is taken as the language; an empty token string yields "und".
-# Globals:
-#   _sidecar_flags
-# Arguments:
-#   middle: The dot-separated token string (may be empty).
-# Outputs:
-#   The normalized language token on stdout.
 
 ########################################
 # Tests whether a file's subtitle token string contains at least one of the

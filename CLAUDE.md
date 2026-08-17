@@ -126,18 +126,18 @@ double-source guard, which is what makes that safe at development time — and w
 file exactly once: a guard inlined twice puts a `return` at the top level of the published script, where it
 is an error, and the script would exit 2 before doing anything.
 
-Three of those replaced copies rather than adding anything. `setup_colors` existed six times, each defining
-a different subset of one palette and one spelling its flag differently — so the flag is an argument now,
-rather than a global the library reads by name. `detect_platform` existed three times, and `stat`'s flags
-differ entirely between Linux and macOS, which is the difference worth hiding once. The two `read_answer`
-variants became `prompt_line` and `prompt_key`, under names that say which is which: the first treats
-end-of-input as an empty answer, the second passes it back, because a script looping over candidates has to
-be able to stop.
+Three of those exist to keep one answer to a question several scripts ask. `colors.sh` takes the
+"colour wanted" flag as an **argument**, not as a global it reads by name, so each script may spell its own
+option however it likes. `platform.sh` hides the GNU/BSD `stat` split, which is the one difference that would
+otherwise break every script on one of the two platforms this repository publishes to. `prompt.sh` offers two
+prompts under names that say which is which: `prompt_line` treats end-of-input as an empty answer, so a
+caller's default applies; `prompt_key` passes it back, because a script looping over candidates with nothing
+on stdin must be able to stop.
 
-`lang.sh` is there for a sharper reason than duplication: two scripts read the same media libraries, and
-one canonicalised languages from a 183-row table while the other used a 24-arm `case`. `--lang vietnamese`
-therefore could not match a track tagged `vi`. `test/shared/lib-lang.bats` asks both scripts and requires
-the same answer, which is what keeps a second copy of that table from appearing.
+`lang.sh` matters more than the others: two scripts read the same media libraries, so they have to agree
+about what a language is called, or a report showing Vietnamese subtitles is no use to a tool that cannot
+match `vietnamese` to `vi`. `test/shared/lib-lang.bats` asks both scripts to normalise the same inputs and
+requires the same answer — which is what would catch a second copy of that table appearing.
 
 **Option parsing is conventional, not generated.** Every script parses its own options with a `case` loop
 over `"$1"`, supports both the short and long form of each, and reports the three kinds of mistake through

@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 #
-# scripts/lib/cli.sh holds the three ways a command line can be wrong, which nine parsers had each been
-# handling slightly differently: two said "Invalid option" where seven said "Unknown option", and some printed
-# the usage with the error while others left the reader guessing.
+# scripts/lib/cli.sh holds the three ways a command line can be wrong, so that nine parsers report them
+# alike: one wording for an unknown option, one for a missing value, one for a leftover argument — each with
+# the usage beside it, since an error without the usage leaves the reader guessing.
 #
 # It is not a general option parser. Each script keeps its own option table and its own usage text — a
 # generated usage reads worse than a written one, and a generic parser would have to reproduce every script's
@@ -27,7 +27,7 @@ $1"
 
 # --- die_usage ---------------------------------------------------------------------------------
 
-# The error and the usage together: one without the other is what the scripts had been doing inconsistently.
+# The error and the usage together: an error alone leaves the reader guessing, and a usage alone buries it.
 @test "die_usage reports the message and the usage, and exits 1" {
   with_usage 'die_usage "Unknown option \"-z\"."; echo "not reached"'
   [ "$status" -eq 1 ]
