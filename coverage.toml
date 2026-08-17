@@ -21,7 +21,10 @@ html = "coverage"
 #
 #   * branches for a tool that is absent. dot_clean, flock, ionice, visudo and systemd-run are stubbed so
 #     the two CI runners agree, which means each one's "command not found, skipping" path never runs;
-#   * colour setup behind `[[ -t 1 ]]`, since bats is never a terminal;
+#   * colour setup behind `[[ -t 1 ]]`, since bats is never a terminal — which is most of colors.sh, whose
+#     job is to assign ten variables when stdout is a terminal and nothing otherwise;
+#   * one of the two branches in platform.sh, always: it picks between GNU and BSD `stat` when it loads, so
+#     the Linux run cannot reach the BSD arm and the macOS run cannot reach the GNU one;
 #   * root-only and non-root-only branches, each unreachable on one of the two runs;
 #   * guards that exist precisely because they should never fire;
 #   * the interiors of the two multi-line `xmllint --xpath` expressions in dmarc-report. Bash attributes
@@ -39,10 +42,11 @@ html = "coverage"
 # reads an ordinary prose line as code, so a file that is not bash at all is otherwise reported as bash
 # that never ran — a README beside a script cost 36 uncovered lines before it was excluded.
 #
-# The measured figure is 92.22% (3282/3559 lines) across 22 files. It rose when the awk and jq programs
-# moved into their own files: their interiors were counted as bash that never ran, and a program file is
-# not measured at all. What is left is the list above.
+# The measured figure is 93.53% (3544/3789 lines) across 32 files. Two things push it up: an awk or jq
+# program in its own file is not measured at all, where its interior used to count as bash that never ran;
+# and the shared libraries are exercised directly by their own suites rather than only through whichever
+# script happened to call them. What is left is the list above.
 #
 # Raise it as coverage climbs; never lower it to make a red build pass, and never delete a guard to
 # flatter the number.
-gate = 90.0
+gate = 92.0
