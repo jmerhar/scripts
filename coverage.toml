@@ -42,7 +42,7 @@ html = "coverage"
 # reads an ordinary prose line as code, so a file that is not bash at all is otherwise reported as bash
 # that never ran — a README beside a script cost 36 uncovered lines before it was excluded.
 #
-# The measured figure is 93.53% (3544/3789 lines) across 32 files. Two things push it up: an awk or jq
+# The measured figure is 93.49% (3547/3794 lines) across 32 files. Two things push it up: an awk or jq
 # program in its own file is not measured at all, where its interior used to count as bash that never ran;
 # and the shared libraries are exercised directly by their own suites rather than only through whichever
 # script happened to call them. What is left is the list above.

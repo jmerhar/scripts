@@ -700,6 +700,27 @@ with_conf() {
   [[ "$output" == *"Deleted 1 stray file"* ]]
 }
 
+# A deletion that fails has to be reported, not passed over: this tool exists to remove files, and silence
+# would read as success.
+#
+# `rm` is shadowed for this one run rather than made to fail by permissions, because the scan only offers
+# regular files with one link — so no fixture can be undeletable — and the coverage job runs as root, where a
+# read-only parent stops nothing. PATH is prepended, not replaced, so kcov and the other stubs stay reachable.
+@test "a stray that cannot be deleted is reported rather than counted" {
+  local failing="$BATS_TEST_TMPDIR/failing-bin"
+  mkdir -p "$failing"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$failing/rm"
+  chmod +x "$failing/rm"
+
+  orphan loose/stray.mkv 3000
+  rpc_reply core.get_torrents_status '{}'
+  PATH="$failing:$PATH" prune_run --yes
+  [[ "$output" == *"Failed to delete:"* ]]
+  [[ "$output" == *"stray.mkv"* ]]
+  [[ "$output" == *"Deleted 0 stray file"* ]]
+  [ -f "$TEMP_ROOT/loose/stray.mkv" ]
+}
+
 @test "answering n keeps a stray file" {
   orphan loose/stray.mkv 3000
   rpc_reply core.get_torrents_status '{}'
