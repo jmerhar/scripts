@@ -118,6 +118,7 @@ for publishing, `bin/compile-includes.sh` inlines it at build time so published 
 | `platform.sh` | `stat_size`, `stat_mtime`, `file_checksum`, `has_checksum_tool` — the GNU/BSD differences |
 | `prompt.sh` | `prompt_line` and `prompt_key` — needs `colors.sh` |
 | `lang.sh` | the ISO 639 table, `normalize_lang`, `lang_from_tokens` |
+| `cli.sh` | `die_usage`, `require_option_value`, `reject_positionals` — needs `core.sh` |
 
 **A script lists only the libraries it uses directly.** A library declares its own dependencies and the
 compiler follows them, so nobody has to know that a config needs a logger. Each library carries a
@@ -137,6 +138,14 @@ be able to stop.
 one canonicalised languages from a 183-row table while the other used a 24-arm `case`. `--lang vietnamese`
 therefore could not match a track tagged `vi`. `test/shared/lib-lang.bats` asks both scripts and requires
 the same answer, which is what keeps a second copy of that table from appearing.
+
+**Option parsing is conventional, not generated.** Every script parses its own options with a `case` loop
+over `"$1"`, supports both the short and long form of each, and reports the three kinds of mistake through
+`cli.sh` — so "Unknown option", "requires an argument" and "Unexpected arguments" read the same everywhere.
+Each script keeps its own option table and writes its own usage text: a generated usage reads worse than a
+written one, and a generic parser would have to reproduce every script's diagnostics to avoid changing them.
+`cli.sh` calls `show_usage`, which the script defines — the one inversion, and the alternative is repeating
+`log_error` + `show_usage` + `exit` at every error site.
 
 `bin/check-includes.sh` is the backstop, in `make lint` and the lint workflow. It computes the same closure
 the compiler does and fails when a script calls a library function nothing it includes provides — which

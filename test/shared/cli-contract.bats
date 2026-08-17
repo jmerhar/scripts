@@ -127,7 +127,7 @@ setup() {
 @test "remove-sidecars rejects an unknown option" {
   run_script "$SIDECARS" --nonsense
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Unknown option '--nonsense'. Use --help for usage."* ]]
+  [[ "$output" == *"Unknown option '--nonsense'."* ]]
 }
 
 @test "remove-sidecars accepts at most one directory" {
@@ -159,7 +159,7 @@ setup() {
 @test "local-backup rejects an invalid option" {
   run_script "$LOCAL_BACKUP" -z
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Invalid option: -z"* ]]
+  [[ "$output" == *"Unknown option '-z'"* ]]
 }
 
 @test "local-backup rejects stray positional arguments" {
@@ -168,11 +168,18 @@ setup() {
   [[ "$output" == *"Unexpected arguments: unexpected"* ]]
 }
 
-# getopts only understands single-dash options, so the long form is not part of the contract.
-@test "local-backup does not accept a long help flag" {
+# Every script parses its own options now, so the long forms are part of the contract rather than something
+# getopts could not express.
+@test "local-backup accepts the long help flag" {
   run_script "$LOCAL_BACKUP" --help
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"Invalid option"* ]]
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage: local-backup"* ]]
+}
+
+@test "photo-backup accepts the long forms of its options" {
+  run_snippet "$PHOTO_BACKUP" 'parse_options --host example.com --path /backups --source /tmp --dry-run
+    printf "%s %s %s %s" "$HOST" "$DEST_PATH" "${SOURCES[0]}" "$DRY_RUN_FLAG"'
+  [ "$output" = "example.com /backups /tmp --dry-run" ]
 }
 
 @test "local-backup -d turns on debug output" {
@@ -183,7 +190,7 @@ setup() {
 @test "photo-backup rejects an invalid option" {
   run_script "$PHOTO_BACKUP" -z
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Invalid option: -z"* ]]
+  [[ "$output" == *"Unknown option '-z'"* ]]
 }
 
 @test "photo-backup rejects stray positional arguments" {
@@ -197,7 +204,7 @@ setup() {
 @test "mdcheck-progress rejects an unknown option" {
   run_script "$MDCHECK" --nonsense
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Unknown option '--nonsense'. Use --help for usage."* ]]
+  [[ "$output" == *"Unknown option '--nonsense'."* ]]
 }
 
 @test "mdcheck-progress records its flags" {
@@ -262,35 +269,35 @@ require_non_root() {
 @test "prune-orphaned-torrents rejects an unknown option" {
   run_script "$PRUNE" --nonsense
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Unknown option '--nonsense'. Use --help for usage."* ]]
+  [[ "$output" == *"Unknown option '--nonsense'."* ]]
 }
 
 @test "dmarc-report rejects an unknown option" {
   run_script "$DMARC" --nonsense
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Unknown option '--nonsense'. Use --help for usage."* ]]
+  [[ "$output" == *"Unknown option '--nonsense'."* ]]
 }
 
 @test "subtitle-report rejects an unknown option" {
   run_script "$SUBREPORT" --nonsense
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Unknown option '--nonsense'. Use --help for usage."* ]]
+  [[ "$output" == *"Unknown option '--nonsense'."* ]]
 }
 
 @test "subtitle-sync rejects an unknown option" {
   run_script "$SUBSYNC" --nonsense
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Unknown option '--nonsense'. Use --help for usage."* ]]
+  [[ "$output" == *"Unknown option '--nonsense'."* ]]
 }
 
 @test "subtitle-sync reports an option whose argument is missing" {
-  run_func "$SUBSYNC" _require_arg --lang
+  run_func "$SUBSYNC" require_option_value --lang
   [ "$status" -eq 1 ]
   [[ "$output" == *"Option '--lang' requires an argument."* ]]
 }
 
 @test "subtitle-sync accepts an option that has its argument" {
-  run_func "$SUBSYNC" _require_arg --lang en
+  run_func "$SUBSYNC" require_option_value --lang en
   [ "$status" -eq 0 ]
 }
 

@@ -15,6 +15,9 @@ TEMP_DIR=$(mktemp -d)
 readonly TEMP_DIR
 
 # --- Shared Library ---
+# shellcheck source=../../lib/cli.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/cli.sh"
+# @include ../../lib/cli.sh
 # shellcheck source=../../lib/core.sh
 source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
 # @include ../../lib/core.sh
@@ -52,13 +55,13 @@ Required settings must be provided either in a config file
 (e.g., /etc/${SCRIPT_NAME}.conf) or via the options below.
 
 Options:
-  -s PATH       Source path (can be used multiple times)
-  -H HOST       Backup server hostname (required)
-  -p PATH       Destination path (required)
-  -l FILE       Log file path (optional)
-  -n            Dry-run mode (no changes are made)
-  -d            Debug mode (enables verbose logging)
-  -h            Show this help message
+  -s, --source PATH     Source path (can be used multiple times)
+  -H, --host HOST       Backup server hostname (required)
+  -p, --path PATH       Destination path (required)
+  -l, --log-file FILE   Log file path (defaults to <prefix>/var/log/${SCRIPT_NAME}.log when installed)
+  -n, --dry-run         Dry-run mode (no changes are made)
+  -d, --debug           Debug mode (enables verbose logging)
+  -h, --help            Show this help message
 EOF
 }
 
@@ -70,37 +73,23 @@ EOF
 #   Command-line arguments passed to the script.
 #######################################
 parse_options() {
-  while getopts ":s:H:p:l:ndh" opt; do
-    case "${opt}" in
-      s) SOURCES+=("${OPTARG}") ;;
-      H) HOST="${OPTARG}" ;;
-      p) DEST_PATH="${OPTARG}" ;;
-      l) LOG_FILE="${OPTARG}" ;;
-      n) DRY_RUN_FLAG="--dry-run" ;;
-      d) enable_debug_mode ;;
-      h)
-        show_usage
-        exit 0
-        ;;
-      :)
-        log_error "Option -${OPTARG} requires an argument."
-        show_usage
-        exit 1
-        ;;
-      *)
-        log_error "Invalid option: -${OPTARG}"
-        show_usage
-        exit 1
-        ;;
+  while (( $# > 0 )); do
+    case "$1" in
+      -s | --source)   require_option_value "$@"; SOURCES+=("$2"); shift 2 ;;
+      -H | --host)     require_option_value "$@"; HOST="$2"; shift 2 ;;
+      -p | --path)     require_option_value "$@"; DEST_PATH="$2"; shift 2 ;;
+      -l | --log-file) require_option_value "$@"; LOG_FILE="$2"; shift 2 ;;
+      -n | --dry-run)  DRY_RUN_FLAG="--dry-run"; shift ;;
+      -d | --debug)    enable_debug_mode; shift ;;
+      -h | --help)     show_usage; exit 0 ;;
+      -*)              die_usage "Unknown option '$1'." ;;
+      *)               break ;;
     esac
   done
-  shift $((OPTIND - 1))
 
-  if (( $# > 0 )); then
-    log_error "Unexpected arguments: $*"
-    show_usage
-    exit 1
-  fi
+  # This script takes no positional arguments, and reports one as such rather than as an unknown option: a
+  # stray path is a different mistake from a mistyped flag.
+  reject_positionals "$@"
 }
 
 

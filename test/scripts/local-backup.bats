@@ -117,7 +117,7 @@ with_conf() {
 @test "an invalid option is refused" {
   backup_run -Z
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Invalid option"* ]]
+  [[ "$output" == *"Unknown option"* ]]
 }
 
 @test "an unexpected argument is refused" {

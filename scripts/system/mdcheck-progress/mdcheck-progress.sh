@@ -39,6 +39,9 @@ set -o pipefail
 # shellcheck source=../../lib/colors.sh
 source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/colors.sh"
 # @include ../../lib/colors.sh
+# shellcheck source=../../lib/cli.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/cli.sh"
+# @include ../../lib/cli.sh
 # shellcheck source=../../lib/core.sh
 source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
 # @include ../../lib/core.sh
@@ -115,7 +118,7 @@ parse_options() {
       -d | --debug) enable_debug_mode; shift ;;
       -h | --help) show_usage; exit 0 ;;
       --) shift; _filters+=("$@"); break ;;
-      -*) log_error "Unknown option '$1'. Use --help for usage."; exit 1 ;;
+      -*) die_usage "Unknown option '$1'." ;;
       *) _filters+=("${1#/dev/}"); shift ;;
     esac
   done

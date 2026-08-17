@@ -26,6 +26,9 @@ source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/platform.sh"
 # shellcheck source=../../lib/prompt.sh
 source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/prompt.sh"
 # @include ../../lib/prompt.sh
+# shellcheck source=../../lib/cli.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/cli.sh"
+# @include ../../lib/cli.sh
 # shellcheck source=../../lib/core.sh
 source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
 # @include ../../lib/core.sh
@@ -112,8 +115,7 @@ parse_options() {
         break
         ;;
       -*)
-        log_error "Unknown option '$1'. Use --help for usage."
-        exit 1
+        die_usage "Unknown option '$1'."
         ;;
       *)
         positional+=("$1")

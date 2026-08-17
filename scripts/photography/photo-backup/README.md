@@ -50,13 +50,13 @@ photo-backup \
 
 | Flag | Description |
 |------|-------------|
-| `-s PATH` | Source path (can be used multiple times). |
-| `-H HOST` | Backup server hostname or IP. |
-| `-p PATH` | Destination path on the server. |
-| `-n` | Dry-run mode — show what would happen without making changes. |
-| `-d` | Debug mode — enable verbose command logging. |
-| `-l FILE` | Log all output to a file. |
-| `-h` | Show help. |
+| `-s`, `--source PATH` | Source path (can be used multiple times). |
+| `-H`, `--host HOST` | Backup server hostname or IP. |
+| `-p`, `--path PATH` | Destination path on the server. |
+| `-n`, `--dry-run` | Dry-run mode — show what would happen without making changes. |
+| `-d`, `--debug` | Debug mode — enable verbose command logging. |
+| `-l`, `--log-file FILE` | Log all output to a file. Defaults to `<prefix>/var/log/photo-backup.log` for an installed copy. |
+| `-h`, `--help` | Show help. |
 
 ### Example
 

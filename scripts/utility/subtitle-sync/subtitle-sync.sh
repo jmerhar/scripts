@@ -27,6 +27,9 @@ set -o pipefail
 # shellcheck source=../../lib/lang.sh
 source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/lang.sh"
 # @include ../../lib/lang.sh
+# shellcheck source=../../lib/cli.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/cli.sh"
+# @include ../../lib/cli.sh
 # shellcheck source=../../lib/core.sh
 source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
 # @include ../../lib/core.sh
@@ -166,17 +169,17 @@ parse_options() {
     case "$1" in
       --embedded) _embedded=true; shift ;;
       --remux) _remux=true; shift ;;
-      -g|--lang) _require_arg "$@"; _lang="$2"; shift 2 ;;
-      -m|--model) _require_arg "$@"; _model="$2"; shift 2 ;;
-      -p|--split-penalty) _require_arg "$@"; _split_penalty="$2"; shift 2 ;;
-      --max-words) _require_arg "$@"; _max_words="$2"; shift 2 ;;
-      -t|--threads) _require_arg "$@"; _threads="$2"; shift 2 ;;
+      -g|--lang) require_option_value "$@"; _lang="$2"; shift 2 ;;
+      -m|--model) require_option_value "$@"; _model="$2"; shift 2 ;;
+      -p|--split-penalty) require_option_value "$@"; _split_penalty="$2"; shift 2 ;;
+      --max-words) require_option_value "$@"; _max_words="$2"; shift 2 ;;
+      -t|--threads) require_option_value "$@"; _threads="$2"; shift 2 ;;
       --no-anchor) _anchor=false; shift ;;
-      --anchor-max) _require_arg "$@"; _anchor_max="$2"; shift 2 ;;
+      --anchor-max) require_option_value "$@"; _anchor_max="$2"; shift 2 ;;
       --fps-guess) _fps_guess=true; shift ;;
-      --backup-suffix) _require_arg "$@"; _backup_suffix="$2"; shift 2 ;;
+      --backup-suffix) require_option_value "$@"; _backup_suffix="$2"; shift 2 ;;
       -f|--force) _force=true; shift ;;
-      --video) _require_arg "$@"; _video="$2"; shift 2 ;;
+      --video) require_option_value "$@"; _video="$2"; shift 2 ;;
       --no-cache) _use_cache=false; shift ;;
       -n|--dry-run) _dry_run=true; shift ;;
       -C|--no-color) _no_color=true; shift ;;
@@ -220,12 +223,6 @@ parse_options() {
 # Arguments:
 #   The current option and the remaining args ("$@" from the caller).
 ########################################
-_require_arg() {
-  if [[ $# -lt 2 ]]; then
-    log_error "Option '$1' requires an argument."
-    exit 1
-  fi
-}
 
 ########################################
 # Applies optional overrides from a loaded config file onto the defaults.

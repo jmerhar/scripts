@@ -72,7 +72,7 @@ rsync_argv() {
   backup_run -h
   [ "$status" -eq 0 ]
   [[ "$output" == *"Syncs photos from multiple sources"* ]]
-  [[ "$output" == *"-s PATH"* ]]
+  [[ "$output" == *"-s, --source PATH"* ]]
 }
 
 @test "the host, destination and sources are all required" {
@@ -114,13 +114,13 @@ rsync_argv() {
 @test "an option missing its argument is refused" {
   backup_run -H
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Option -H requires an argument"* ]]
+  [[ "$output" == *"Option '-H' requires an argument"* ]]
 }
 
 @test "an unknown option is refused" {
   backup_run -Z
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Invalid option: -Z"* ]]
+  [[ "$output" == *"Unknown option '-Z'"* ]]
 }
 
 @test "settings can come entirely from the config file" {

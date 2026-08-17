@@ -18,6 +18,9 @@ source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/colors.sh"
 # shellcheck source=../../lib/platform.sh
 source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/platform.sh"
 # @include ../../lib/platform.sh
+# shellcheck source=../../lib/cli.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/cli.sh"
+# @include ../../lib/cli.sh
 # shellcheck source=../../lib/core.sh
 source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
 # @include ../../lib/core.sh
@@ -136,9 +139,7 @@ parse_options() {
             d) _opt_no_dotfiles=true ;;
             x)
               if (( i + 1 < ${#combined} )); then
-                log_error "-x must be last in a combined flag group (requires an argument)"
-                show_usage
-                exit 1
+                die_usage "-x must be last in a combined flag group (requires an argument)"
               fi
               _opt_excludes+=("$1")
               shift
@@ -146,9 +147,7 @@ parse_options() {
             n) _opt_no_color=true ;;
             h) show_usage; exit 0 ;;
             *)
-              log_error "Unknown option: -${combined:$i:1}"
-              show_usage
-              exit 1
+              die_usage "Unknown option: -${combined:$i:1}"
               ;;
           esac
         done

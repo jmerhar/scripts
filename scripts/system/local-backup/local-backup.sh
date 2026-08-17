@@ -19,6 +19,9 @@ readonly MDSTAT MDSTAT_CHECK_INTERVAL
 
 # --- Shared Library ---
 _LOG_QUIET="true"
+# shellcheck source=../../lib/cli.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/cli.sh"
+# @include ../../lib/cli.sh
 # shellcheck source=../../lib/core.sh
 source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
 # @include ../../lib/core.sh
@@ -42,8 +45,8 @@ All settings are read from a configuration file
 (e.g., /etc/${SCRIPT_NAME}.conf).
 
 Options:
-  -d    Debug mode (enables verbose logging to stderr)
-  -h    Show this help message
+  -d, --debug   Debug mode (enables verbose logging to stderr)
+  -h, --help    Show this help message
 EOF
 }
 
@@ -55,27 +58,16 @@ EOF
 #   Command-line arguments passed to the script.
 #######################################
 parse_options() {
-  while getopts ":dh" opt; do
-    case "${opt}" in
-      d) enable_debug_mode ;;
-      h)
-        show_usage
-        exit 0
-        ;;
-      *)
-        log_error "Invalid option: -${OPTARG}"
-        show_usage
-        exit 1
-        ;;
+  while (( $# > 0 )); do
+    case "$1" in
+      -d | --debug) enable_debug_mode; shift ;;
+      -h | --help)  show_usage; exit 0 ;;
+      -*)           die_usage "Unknown option '$1'." ;;
+      *)            break ;;
     esac
   done
-  shift $((OPTIND - 1))
 
-  if (( $# > 0 )); then
-    log_error "Unexpected arguments: $*"
-    show_usage
-    exit 1
-  fi
+  reject_positionals "$@"
 }
 
 #######################################

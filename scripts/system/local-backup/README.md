@@ -23,7 +23,12 @@ Creates and automatically prunes incremental rsync-based system backups. Designe
 
 ### Usage
 
-The script takes no arguments. All settings come from the configuration file.
+Settings come from the configuration file; the two options below are the whole command line.
+
+| Flag | Description |
+|------|-------------|
+| `-d`, `--debug` | Debug mode — verbose logging to stderr. |
+| `-h`, `--help` | Show help. |
 
 **1. Configure** — Create `/etc/local-backup.conf` (a [template](local-backup.conf) is included):
 
