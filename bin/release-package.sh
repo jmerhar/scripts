@@ -118,12 +118,15 @@ package_and_upload() {
   local name="$1" version="$2" tag="$3"
 
   log_info "Packaging ${name} ${version}"
-  "${PACKAGER}" "${name}" "${version}"
+  # Both of these write to stdout — dpkg-deb announces the package it builds, gh reports the upload — and
+  # this function's stdout is the commit message, captured by the caller. Sent to stderr so the message
+  # stays one line: a multi-line value is what $GITHUB_OUTPUT rejects, which skips both downstream pushes.
+  "${PACKAGER}" "${name}" "${version}" >&2
 
   local tarball="${REPO_ROOT}/dist/tarballs/scripts-${name}-${version}.tar.gz"
   if [[ -f "${tarball}" ]]; then
     log_info "Uploading $(basename "${tarball}") to ${tag}"
-    gh release upload "${tag}" "${tarball}" --clobber
+    gh release upload "${tag}" "${tarball}" --clobber >&2
   else
     log_info "No tarball for ${name} ${version}; nothing to upload."
   fi
@@ -215,6 +218,15 @@ main() {
       exit 1
       ;;
   esac
+
+  # A message that picked up a stray line would be written as a multi-line value, which $GITHUB_OUTPUT
+  # rejects — and the two downstream pushes are skipped when that output is empty, so the failure is a
+  # release that packages and then publishes nowhere. Refused here instead, where it names the cause.
+  if [[ "${message}" != "${message%%$'\n'*}" ]]; then
+    log_error "The commit message is not a single line; something wrote to stdout:"
+    printf '%s\n' "${message}" >&2
+    exit 1
+  fi
 
   printf '%s\n' "${message}"
   if [[ -n "${GITHUB_OUTPUT:-}" ]]; then

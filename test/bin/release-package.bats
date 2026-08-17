@@ -31,9 +31,14 @@ EOF
   fake_repo_replace_tool package-script.sh <<EOF
 #!/usr/bin/env bash
 printf 'package-script %s\n' "\$*" >> "$STUB_CALLS"
+# Writes to stdout as the real one does — dpkg-deb announces the package it builds — because this
+# function's stdout is the commit message the caller captures.
+echo "dpkg-deb: building package '\$1'"
 mkdir -p "$FAKE_REPO/dist/tarballs"
 : > "$FAKE_REPO/dist/tarballs/scripts-\$1-\$2.tar.gz"
 EOF
+  # gh reports its upload on stdout too.
+  printf 'Successfully uploaded the asset\n' > "$STUB_FIXTURES/gh.stdout"
 
   # A repository with tags, since republish-all reads the newest tag per script.
   git_fixture_init "$FAKE_REPO"
@@ -197,6 +202,34 @@ tag_repo() {
   GITHUB_ACTIONS= run bash -c "'$TOOL' release alpha-tool-v1.2.3 2>/dev/null"
   [ "$status" -eq 0 ]
   [ "$output" = "feat(alpha-tool): Release version v1.2.3" ]
+}
+
+# The failure this guards against: the packager and gh both write to stdout, and this function's stdout is
+# the commit message. A message that picked up one of their lines is written to $GITHUB_OUTPUT as a
+# multi-line value, which Actions rejects — and both downstream pushes are skipped when that output is
+# empty, so the release packages and then publishes nowhere.
+@test "the commit message is one line even when the packager and gh are noisy" {
+  local out="$BATS_TEST_TMPDIR/github-output"
+  : > "$out"
+  GITHUB_OUTPUT="$out" run_script "$TOOL" release alpha-tool-v1.2.3
+  [ "$status" -eq 0 ]
+  run cat "$out"
+  [ "${#lines[@]}" -eq 1 ]
+  [ "$output" = "commit_message=feat(alpha-tool): Release version v1.2.3" ]
+}
+
+@test "a message that picked up another line is refused, naming the cause" {
+  fake_repo_replace_tool package-script.sh <<EOF
+#!/usr/bin/env bash
+mkdir -p "$FAKE_REPO/dist/tarballs"
+: > "$FAKE_REPO/dist/tarballs/scripts-\$1-\$2.tar.gz"
+EOF
+  # A message that already contains a newline: what a stray write into the captured stream produces.
+  run bash -c "sed 's|feat(%s): Release version %s|feat(%s): stray\\nRelease %s|' '$TOOL' > '$FAKE_REPO/bin/noisy.sh'
+    chmod +x '$FAKE_REPO/bin/noisy.sh'
+    '$FAKE_REPO/bin/noisy.sh' release alpha-tool-v1.2.3"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not a single line"* ]]
 }
 
 # --- Safety ------------------------------------------------------------------------------------
