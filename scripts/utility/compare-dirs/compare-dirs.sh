@@ -128,6 +128,11 @@ parse_options() {
         positional+=("$@")
         break
         ;;
+      --*)
+        # Caught before the combined-flag arm below, which strips one dash and reads the rest as single
+        # letters — for a long option that means reporting "Unknown option: --" and losing the name.
+        die_usage "Unknown option '$1'."
+        ;;
       -*)
         local combined="${1#-}"
         shift

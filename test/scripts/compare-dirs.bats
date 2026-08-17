@@ -76,6 +76,29 @@ compare() {
   [ "$status" -eq 0 ]
 }
 
+# An unknown long option used to fall into the combined-short-flag path, which strips one dash and reads the
+# rest as single letters — so the message was "Unknown option: --" with the name gone.
+@test "an unknown long option is reported by name" {
+  compare --nonsense
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Unknown option '--nonsense'"* ]]
+}
+
+@test "an unknown short option is still reported by letter" {
+  compare -Z
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Unknown option: -Z"* ]]
+}
+
+# The combined form is why that arm exists, so it has to keep working.
+@test "combined short flags are still accepted" {
+  put LEFT a.txt hello
+  put RIGHT a.txt hello
+  touch -r "$LEFT/a.txt" "$RIGHT/a.txt"
+  compare -tci
+  [ "$status" -eq 0 ]
+}
+
 # --- Presence ----------------------------------------------------------------------------------
 
 @test "a file only on the left is reported as such" {
