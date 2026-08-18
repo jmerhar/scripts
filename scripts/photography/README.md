@@ -4,11 +4,18 @@ Utilities for managing photography workflows — intelligent backups and library
 
 ## Scripts
 
-<!-- BEGIN TABLE -->
-| Script | Description |
-|---------|-------------|
-| [`photo-backup`](photo-backup/) | Back up photos from several sources to one remote directory, protecting each from the others' deletions. |
-| [`remove-sidecars`](remove-sidecars/) | Clean up sidecar JPEG files from RAW+JPEG photo libraries. |
+<!-- BEGIN INDEX -->
+### [`photo-backup`](photo-backup/)
 
-<!-- END TABLE -->
+A robust script for backing up photo collections from multiple sources to a remote server using rsync.
+
+deps: `rsync`
+
+### [`remove-sidecars`](remove-sidecars/)
+
+A script to find and delete "sidecar" files when a corresponding RAW photo file exists.
+
+`bash 4.0+`
+
+<!-- END INDEX -->
 

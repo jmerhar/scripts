@@ -53,16 +53,16 @@ log files. `log_command` runs a command with its output copied into `LOG_FILE`, 
 ### Documentation (READMEs)
 
 - **Each script documents itself** in `scripts/<topic>/<script>/README.md`. It opens with a level-1 heading naming the script, then (include only the parts that apply): description → `### Features` → `### Requirements` → `### Usage` → `### Options` → `### Example` → `### Exit Codes`. This is the file to edit when a script's behaviour, options or requirements change.
-- **The index tables are generated, not written.** The root `README.md` and each `scripts/<topic>/README.md` hold a `<!-- BEGIN TABLE -->` block filled in from `scripts.yaml` by `bin/update-all-tables.sh`, which knows the set of indexes and derives the topic list from the manifest. Run `make docs` after touching the manifest; `make lint` and the lint workflow run it with `--check` and fail when an index is stale.
+- **The index sections are generated, not written.** The root `README.md` and each `scripts/<topic>/README.md` hold a `<!-- BEGIN INDEX -->` block filled in from `scripts.yaml` by `bin/update-all-indexes.sh`, which knows the set of indexes and derives the topic list from the manifest. Each script becomes a level-3 heading (linking to its directory), the manifest `description` as a paragraph, and a compact tagline of minimum bash version and dependencies. Run `make docs` after touching the manifest; `make lint` and the lint workflow run it with `--check` and fail when an index is stale.
 - Index links point at the **directory** (`scripts/<topic>/<script>/`), never at the README inside it. GitHub renders a directory's README when the directory is visited, so the shorter target works and shows the script's other files beside its docs. Do not add `README.md#<anchor>` targets: an anchor is the one thing a directory link cannot carry, and with one README per script there is nothing to anchor to.
 
-**Keep the docs in sync with the code.** A script's own README is hand-written, so a change to its options or behaviour means editing it in the same commit. Its one-line index entry comes from the manifest's `summary`, so that is where a changed summary goes — never into a table by hand.
+**Keep the docs in sync with the code.** A script's own README is hand-written, so a change to its options or behaviour means editing it in the same commit. Its index entry — the description paragraph and the dependency/min-bash tagline — comes from the manifest, so that is where a changed entry goes — never into the generated section by hand.
 
 ### Manifest (`scripts.yaml`)
 
-All publishable scripts are registered in `scripts.yaml`. The manifest contains repo-level defaults (author, homepage, license) and per-script entries with path, summary, description, and dependencies.
+All publishable scripts are registered in `scripts.yaml`. The manifest contains repo-level defaults (author, homepage, license) and per-script entries with path, description, and dependencies.
 
-Two texts, because the audiences differ: `description` is package metadata — what someone inspecting a `.deb` or a formula reads — and may run long. `summary` is the one-line form the generated documentation indexes use. Omit `summary` and the index falls back to `description`, which usually reads as too wordy in a table.
+`description` is the single text field: the packager reads it as package metadata, and the README index shows it in full as the paragraph under each script's heading. The tagline beneath it — the minimum bash version and the dependency list — is derived from `min_bash` and `dependencies`, so those are what a changed tagline edits.
 
 ```yaml
 defaults:
@@ -73,8 +73,7 @@ defaults:
 scripts:
   script-name:
     path: scripts/topic/script-name/script-name.sh
-    summary: "Short line for the README index."
-    description: "Longer description, used as package metadata."
+    description: "Longer description, used as package metadata and shown in the README index."
     min_bash: "4.3"              # Optional; omit when only baseline features are used
     platforms: [debian]          # Optional; omit to publish to both (see below)
     dependencies:
@@ -238,7 +237,7 @@ longer matches the tree — before a release does. It runs in CI and from `make 
 - `.github/workflows/publish.yml` packages on release or manual dispatch, then pushes formulas to `jmerhar/homebrew-scripts` and signed `.deb` packages to `jmerhar/apt-scripts`. **The workflow holds no logic**: every step is a one-line call into `bin/`, so the release path is ShellCheck-clean, covered by tests, and runnable by hand.
   - `bin/release-package.sh <event> [tag]` — takes `github.event_name` straight through, so the choice between publishing one script from a tag and republishing the latest of every script is made in tested code. It validates the `script-name-vX.Y.Z` tag, packages, uploads the tarball, and prints the commit message the downstream repositories carry.
   - `bin/publish-downstream.sh <homebrew|apt> <checkout> <message>` — the fetch-reset-regenerate-push cycle both downstream repositories share, including the APT index rebuild and signing. It retries against a moving remote, which is what parallel releases produce; a failed fetch is another attempt rather than the end of the run.
-- `bin/update-readme-table.sh` regenerates README tables in downstream repos from the manifest
+- `bin/update-readme-index.sh` regenerates the README script indexes in downstream repos from the manifest
 - **Release notes**: every GitHub Release should include a summary of user-facing changes (new features, fixes, breaking changes). Use markdown headers (`### New features`, `### Fixes`, etc.) for multi-item releases, or a plain bullet list for single-item releases.
 
 ### Automated Tests
@@ -259,7 +258,7 @@ make test      # the suite
 make lint      # ShellCheck, the manifest, bash versions, the awk/jq programs, the includes
 make check     # all three; gate a commit on this
 make smoke     # package every manifest entry at v0.0.0, catching manifest/packager drift
-make docs      # regenerate the README index tables from the manifest
+make docs      # regenerate the README index sections from the manifest
 make compile   # compile every script into dist/compiled/, the form that gets published
 make published # compile a throwaway copy and check every published script is self-contained
 make coverage  # the suite under kcov, then the shared gate

@@ -101,16 +101,15 @@ teardown() {
   [[ "$output" == *"Expected exactly 2 arguments"* ]]
 }
 
-# The README and the column header are required; everything past them is an option, so the count is a
-# minimum rather than an exact number.
-@test "smoke: update-readme-table refuses to run without arguments" {
-  run_script "$REPO_ROOT/bin/update-readme-table.sh"
+# The README file is the one required argument; everything past it is an option.
+@test "smoke: update-readme-index refuses to run without arguments" {
+  run_script "$REPO_ROOT/bin/update-readme-index.sh"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Expected at least 2 arguments"* ]]
+  [[ "$output" == *"Expected a README file"* ]]
 }
 
-@test "smoke: update-all-tables refuses an option it does not have" {
-  run_script "$REPO_ROOT/bin/update-all-tables.sh" --nonsense
+@test "smoke: update-all-indexes refuses an option it does not have" {
+  run_script "$REPO_ROOT/bin/update-all-indexes.sh" --nonsense
   [ "$status" -eq 1 ]
   [[ "$output" == *"Unknown option"* ]]
 }

@@ -53,11 +53,11 @@ jobs:
       - name: Check every script includes the libraries it uses
         run: ./bin/check-includes.sh
 
-      # The README index tables are generated from the manifest, so a hand-edit or a manifest change
+      # The README indexes are generated from the manifest, so a hand-edit or a manifest change
       # without a `make docs` leaves them stale. Regenerating into a temp file and diffing turns that
       # into a build failure rather than something a reader notices later.
-      - name: Check the README index tables match the manifest
-        run: ./bin/update-all-tables.sh --check
+      - name: Check the README indexes match the manifest
+        run: ./bin/update-all-indexes.sh --check
 
   smoke-test:
     name: Packaging smoke test
