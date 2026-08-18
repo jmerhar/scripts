@@ -34,7 +34,7 @@ set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
-GENERATOR="${SCRIPT_DIR}/update-readme-table.sh"
+GENERATOR="${SCRIPT_DIR}/update-readme-index.sh"
 
 #######################################
 # Prints a timestamped error message to stderr, and as a GitHub Actions annotation under CI.
@@ -90,7 +90,7 @@ refresh_homebrew() {
     log_info "No formulas to copy."
   fi
 
-  ( cd "${checkout}" && "${GENERATOR}" README.md "Formula" )
+  ( cd "${checkout}" && "${GENERATOR}" README.md )
 }
 
 #######################################
@@ -130,7 +130,7 @@ refresh_apt() {
     gpg --batch --pinentry-mode loopback --passphrase "${GPG_PASSPHRASE:-}" \
       --default-key "jmerhar-bot" --clearsign -o dists/stable/InRelease dists/stable/Release
 
-    "${GENERATOR}" README.md "Package"
+    "${GENERATOR}" README.md
   )
 }
 

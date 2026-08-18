@@ -161,7 +161,7 @@ check_entry() {
 
   # The generated indexes link each script to its directory, and GitHub renders a directory by showing
   # its README. A directory without one is a link that resolves and displays nothing, which is the one
-  # broken-documentation case generating the tables from this manifest cannot rule out.
+  # broken-documentation case generating the indexes from this manifest cannot rule out.
   if [[ ! -f "$(dirname "${file}")/README.md" ]]; then
     log_error "$(dirname "${path}")/README.md is missing, so the index links to a directory that renders no documentation."
     failed=1

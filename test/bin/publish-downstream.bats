@@ -27,7 +27,7 @@ setup() {
   git clone --quiet "$REMOTE" "$CHECKOUT" 2>/dev/null
   git_fixture_init "$CHECKOUT"
   mkdir -p "$CHECKOUT/Formula" "$CHECKOUT/pool/main" "$CHECKOUT/dists/stable/main/binary-all"
-  printf '# Downstream\n\n<!-- BEGIN TABLE -->\n<!-- END TABLE -->\n' > "$CHECKOUT/README.md"
+  printf '# Downstream\n\n<!-- BEGIN INDEX -->\n<!-- END INDEX -->\n' > "$CHECKOUT/README.md"
   printf 'APT::FTPArchive::Release::Origin "test";\n' > "$CHECKOUT/apt-ftparchive.conf"
   git -C "$CHECKOUT" add -A
   git -C "$CHECKOUT" commit --quiet -m "initial"

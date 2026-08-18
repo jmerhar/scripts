@@ -6,22 +6,74 @@ A collection of packaged shell scripts for macOS and Linux, distributed via [Hom
 
 ## Available Scripts
 
-<!-- BEGIN TABLE -->
-| Script | Description | Location |
-|---------|-------------|----------|
-| [`compare-dirs`](scripts/utility/compare-dirs/) | Recursively compare two directories, reporting differences in existence, size, timestamps, and checksums. | `scripts/utility/compare-dirs/` |
-| [`dmarc-report`](scripts/utility/dmarc-report/) | Aggregate a folder of DMARC reports into one summary, flagging unenforced domains, unaligned senders, and spoofing. | `scripts/utility/dmarc-report/` |
-| [`local-backup`](scripts/system/local-backup/) | Create incremental rsync backups, pruning old ones and waiting out RAID activity. | `scripts/system/local-backup/` |
-| [`mdcheck-progress`](scripts/system/mdcheck-progress/) | Report MD RAID scrub (`check`) progress and estimated finish time, even while paused between nightly windows. _(Linux only)_ | `scripts/system/mdcheck-progress/` |
-| [`nopasswd-sudo`](scripts/system/nopasswd-sudo/) | Toggle temporary passwordless sudo with auto-revoke and a boot-time safety net. _(Linux only)_ | `scripts/system/nopasswd-sudo/` |
-| [`photo-backup`](scripts/photography/photo-backup/) | Back up photos from several sources to one remote directory, protecting each from the others' deletions. | `scripts/photography/photo-backup/` |
-| [`prune-orphaned-torrents`](scripts/system/prune-orphaned-torrents/) | Find orphaned media left by \*arr hard-linking and interactively remove the matching Deluge torrents. | `scripts/system/prune-orphaned-torrents/` |
-| [`remove-sidecars`](scripts/photography/remove-sidecars/) | Clean up sidecar JPEG files from RAW+JPEG photo libraries. | `scripts/photography/remove-sidecars/` |
-| [`subtitle-report`](scripts/utility/subtitle-report/) | Report subtitle coverage for a media library, by language and source (embedded tracks + sidecars). | `scripts/utility/subtitle-report/` |
-| [`subtitle-sync`](scripts/utility/subtitle-sync/) | Resynchronize drifting subtitles to a video's speech using Whisper and `alass`. | `scripts/utility/subtitle-sync/` |
-| [`unlock-pdf`](scripts/utility/unlock-pdf/) | Decrypt a password-protected PDF file. | `scripts/utility/unlock-pdf/` |
+<!-- BEGIN INDEX -->
+### [`compare-dirs`](scripts/utility/compare-dirs/)
 
-<!-- END TABLE -->
+Recursively compares two directories and reports differences in existence, size, timestamps, and checksums.
+
+`bash 4.0+`
+
+### [`dmarc-report`](scripts/utility/dmarc-report/)
+
+Aggregates a folder of DMARC RUA reports (.xml.gz/.zip) into one overall report, tracking policy changes over time and flagging unenforced domains, unaligned senders, DNS/DKIM errors, and spoofing (grouped into subnets with per-range country lookup).
+
+`bash 4.0+` · deps: `curl`, `jq` (+`libxml2` macOS, `libxml2-utils`, `unzip` Linux)
+
+### [`local-backup`](scripts/system/local-backup/)
+
+A generic script to create and automatically prune rsync-based system backups.
+
+`bash 4.0+` · deps: `rsync`
+
+### [`mdcheck-progress`](scripts/system/mdcheck-progress/)
+
+Reports the progress of an MD RAID check (Debian's monthly mdcheck scrub), including while it is paused between nightly windows, with a schedule-aware estimate of when it will finish.
+
+`bash 4.0+` · deps: `mdadm` _(Linux only)_
+
+### [`nopasswd-sudo`](scripts/system/nopasswd-sudo/)
+
+Toggles temporary passwordless sudo for a user, with an in-session auto-revoke timer and a boot-time safety net so it never stays enabled by accident.
+
+deps: `sudo` _(Linux only)_
+
+### [`photo-backup`](scripts/photography/photo-backup/)
+
+A robust script for backing up photo collections from multiple sources to a remote server using rsync.
+
+deps: `rsync`
+
+### [`prune-orphaned-torrents`](scripts/system/prune-orphaned-torrents/)
+
+Finds orphaned media files left by *arr hard-linking and interactively removes the corresponding torrents from Deluge.
+
+`bash 4.0+` · deps: `curl`, `jq`
+
+### [`remove-sidecars`](scripts/photography/remove-sidecars/)
+
+A script to find and delete "sidecar" files when a corresponding RAW photo file exists.
+
+`bash 4.0+`
+
+### [`subtitle-report`](scripts/utility/subtitle-report/)
+
+Reports on subtitle coverage for a media library, detecting embedded tracks and sidecar files and breaking down counts by language and source.
+
+`bash 4.0+` · deps: `ffmpeg`
+
+### [`subtitle-sync`](scripts/utility/subtitle-sync/)
+
+Resynchronizes drifting subtitles to a video's speech using a Whisper transcript as reference and alass for segment-aware alignment (handles ad-break, global-offset, and speed drift). Requires the external tools 'alass' and 'whisper-ctranslate2' on PATH.
+
+`bash 4.3+` · deps: `ffmpeg`
+
+### [`unlock-pdf`](scripts/utility/unlock-pdf/)
+
+Decrypts a password-protected PDF file using the 'qpdf' command-line tool.
+
+deps: `qpdf`
+
+<!-- END INDEX -->
 
 ## Repository Structure
 
@@ -73,7 +125,7 @@ version itself and says so rather than failing obscurely.
 
 ```bash
 brew tap jmerhar/scripts
-brew install unlock-pdf        # or any script name from the table above
+brew install unlock-pdf        # or any script name from the index above
 ```
 
 ### Debian / Ubuntu (APT)
@@ -89,7 +141,7 @@ echo "deb [arch=all signed-by=/etc/apt/keyrings/jmerhar-scripts.gpg] https://jme
 
 # Install
 sudo apt-get update
-sudo apt-get install unlock-pdf   # or any script name from the table above
+sudo apt-get install unlock-pdf   # or any script name from the index above
 ```
 
 ### Direct Download

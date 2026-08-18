@@ -56,14 +56,14 @@ smoke: ## Package every manifest entry at v0.0.0 as a smoke test
 published: ## Verify every published script compiles to a self-contained file
 	bin/check-published-form.sh
 
-# The root table and every topic index come from scripts.yaml, so a script cannot be renamed,
+# The root index and every topic index come from scripts.yaml, so a script cannot be renamed,
 # moved or added without its documentation following. `make lint` runs the same generator with --check, so
 # a stale index fails the build rather than going unnoticed.
-docs: ## Regenerate the README index tables from the manifest
-	@bin/update-all-tables.sh
+docs: ## Regenerate the README index sections from the manifest
+	@bin/update-all-indexes.sh
 
-docs-check: ## Fail if any README index table is out of date
-	@bin/update-all-tables.sh --check
+docs-check: ## Fail if any README index section is out of date
+	@bin/update-all-indexes.sh --check
 
 test: ## Run the bats suite
 	bats --recursive test/

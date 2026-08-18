@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# update-all-tables.sh is the single caller of the table generator that knows which indexes this
+# update-all-indexes.sh is the single caller of the index generator that knows which indexes this
 # repository has: the root README and one per topic. Two things about it are worth testing — that the
 # topic list comes from the manifest rather than from a hardcoded list, so a script under a new topic
 # cannot go undocumented, and that --check reports every stale index rather than stopping at the first.
@@ -12,9 +12,9 @@ load ../test_helper
 
 setup() {
   setup_common
-  # Both tools have to be present: update-all-tables.sh resolves the generator beside itself.
-  fake_repo_tool update-readme-table.sh
-  fake_repo_tool update-all-tables.sh
+  # Both tools have to be present: update-all-indexes.sh resolves the generator beside itself.
+  fake_repo_tool update-readme-index.sh
+  fake_repo_tool update-all-indexes.sh
   TOOL="$FAKE_TOOL"
 
   cat > "$FAKE_REPO/scripts.yaml" <<'EOF'
@@ -26,15 +26,12 @@ defaults:
 scripts:
   alpha-tool:
     path: scripts/utility/alpha-tool/alpha-tool.sh
-    summary: "An alpha thing."
     description: "An alpha thing, at length."
   system-tool:
     path: scripts/system/system-tool/system-tool.sh
-    summary: "A system thing."
     description: "A system thing, at length."
   aardvark-tool:
     path: scripts/utility/aardvark-tool/aardvark-tool.sh
-    summary: "An aardvark thing."
     description: "An aardvark thing, at length."
 EOF
 
@@ -55,23 +52,23 @@ make_index() {
 
 Intro prose.
 
-<!-- BEGIN TABLE -->
-<!-- END TABLE -->
+<!-- BEGIN INDEX -->
+<!-- END INDEX -->
 
 Closing prose.
 EOF
 }
 
 ########################################
-# Makes a README's table stale by hand-editing inside the markers.
+# Makes a README's index stale by hand-editing inside the markers.
 #
 # Text appended after the END marker would not do: the generator preserves everything outside the
-# markers, so an addition there is prose rather than a stale table.
+# markers, so an addition there is prose rather than a stale index.
 # Arguments:
 #   path: README to edit.
 ########################################
 corrupt_table() {
-  awk '/<!-- BEGIN TABLE -->/ { print; print "| `ghost-tool` | Not in the manifest. |"; next } { print }' \
+  awk '/<!-- BEGIN INDEX -->/ { print; print "### `ghost-tool`"; print ""; print "Not in the manifest."; next } { print }' \
     "$1" > "$1.tmp"
   mv "$1.tmp" "$1"
 }
@@ -93,11 +90,10 @@ corrupt_table() {
   [[ "$output" != *"alpha-tool"* ]]
 }
 
-@test "the root index links to each script's directory and names it" {
+@test "the root index links to each script's directory" {
   run_script "$TOOL"
   run cat "$FAKE_REPO/README.md"
-  [[ "$output" == *"[\`alpha-tool\`](scripts/utility/alpha-tool/)"* ]]
-  [[ "$output" == *"\`scripts/utility/alpha-tool/\`"* ]]
+  [[ "$output" == *"### [\`alpha-tool\`](scripts/utility/alpha-tool/)"* ]]
 }
 
 @test "a topic index links to its scripts as siblings" {
@@ -107,11 +103,10 @@ corrupt_table() {
   [[ "$output" != *"scripts/utility/alpha-tool/"* ]]
 }
 
-@test "the short summary is used rather than the package description" {
+@test "the full description is shown in the index" {
   run_script "$TOOL"
   run cat "$FAKE_REPO/README.md"
-  [[ "$output" == *"An alpha thing."* ]]
-  [[ "$output" != *"at length"* ]]
+  [[ "$output" == *"An alpha thing, at length."* ]]
 }
 
 # Eleven scripts in manifest order are eleven rows in no order a reader can predict, so every index is
@@ -134,17 +129,21 @@ corrupt_table() {
   cat >> "$FAKE_REPO/scripts.yaml" <<'EOF'
   linux-tool:
     path: scripts/system/linux-tool/linux-tool.sh
-    summary: "A Linux thing."
     description: "A Linux thing, at length."
     platforms: [debian]
 EOF
   run_script "$TOOL"
   run cat "$FAKE_REPO/README.md"
-  [[ "$output" == *"A Linux thing. _(Linux only)_"* ]]
-  [[ "$output" != *"An alpha thing. _(Linux only)_"* ]]
+  # The root index links each script to its directory, so the heading is `### [`name`](dir/)`;
+  # match a heading line containing the name, then read to the next heading or the END marker.
+  local linux_block alpha_block
+  linux_block=$(awk '/^### .*`linux-tool`/{f=1; next} /^### |<!-- END/{f=0} f' "$FAKE_REPO/README.md")
+  alpha_block=$(awk '/^### .*`alpha-tool`/{f=1; next} /^### |<!-- END/{f=0} f' "$FAKE_REPO/README.md")
+  [[ "$linux_block" == *"_(Linux only)_"* ]]
+  [[ "$alpha_block" != *"_(Linux only)_"* ]]
 }
 
-@test "prose around the table is preserved" {
+@test "prose around the index is preserved" {
   run_script "$TOOL"
   run cat "$FAKE_REPO/scripts/system/README.md"
   [[ "$output" == *"Intro prose."* ]]
@@ -157,7 +156,6 @@ EOF
   cat >> "$FAKE_REPO/scripts.yaml" <<'EOF'
   net-tool:
     path: scripts/network/net-tool/net-tool.sh
-    summary: "A network thing."
     description: "A network thing, at length."
 EOF
   make_index "$FAKE_REPO/scripts/network/README.md"
@@ -168,12 +166,11 @@ EOF
 }
 
 # A new topic whose index does not exist yet is a mistake to report, not to skip: skipping it would
-# leave the script reachable only from the root table.
+# leave the script reachable only from the root index.
 @test "a topic with no index file is an error naming the topic" {
   cat >> "$FAKE_REPO/scripts.yaml" <<'EOF'
   net-tool:
     path: scripts/network/net-tool/net-tool.sh
-    summary: "A network thing."
     description: "A network thing, at length."
 EOF
   run_script "$TOOL"
@@ -187,7 +184,6 @@ EOF
   cat >> "$FAKE_REPO/scripts.yaml" <<'EOF'
   net-tool:
     path: scripts/network/net-tool/net-tool.sh
-    summary: "A network thing."
     description: "A network thing, at length."
 EOF
   run_script "$TOOL"
@@ -220,7 +216,7 @@ EOF
   run_script "$TOOL"
   run_script "$TOOL" --check
   [ "$status" -eq 0 ]
-  sed -i.bak 's/An alpha thing./A renamed thing./' "$FAKE_REPO/scripts.yaml"
+  sed -i.bak 's/An alpha thing, at length\./A renamed thing./' "$FAKE_REPO/scripts.yaml"
   run_script "$TOOL" --check
   [ "$status" -ne 0 ]
   [[ "$output" == *"A renamed thing."* ]]
@@ -243,7 +239,7 @@ EOF
 # would otherwise be reported one file per run.
 @test "--check reports every stale index, not just the first" {
   run_script "$TOOL"
-  sed -i.bak 's/thing\./thing renamed./' "$FAKE_REPO/scripts.yaml"
+  sed -i.bak 's/at length\./at length, renamed./' "$FAKE_REPO/scripts.yaml"
   run_script "$TOOL" --check
   [ "$status" -ne 0 ]
   run bash -c "printf '%s\n' \"\$1\" | grep -c 'is out of date'" _ "$output"
