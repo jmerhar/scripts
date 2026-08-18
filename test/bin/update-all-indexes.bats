@@ -41,7 +41,7 @@ EOF
 }
 
 ########################################
-# Writes a README containing empty table markers.
+# Writes a README containing empty index markers.
 # Arguments:
 #   path: File to create, with its parent directories.
 ########################################
@@ -263,7 +263,7 @@ EOF
 }
 
 # Without yq the topic list would come out empty and the run would report success having written only
-# the root table.
+# the root index.
 @test "a missing yq is reported rather than producing empty indexes" {
   local minimal="$BATS_TEST_TMPDIR/minimal-bin" cmd
   mkdir -p "$minimal"

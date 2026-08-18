@@ -129,7 +129,7 @@ manifest_with() {
 # --- The documentation rule --------------------------------------------------------------------
 
 # The generated indexes link a script to its directory, and GitHub renders a directory by showing its
-# README. Without one the link resolves and displays nothing, which no amount of generating the tables
+# README. Without one the link resolves and displays nothing, which no amount of generating the indexes
 # from the manifest would catch.
 @test "fails when a registered script has no README beside it" {
   good_script alpha
