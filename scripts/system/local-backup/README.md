@@ -23,12 +23,7 @@ Creates and automatically prunes incremental rsync-based system backups. Designe
 
 ### Usage
 
-Settings come from the configuration file; the two options below are the whole command line.
-
-| Flag | Description |
-|------|-------------|
-| `-d`, `--debug` | Debug mode — verbose logging to stderr. |
-| `-h`, `--help` | Show help. |
+Settings come from the configuration file; the only command-line flags are debug and help (see [Options](#options) below).
 
 **1. Configure** — Create `/etc/local-backup.conf` (a [template](local-backup.conf) is included):
 
@@ -61,3 +56,10 @@ sudo local-backup
 ```
 5 4 * * * /usr/local/bin/local-backup
 ```
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `-d`, `--debug` | Debug mode — verbose logging to stderr. |
+| `-h`, `--help` | Show help. |

@@ -11,7 +11,6 @@ Toggles temporary passwordless `sudo` for a user during a maintenance session, w
 
 ### Requirements
 
-* `bash` 4.0+
 * `sudo` and `systemd` (Debian/Ubuntu)
 
 ### Usage

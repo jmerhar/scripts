@@ -4,22 +4,13 @@ help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*##|^##@' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*## "}; /^##@/ {printf "\n\033[1m%s\033[0m\n", substr($$0, 5); next} {printf "  \033[36mmake %-14s\033[0m %s\n", $$1, $$2}'
 
-# The coverage summary and gate are shared tooling from jmerhar/coverage, configured by coverage.toml.
-# Fetched rather than vendored, so a local gate enforces exactly what CI does.
+# Defined here so both `coverage-tooling` (which fetches it) and `coverage` (which runs it) see one name.
 COVERAGE_REPORT := .coverage-report.py
 
 ##@ Setup
 
 install: ## Install the test toolchain via Homebrew
 	brew install bats-core yq
-
-# Refreshed on every run rather than only when absent: v1 moves within its major version, so a cached
-# copy would drift from what CI enforces. -z makes an unchanged file cost a 304, and a failed request
-# falls back to the copy already on disk, so this still works offline.
-coverage-tooling:
-	@curl -fsSL -z $(COVERAGE_REPORT) -o $(COVERAGE_REPORT) \
-		https://raw.githubusercontent.com/jmerhar/coverage/v1/bin/coverage-report.py \
-		|| test -f $(COVERAGE_REPORT)
 
 ##@ Quality
 
@@ -83,6 +74,16 @@ test-ci: ## Run the suite with the environment CI has
 # falls back, so this needs Docker running rather than a local kcov.
 test-coverage: ## Run the suite under kcov without gating (writes coverage/)
 	bin/run-coverage.sh
+
+# The coverage summary and gate are shared tooling from jmerhar/coverage, configured by coverage.toml.
+# Fetched rather than vendored, so a local gate enforces exactly what CI does. Refreshed on every run
+# rather than only when absent: v1 moves within its major version, so a cached copy would drift from
+# what CI enforces. -z makes an unchanged file cost a 304, and a failed request falls back to the copy
+# already on disk, so this still works offline.
+coverage-tooling: ## Fetch the shared coverage-report script (run automatically by `make coverage`)
+	@curl -fsSL -z $(COVERAGE_REPORT) -o $(COVERAGE_REPORT) \
+		https://raw.githubusercontent.com/jmerhar/coverage/v1/bin/coverage-report.py \
+		|| test -f $(COVERAGE_REPORT)
 
 coverage: coverage-tooling ## Run the suite under kcov and enforce the coverage gate
 	bin/run-coverage.sh
