@@ -110,7 +110,7 @@ for publishing, `bin/compile-includes.sh` inlines it at build time so published 
 
 | Library | Holds |
 |---|---|
-| `core.sh` | `SCRIPT_NAME`, the install prefix, `log_info`/`log_error`/`log_debug`, `enable_debug_mode`, `default_log_file`, `log_command` |
+| `core.sh` | `SCRIPT_NAME`, the install prefix, `log_info`/`log_error`/`log_debug` (and their writer `log_message`), `disable_log_colors`, `enable_debug_mode`, `default_log_file`, `log_command` |
 | `config.sh` | `load_config`, `load_optional_config`, `validate_config` — needs `core.sh` |
 | `program.sh` | `load_program` — needs `core.sh` |
 | `colors.sh` | the `_C_*` palette and `setup_colors <wanted>` |
@@ -163,18 +163,20 @@ artefact can never be built from the development form and there is no freshness 
 `bin/check-published-form.sh` compiles into a throwaway directory and asserts the result is self-contained.
 Neither workflow has a separate compile step.
 
-The convention uses a two-line pattern in scripts:
+The convention uses a three-line pattern in scripts:
 ```bash
-# shellcheck source=../../lib/common.sh
-# @include ../../lib/common.sh
+# shellcheck source=../../lib/core.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/core.sh"
+# @include ../../lib/core.sh
 ```
 
-Both lines are relative to the script, which sits one directory deeper than the topic — so from
-`scripts/<topic>/<name>/` the library is `../../lib/common.sh`. They must name the same path: the
-compiler drops the `source` line and inlines whatever the directive names, so a mismatch publishes a
-script that sources a path which does not exist.
-
-The `# shellcheck source=` line lets ShellCheck resolve the dependency during linting. The `# @include` line is the directive that `compile-includes.sh` replaces with the file contents. The `shellcheck source=` line is stripped during compilation since it's no longer needed.
+The `# shellcheck source=` line lets ShellCheck resolve the dependency during linting. The `source` line
+loads the library in development, so a checkout runs without a compile step. The `# @include` line is the
+directive that `compile-includes.sh` replaces with the file contents. Both relative paths name the same
+file, which sits one directory deeper than the topic — so from `scripts/<topic>/<name>/` the library is
+`../../lib/core.sh`. They must name the same path: the compiler drops the `source` line and inlines
+whatever the directive names, so a mismatch publishes a script that sources a path which does not exist.
+The `# shellcheck source=` line is stripped during compilation since it is no longer needed.
 
 ### Embedded programs (`@embed`)
 
