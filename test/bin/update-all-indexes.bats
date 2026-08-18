@@ -242,7 +242,10 @@ EOF
   sed -i.bak 's/at length\./at length, renamed./' "$FAKE_REPO/scripts.yaml"
   run_script "$TOOL" --check
   [ "$status" -ne 0 ]
-  run bash -c "printf '%s\n' \"\$1\" | grep -c 'is out of date'" _ "$output"
+  # Counted on the timestamped [ERROR] line rather than on the message alone: log_error also emits a
+  # GitHub Actions annotation carrying the same text, so matching the message would count each reported
+  # file twice whenever GITHUB_ACTIONS is set — as it is for the whole job in CI.
+  run bash -c "printf '%s\n' \"\$1\" | grep -c '\[ERROR\]: .* is out of date'" _ "$output"
   [ "$output" = "3" ]
 }
 

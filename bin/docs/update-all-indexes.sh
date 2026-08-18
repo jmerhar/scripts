@@ -4,7 +4,7 @@
 #
 # There are two kinds of index: the root README lists all scripts and links each to its directory, and
 # each scripts/<topic>/README.md lists only its own scripts, linking to them as siblings. Both are
-# produced by bin/update-readme-index.sh; this script is what knows which files exist and what options
+# produced by bin/docs/update-readme-index.sh; this script is what knows which files exist and what options
 # each one takes.
 #
 # The topic list is derived from the manifest rather than written here, so adding a script under a new
@@ -25,36 +25,16 @@ set -o nounset
 set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
-MANIFEST="${REPO_ROOT}/scripts.yaml"
+readonly SCRIPT_DIR
+# shellcheck source=../_lib/paths.sh
+source "${SCRIPT_DIR}/../_lib/paths.sh"
+# shellcheck source=../_lib/log.sh
+source "${SCRIPT_DIR}/../_lib/log.sh"
 GENERATOR="${SCRIPT_DIR}/update-readme-index.sh"
 
 # Shared by every index: the platform annotation and alphabetical order, which is what a
 # reader scans. The downstream repos' indexes take the generator's defaults instead.
 readonly COMMON_OPTS=(--platform-note --sort)
-
-#######################################
-# Prints a timestamped error message to stderr.
-# Arguments:
-#   Message to print.
-#######################################
-log_error() {
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] [ERROR]: $*" >&2
-}
-
-#######################################
-# Prints usage instructions to stderr.
-# Arguments:
-#   None
-#######################################
-show_usage() {
-  cat >&2 <<EOF
-Usage: $(basename "$0") [--check]
-
-Options:
-  --check   Do not write; exit non-zero if any index is out of date.
-EOF
-}
 
 #######################################
 # Lists the topics that have at least one registered script.
@@ -72,9 +52,23 @@ list_topics() {
 }
 
 #######################################
+# Prints usage instructions to stderr.
+# Arguments:
+#   None
+#######################################
+show_usage() {
+  cat >&2 <<EOF
+Usage: $(basename "$0") [--check]
+
+Options:
+  --check   Do not write; exit non-zero if any index is out of date.
+EOF
+}
+
+#######################################
 # Regenerates or checks all index sections.
 # Globals:
-#   REPO_ROOT, GENERATOR, COMMON_OPTS
+#   REPO_ROOT, SCRIPTS_DIR, GENERATOR, COMMON_OPTS
 # Arguments:
 #   check_flag: --check, or empty to write.
 # Returns:
@@ -93,7 +87,7 @@ update_all() {
   fi
 
   while IFS= read -r topic; do
-    readme="${REPO_ROOT}/scripts/${topic}/README.md"
+    readme="${SCRIPTS_DIR}/${topic}/README.md"
     if [[ ! -f "${readme}" ]]; then
       log_error "No index for topic '${topic}': ${readme} does not exist."
       failed=1

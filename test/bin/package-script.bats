@@ -418,7 +418,7 @@ publish_and_extract() {
   sed -n "2,9p" "$published" > "$BATS_TEST_TMPDIR/guard-only.sh"
   grep -q 'BASH_VERSINFO' "$BATS_TEST_TMPDIR/guard-only.sh"
 
-  run_func "$REPO_ROOT/bin/check-bash-version.sh" required_version "$BATS_TEST_TMPDIR/guard-only.sh"
+  run_func "$REPO_ROOT/bin/lint/check-bash-version.sh" required_version "$BATS_TEST_TMPDIR/guard-only.sh"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }

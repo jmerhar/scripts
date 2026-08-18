@@ -90,26 +90,26 @@ teardown() {
 }
 
 @test "smoke: compile-includes shows usage for -h" {
-  run_script "$REPO_ROOT/bin/compile-includes.sh" -h
+  run_script "$REPO_ROOT/bin/compile/compile-includes.sh" -h
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: compile-includes.sh"* ]]
 }
 
 @test "smoke: package-script refuses to run without arguments" {
-  run_script "$REPO_ROOT/bin/package-script.sh"
+  run_script "$REPO_ROOT/bin/package/package-script.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Expected exactly 2 arguments"* ]]
 }
 
 # The README file is the one required argument; everything past it is an option.
 @test "smoke: update-readme-index refuses to run without arguments" {
-  run_script "$REPO_ROOT/bin/update-readme-index.sh"
+  run_script "$REPO_ROOT/bin/docs/update-readme-index.sh"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Expected a README file"* ]]
 }
 
 @test "smoke: update-all-indexes refuses an option it does not have" {
-  run_script "$REPO_ROOT/bin/update-all-indexes.sh" --nonsense
+  run_script "$REPO_ROOT/bin/docs/update-all-indexes.sh" --nonsense
   [ "$status" -eq 1 ]
   [[ "$output" == *"Unknown option"* ]]
 }

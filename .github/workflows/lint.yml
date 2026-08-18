@@ -33,31 +33,31 @@ jobs:
       # unregistered scripts are reported. A script rather than inline shell so the same checks run
       # from `make lint` before a push, and are covered by test/bin/check-manifest.bats.
       - name: Validate the manifest against the tree
-        run: ./bin/check-manifest.sh
+        run: ./bin/lint/check-manifest.sh
 
       # min_bash drives the guard compiled into published scripts and the dependency metadata for
       # both channels. Declared by hand it would drift, so the requirement is re-derived from the
       # source here and the build fails if a script has outgrown what it declares.
       - name: Check declared bash versions cover the features used
-        run: ./bin/check-bash-version.sh
+        run: ./bin/lint/check-bash-version.sh
 
       # The awk and jq programs the scripts run are not bash, so ShellCheck says nothing about them.
       # Unchecked, a typo in one surfaces only when the script runs it — for the pruning filters, that
       # means on the server, mid-run.
       - name: Syntax-check the awk and jq programs
-        run: ./bin/check-programs.sh
+        run: ./bin/lint/check-programs.sh
 
       # A script lists the libraries it uses and the compiler resolves their dependencies, so nothing
       # stops a script calling a function no included library provides — it works while some other
       # include happens to pull that library in, and breaks when it stops.
       - name: Check every script includes the libraries it uses
-        run: ./bin/check-includes.sh
+        run: ./bin/lint/check-includes.sh
 
       # The README indexes are generated from the manifest, so a hand-edit or a manifest change
       # without a `make docs` leaves them stale. Regenerating into a temp file and diffing turns that
       # into a build failure rather than something a reader notices later.
       - name: Check the README indexes match the manifest
-        run: ./bin/update-all-indexes.sh --check
+        run: ./bin/docs/update-all-indexes.sh --check
 
   smoke-test:
     name: Packaging smoke test
@@ -73,12 +73,12 @@ jobs:
       # Both steps are scripts rather than inline shell so they run from `make lint` before a push and
       # are covered by test/bin/compile-all-includes.bats and test/bin/smoke-package-all.bats.
       - name: Verify the published scripts are self-contained
-        run: ./bin/check-published-form.sh
+        run: ./bin/lint/check-published-form.sh
 
       # No separate compile step: the packager compiles each script it packages into dist/compiled, so the
       # artefacts cannot be built from the development form.
       - name: Run package-script against each manifest entry
-        run: ./bin/smoke-package-all.sh
+        run: ./bin/package/smoke-package-all.sh
 
       - name: Verify output artifacts exist
         run: |

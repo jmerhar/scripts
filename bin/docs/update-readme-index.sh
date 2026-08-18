@@ -20,7 +20,7 @@
 # cannot carry, and with one README per script there is nothing to anchor to.
 #
 # Both the topic and the link target come from the manifest's `path:`, so they cannot
-# disagree with where a script actually lives; bin/check-manifest.sh already fails the
+# disagree with where a script actually lives; bin/lint/check-manifest.sh already fails the
 # build when a registered path is missing.
 #
 # The description is plain prose from the manifest, emitted verbatim. A pipe and an
@@ -50,25 +50,11 @@ set -o nounset
 set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
-MANIFEST="${SCRIPT_DIR}/../scripts.yaml"
-
-#######################################
-# Prints a timestamped error message to stderr.
-# Arguments:
-#   Message to print.
-#######################################
-log_error() {
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] [ERROR]: $*" >&2
-}
-
-#######################################
-# Prints a timestamped info message to stderr.
-# Arguments:
-#   Message to print.
-#######################################
-log_info() {
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] [INFO]: $*" >&2
-}
+readonly SCRIPT_DIR
+# shellcheck source=../_lib/paths.sh
+source "${SCRIPT_DIR}/../_lib/paths.sh"
+# shellcheck source=../_lib/log.sh
+source "${SCRIPT_DIR}/../_lib/log.sh"
 
 #######################################
 # Prints usage instructions to stderr.

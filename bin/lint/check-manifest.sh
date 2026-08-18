@@ -23,42 +23,12 @@ set -o nounset
 set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
-REPO_ROOT="${SCRIPT_DIR}/.."
-MANIFEST="${REPO_ROOT}/scripts.yaml"
-LIB_DIR="${REPO_ROOT}/scripts/lib"
-
-#######################################
-# Prints a timestamped error message to stderr, and as a GitHub Actions annotation under CI.
-# Arguments:
-#   Message to print.
-#######################################
-log_error() {
-  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-    echo "::error::$*"
-  fi
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] [ERROR]: $*" >&2
-}
-
-#######################################
-# Prints a timestamped warning to stderr, and as a GitHub Actions annotation under CI.
-# Arguments:
-#   Message to print.
-#######################################
-log_warning() {
-  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-    echo "::warning::$*"
-  fi
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] [WARNING]: $*" >&2
-}
-
-#######################################
-# Prints a timestamped info message to stderr.
-# Arguments:
-#   Message to print.
-#######################################
-log_info() {
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] [INFO]: $*" >&2
-}
+readonly SCRIPT_DIR
+# shellcheck source=../_lib/paths.sh
+source "${SCRIPT_DIR}/../_lib/paths.sh"
+# shellcheck source=../_lib/log.sh
+source "${SCRIPT_DIR}/../_lib/log.sh"
+LIB_DIR="${SCRIPTS_DIR}/lib"
 
 #######################################
 # Prints usage instructions to stdout.
@@ -123,7 +93,7 @@ mode_is_executable() {
 #######################################
 # Checks one registered script.
 # Globals:
-#   MANIFEST, REPO_ROOT
+#   MANIFEST, REPO_ROOT, SCRIPTS_DIR
 # Arguments:
 #   name: Script name as it appears in the manifest.
 # Returns:
@@ -206,7 +176,7 @@ warn_unregistered() {
     if [[ "$(yq eval ".scripts.\"${name}\".path" "${MANIFEST}")" == "null" ]]; then
       log_warning "${script#"${REPO_ROOT}/"} is not registered in scripts.yaml"
     fi
-  done < <(find "${REPO_ROOT}/scripts" -mindepth 2 -type f -name '*.sh' -not -path '*/lib/*' -print0)
+  done < <(find "${SCRIPTS_DIR}" -mindepth 2 -type f -name '*.sh' -not -path '*/lib/*' -print0)
 }
 
 #######################################

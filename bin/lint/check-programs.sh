@@ -32,28 +32,12 @@ set -o nounset
 set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
+readonly SCRIPT_DIR
+# shellcheck source=../_lib/paths.sh
+source "${SCRIPT_DIR}/../_lib/paths.sh"
+# shellcheck source=../_lib/log.sh
+source "${SCRIPT_DIR}/../_lib/log.sh"
 
-#######################################
-# Prints a timestamped error message to stderr, and as a GitHub Actions annotation under CI.
-# Arguments:
-#   Message to print.
-#######################################
-log_error() {
-  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-    echo "::error::$*"
-  fi
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] [ERROR]: $*" >&2
-}
-
-#######################################
-# Prints a timestamped info message to stderr.
-# Arguments:
-#   Message to print.
-#######################################
-log_info() {
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] [INFO]: $*" >&2
-}
 
 #######################################
 # Prints usage instructions to stdout.
@@ -151,14 +135,15 @@ check_jq() {
 # Checks that a program which will be embedded contains no single quote.
 #
 # A published script is a single file, so a program under scripts/ cannot be run with `awk -f` — it is
-# always inlined by bin/compile-includes.sh as a single-quoted literal. A single quote in it would end
-# that literal early and publish a script that is not valid bash. The compiler refuses it too, but only
-# at packaging time, which is after a push; checking here means a local `make lint` says so first.
+# always inlined by bin/compile/compile-includes.sh as a single-quoted literal. A single quote in it
+# would end that literal early and publish a script that is not valid bash. The compiler refuses it
+# too, but only at packaging time, which is after a push; checking here means a local `make lint` says
+# so first.
 #
 # Programs under bin/ are exempt: those tools are never published as one file and run their programs with
 # `awk -f`, so an apostrophe in a comment is harmless there.
 # Globals:
-#   REPO_ROOT
+#   REPO_ROOT, SCRIPTS_DIR
 # Arguments:
 #   path: Program file.
 # Returns:
@@ -167,7 +152,7 @@ check_jq() {
 check_embeddable() {
   local path="$1"
   case "${path}" in
-    "${REPO_ROOT}/scripts/"*) ;;
+    "${SCRIPTS_DIR}/"*) ;;
     *) return 0 ;;
   esac
 
@@ -220,11 +205,11 @@ main() {
 
   local -a roots=("$@")
   if (( ${#roots[@]} == 0 )); then
-    roots=("${REPO_ROOT}/scripts" "${REPO_ROOT}/bin")
+    roots=("${SCRIPTS_DIR}" "${REPO_ROOT}/bin")
   fi
 
   # Resolved to physical paths, because the embeddability rule compares a found path against
-  # REPO_ROOT, which is itself physical. Left as given, a root reached through a symlink would yield
+  # SCRIPTS_DIR, which is itself physical. Left as given, a root reached through a symlink would yield
   # paths that never match the prefix, and the rule would quietly apply to nothing.
   local -a resolved=()
   local root

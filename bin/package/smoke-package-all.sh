@@ -16,10 +16,11 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-readonly HERE
-readonly PACKAGER="${HERE}/package-script.sh"
-readonly MANIFEST="${HERE}/../scripts.yaml"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+readonly SCRIPT_DIR
+# shellcheck source=../_lib/paths.sh
+source "${SCRIPT_DIR}/../_lib/paths.sh"
+readonly PACKAGER="${SCRIPT_DIR}/package-script.sh"
 
 #######################################
 # Packages every manifest entry at the given version.

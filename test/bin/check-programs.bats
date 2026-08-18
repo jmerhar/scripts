@@ -14,7 +14,7 @@ load ../test_helper
 
 setup() {
   setup_common
-  TOOL="$REPO_ROOT/bin/check-programs.sh"
+  TOOL="$REPO_ROOT/bin/lint/check-programs.sh"
   DIR="$BATS_TEST_TMPDIR/programs"
   mkdir -p "$DIR"
 }
@@ -272,7 +272,7 @@ EOF
 
 # The check earns its place only if it holds for the programs the scripts actually run.
 @test "every program in this repository parses" {
-  run_script "$REPO_ROOT/bin/check-programs.sh"
+  run_script "$REPO_ROOT/bin/lint/check-programs.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"program(s) parse."* ]]
 }

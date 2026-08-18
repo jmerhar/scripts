@@ -323,6 +323,6 @@ EOF
 # The check is only worth having if it holds for this repository as it stands; a failure here means a
 # script has outgrown its declaration and the packaging metadata is now wrong.
 @test "the repository's own declarations are sufficient" {
-  run_script "$REPO_ROOT/bin/check-bash-version.sh"
+  run_script "$REPO_ROOT/bin/lint/check-bash-version.sh"
   [ "$status" -eq 0 ]
 }

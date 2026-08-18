@@ -4,7 +4,7 @@
 
 ```bash
 make test                                          # everything
-bats test/shared/lib-common.bats                   # one suite
+bats test/shared/lib-core.bats                     # one suite
 bats --recursive --filter 'format_size' test/      # one concern, across suites
 bats --recursive --print-output-on-failure test/   # show a failing test's output
 ```
@@ -12,9 +12,14 @@ bats --recursive --print-output-on-failure test/   # show a failing test's outpu
 `make install` installs the toolchain (`brew install bats-core`).
 
 `make test-ci` runs the same suite with the environment the runners have — `GITHUB_ACTIONS` set, and git's
-default branch forced to `master`. Both have caused tests that passed locally to fail in CI: one asserting
-that no Actions annotations are emitted, and several reading a bare fixture repository's `HEAD`. Run it
-before a push.
+default branch forced to `master`. Both have caused tests that passed locally to fail in CI: `GITHUB_ACTIONS`
+makes every `log_error` in `bin/_lib/log.sh` emit an Actions annotation alongside its timestamped line, so a
+test asserting that none are emitted fails and one counting occurrences of a message counts each twice; and
+several tests read a bare fixture repository's `HEAD`. `make check` gates on this target rather than on
+`make test` for that reason, so the plain `make test` is for fast iteration.
+
+Only the macOS job runs the suite in that environment. The Linux job runs it inside the kcov container,
+which does not inherit `GITHUB_ACTIONS`, so a failure of the first kind shows up on macOS alone.
 
 ## Layout
 
@@ -27,7 +32,7 @@ test/
   stubs/              # the command stubs, shared by every suite
   scripts/            # one suite per publishable script
   bin/                # one suite per internal tool
-  shared/             # what spans them: the library, pure helpers, the CLI contract,
+  shared/             # what spans them: the two libraries, pure helpers, the CLI contract,
                       # the smoke checks, and the harness itself
 ```
 
@@ -211,7 +216,7 @@ make test-coverage   # the same without gating
 ```
 
 Needs Docker rather than a local kcov: kcov's macOS build ignores the shebang and execs `/bin/bash`,
-which is 3.2 there, and most of these scripts need 4.0 or newer — so `bin/run-coverage.sh` probes what a
+which is 3.2 there, and most of these scripts need 4.0 or newer — so `bin/coverage/run-coverage.sh` probes what a
 local kcov would run and falls back to the pinned container, which is what CI uses too.
 
 Everything coverage-specific is in `test_helper.bash`: the three seams notice `COVERAGE_DIR` and trace
@@ -222,7 +227,7 @@ exactly, but kcov's prologue reads `BASH_SOURCE`, which is unset inside a `-c` s
 `set -o nounset` dies before its function is reached. Under coverage those calls instead go through a
 harness kcov executes directly, written beside the script — so the library path the script derives
 from `$(dirname "$0")` still resolves — and handed the script's own `SCRIPT_NAME`. It defaults rather than forces that name, so
-a test pinning `SCRIPT_NAME` keeps its value. `bin/run-coverage.sh` deletes any harness a run leaves
+a test pinning `SCRIPT_NAME` keeps its value. `bin/coverage/run-coverage.sh` deletes any harness a run leaves
 behind, and `.gitignore` covers one that a killed run strands.
 
 The consequence for tests: assert what the scripts need from `$0` — its directory, and their own name —

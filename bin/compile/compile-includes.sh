@@ -35,14 +35,10 @@ set -o pipefail
 declare -A INLINED=()
 declare -A IN_PROGRESS=()
 
-#######################################
-# Prints a timestamped error message to stderr.
-# Arguments:
-#   Message to print.
-#######################################
-log_error() {
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] [ERROR]: $*" >&2
-}
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+readonly SCRIPT_DIR
+# shellcheck source=../_lib/log.sh
+source "${SCRIPT_DIR}/../_lib/log.sh"
 
 #######################################
 # Prints usage instructions to stdout.

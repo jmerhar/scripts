@@ -270,7 +270,7 @@ EOF
   [ -n "$FAKE_REPO" ]
   [ -n "$FAKE_TOOL" ]
   [ "$FAKE_REPO" = "$BATS_TEST_TMPDIR/repo" ]
-  [ "$FAKE_TOOL" = "$FAKE_REPO/bin/package-script.sh" ]
+  [ "$FAKE_TOOL" = "$FAKE_REPO/bin/package/package-script.sh" ]
 }
 
 @test "fake_repo_tool places a working tool in the fake repository" {
@@ -287,7 +287,32 @@ EOF
 @test "fake_repo_tool links the tool so its coverage is credited" {
   fake_repo_tool package-script.sh
   [ -L "$FAKE_TOOL" ]
-  [ "$(readlink "$FAKE_TOOL")" = "$REPO_ROOT/bin/package-script.sh" ]
+  [ "$(readlink "$FAKE_TOOL")" = "$REPO_ROOT/bin/package/package-script.sh" ]
+}
+
+# The tools source ../_lib/ and reach cross-group siblings as ../<group>/, so a flat fixture would
+# leave every one of them unable to load paths.sh. Asserted here rather than left to the bin/ suites:
+# a fixture missing _lib/ fails dozens of tests across the bin/ suites, none of which names the cause.
+@test "fake_repo_tool mirrors bin/'s subdirectories, the library included" {
+  fake_repo_tool package-script.sh
+  [ -f "$FAKE_REPO/bin/_lib/paths.sh" ]
+  [ -f "$FAKE_REPO/bin/_lib/log.sh" ]
+  # The cross-group sibling package-script.sh compiles through, and the awk program beside it.
+  [ -f "$FAKE_REPO/bin/compile/compile-includes.sh" ]
+  [ -f "$FAKE_REPO/bin/package/class-name.awk" ]
+  # Every real subdirectory is reproduced, so a tool from any group can be asked for next.
+  local group
+  for group in lint compile package docs coverage _lib; do
+    [ -d "$FAKE_REPO/bin/$group" ]
+  done
+}
+
+# A name that matches no tool would otherwise yield an empty subdirectory and place the fixture's copy at
+# bin/<name>, which no tool resolves — the suite would then fail further on, describing something else.
+@test "fake_repo_tool refuses a tool that does not exist" {
+  run fake_repo_tool no-such-tool.sh
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"no tool named no-such-tool.sh"* ]]
 }
 
 @test "the linked tool reads the fake repository's manifest, not the real one" {

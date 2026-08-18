@@ -23,16 +23,16 @@ install: ## Install the test toolchain via Homebrew
 lint: ## ShellCheck everything, and validate the manifest and declared bash versions
 	find bin scripts -name '*.sh' -print0 | xargs -0 shellcheck --severity=warning
 	shellcheck --severity=warning test/test_helper.bash test/stubs/_stub
-	bin/check-manifest.sh
-	bin/check-bash-version.sh
-	bin/check-programs.sh
-	bin/check-includes.sh
+	bin/lint/check-manifest.sh
+	bin/lint/check-bash-version.sh
+	bin/lint/check-programs.sh
+	bin/lint/check-includes.sh
 	$(MAKE) docs-check
 
 # Compiles every script into dist/compiled/ — the single file per script that gets published, carrying the
 # library and any awk or jq programs inline. Safe in a working tree: it writes only to dist/.
 compile: ## Compile every script into dist/compiled/
-	bin/compile-all-includes.sh
+	bin/compile/compile-all-includes.sh
 
 # Packages every manifest entry at a throwaway version, which is what catches a manifest and a packager
 # that have stopped agreeing. Writes into dist/, which `make clean` removes.
@@ -40,21 +40,21 @@ compile: ## Compile every script into dist/compiled/
 # The packager compiles each script into dist/compiled before packaging it, so what this smoke-tests is the
 # published form rather than the development one.
 smoke: ## Package every manifest entry at v0.0.0 as a smoke test
-	bin/smoke-package-all.sh
+	bin/package/smoke-package-all.sh
 
 # Compiles into a throwaway directory and asserts the result is self-contained: no script still sources the
 # library or reads a program, and every inlined program matches its file.
 published: ## Verify every published script compiles to a self-contained file
-	bin/check-published-form.sh
+	bin/lint/check-published-form.sh
 
 # The root index and every topic index come from scripts.yaml, so a script cannot be renamed,
 # moved or added without its documentation following. `make lint` runs the same generator with --check, so
 # a stale index fails the build rather than going unnoticed.
 docs: ## Regenerate the README index sections from the manifest
-	@bin/update-all-indexes.sh
+	@bin/docs/update-all-indexes.sh
 
 docs-check: ## Fail if any README index section is out of date
-	@bin/update-all-indexes.sh --check
+	@bin/docs/update-all-indexes.sh --check
 
 test: ## Run the bats suite
 	bats --recursive test/
@@ -73,7 +73,7 @@ test-ci: ## Run the suite with the environment CI has
 # /bin/bash, which is 3.2, and most of these scripts need 4.0 or newer. run-coverage.sh detects that and
 # falls back, so this needs Docker running rather than a local kcov.
 test-coverage: ## Run the suite under kcov without gating (writes coverage/)
-	bin/run-coverage.sh
+	bin/coverage/run-coverage.sh
 
 # The coverage summary and gate are shared tooling from jmerhar/coverage, configured by coverage.toml.
 # Fetched rather than vendored, so a local gate enforces exactly what CI does. Refreshed on every run
@@ -86,10 +86,10 @@ coverage-tooling: ## Fetch the shared coverage-report script (run automatically 
 		|| test -f $(COVERAGE_REPORT)
 
 coverage: coverage-tooling ## Run the suite under kcov and enforce the coverage gate
-	bin/run-coverage.sh
+	bin/coverage/run-coverage.sh
 	python3 $(COVERAGE_REPORT) --gate
 
-check: lint test published ## Lint + tests + published form (gate a commit on this)
+check: lint test-ci published ## Lint + tests + published form (gate a commit on this)
 
 ##@ Housekeeping
 

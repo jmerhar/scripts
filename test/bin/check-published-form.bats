@@ -120,7 +120,7 @@ publishable() {
 
 # The check earns its place only if it holds for the scripts this repository actually publishes.
 @test "every script in this repository compiles to a self-contained file" {
-  run_script "$REPO_ROOT/bin/check-published-form.sh"
+  run_script "$REPO_ROOT/bin/lint/check-published-form.sh"
   [ "$status" -eq 0 ]
   [[ "$output" == *"are self-contained"* ]]
 }

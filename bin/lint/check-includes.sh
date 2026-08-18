@@ -30,29 +30,12 @@ set -o nounset
 set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
-LIB_DIR="${REPO_ROOT}/scripts/lib"
-
-#######################################
-# Prints a timestamped error message to stderr, and as a GitHub Actions annotation under CI.
-# Arguments:
-#   Message to print.
-#######################################
-log_error() {
-  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-    echo "::error::$*"
-  fi
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] [ERROR]: $*" >&2
-}
-
-#######################################
-# Prints a timestamped info message to stderr.
-# Arguments:
-#   Message to print.
-#######################################
-log_info() {
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] [INFO]: $*" >&2
-}
+readonly SCRIPT_DIR
+# shellcheck source=../_lib/paths.sh
+source "${SCRIPT_DIR}/../_lib/paths.sh"
+# shellcheck source=../_lib/log.sh
+source "${SCRIPT_DIR}/../_lib/log.sh"
+LIB_DIR="${SCRIPTS_DIR}/lib"
 
 #######################################
 # Prints usage instructions to stdout.
@@ -200,7 +183,7 @@ check_calls() {
 #######################################
 # Checks every script given, or every publishable script.
 # Globals:
-#   REPO_ROOT
+#   SCRIPTS_DIR
 # Arguments:
 #   Scripts to check.
 # Returns:
@@ -211,7 +194,7 @@ check_all() {
   if (( ${#scripts[@]} == 0 )); then
     while IFS= read -r -d '' path; do
       scripts+=("${path}")
-    done < <(find "${REPO_ROOT}/scripts" -mindepth 2 -type f -name '*.sh' -not -path '*/lib/*' -print0 | sort -z)
+    done < <(find "${SCRIPTS_DIR}" -mindepth 2 -type f -name '*.sh' -not -path '*/lib/*' -print0 | sort -z)
   fi
 
   local failed=0 path

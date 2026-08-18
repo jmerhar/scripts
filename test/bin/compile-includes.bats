@@ -9,7 +9,7 @@ load ../test_helper
 
 setup() {
   setup_common
-  TOOL="$REPO_ROOT/bin/compile-includes.sh"
+  TOOL="$REPO_ROOT/bin/compile/compile-includes.sh"
   WORK="$BATS_TEST_TMPDIR/work"
   mkdir -p "$WORK/lib"
   printf 'LIBRARY LINE ONE\nLIBRARY LINE TWO\n' > "$WORK/lib/common.sh"

@@ -36,32 +36,12 @@ set -o nounset
 set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
-MANIFEST="${REPO_ROOT}/scripts.yaml"
+readonly SCRIPT_DIR
+# shellcheck source=../_lib/paths.sh
+source "${SCRIPT_DIR}/../_lib/paths.sh"
+# shellcheck source=../_lib/log.sh
+source "${SCRIPT_DIR}/../_lib/log.sh"
 PACKAGER="${SCRIPT_DIR}/package-script.sh"
-
-#######################################
-# Prints a timestamped error message to stderr, and as a GitHub Actions annotation under CI.
-# Arguments:
-#   Message to print.
-#######################################
-log_error() {
-  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-    echo "::error::$*"
-  fi
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] [ERROR]: $*" >&2
-}
-
-#######################################
-# Prints a timestamped info message to stderr.
-#
-# Progress goes to stderr so that stdout carries only the commit message, which the caller captures.
-# Arguments:
-#   Message to print.
-#######################################
-log_info() {
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] [INFO]: $*" >&2
-}
 
 #######################################
 # Prints usage instructions to stdout.

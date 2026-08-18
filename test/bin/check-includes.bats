@@ -191,6 +191,6 @@ EOF
 
 # The check earns its place only if it holds for the scripts as they are.
 @test "every script in this repository includes what it uses" {
-  run_script "$REPO_ROOT/bin/check-includes.sh"
+  run_script "$REPO_ROOT/bin/lint/check-includes.sh"
   [ "$status" -eq 0 ]
 }

@@ -37,7 +37,7 @@ scripts/system/
     README.md
 ```
 
-- `bin/` — Internal CI/CD tooling (packaging, dependency installation). Not published as packages.
+- `bin/` — Internal CI/CD tooling, subdivided by concern into `lint/`, `compile/`, `package/`, `docs/`, `coverage/`, with a shared `_lib/` (path resolution and logging) sourced by each tool. Not published as packages. See [`bin/README.md`](bin/README.md).
 - `test/` — bats suites, the shared test helper, and the command stubs. Not published as packages.
 - `scripts.yaml` — Central manifest defining all publishable scripts, their metadata, and dependencies.
 
@@ -53,10 +53,10 @@ log files. `log_command` runs a command with its output copied into `LOG_FILE`, 
 ### Documentation (READMEs)
 
 - **Each script documents itself** in `scripts/<topic>/<script>/README.md`. It opens with a level-1 heading naming the script, then (include only the parts that apply): description → `### Features` → `### Requirements` → `### Usage` → `### Options` → `### Example` → `### Exit Codes`. This is the file to edit when a script's behaviour, options or requirements change.
-- **The index sections are generated, not written.** The root `README.md` and each `scripts/<topic>/README.md` hold a `<!-- BEGIN INDEX -->` block filled in from `scripts.yaml` by `bin/update-all-indexes.sh`, which knows the set of indexes and derives the topic list from the manifest. Each script becomes a level-3 heading (linking to its directory), the manifest `description` as a paragraph, and a compact tagline of minimum bash version and dependencies. Run `make docs` after touching the manifest; `make lint` and the lint workflow run it with `--check` and fail when an index is stale.
+- **The index sections are generated, not written.** The root `README.md` and each `scripts/<topic>/README.md` hold a `<!-- BEGIN INDEX -->` block filled in from `scripts.yaml` by `bin/docs/update-all-indexes.sh`, which knows the set of indexes and derives the topic list from the manifest. Each script becomes a level-3 heading (linking to its directory), the manifest `description` as a paragraph, and a compact tagline of minimum bash version and dependencies. Run `make docs` after touching the manifest; `make lint` and the lint workflow run it with `--check` and fail when an index is stale.
 - Index links point at the **directory** (`scripts/<topic>/<script>/`), never at the README inside it. GitHub renders a directory's README when the directory is visited, so the shorter target works and shows the script's other files beside its docs. Do not add `README.md#<anchor>` targets: an anchor is the one thing a directory link cannot carry, and with one README per script there is nothing to anchor to.
 
-**Keep the docs in sync with the code.** A script's own README is hand-written, so a change to its options or behaviour means editing it in the same commit. Its index entry — the description paragraph and the dependency/min-bash tagline — comes from the manifest, so that is where a changed entry goes — never into the generated section by hand. `bin/check-manifest.sh` is what makes the manifest agree with the tree in `make lint`: every registered script must exist, be executable, start with a shebang and have a README beside it, the shared library must not be executable, and scripts under `scripts/` that nobody registered are reported.
+**Keep the docs in sync with the code.** A script's own README is hand-written, so a change to its options or behaviour means editing it in the same commit. Its index entry — the description paragraph and the dependency/min-bash tagline — comes from the manifest, so that is where a changed entry goes — never into the generated section by hand. `bin/lint/check-manifest.sh` is what makes the manifest agree with the tree in `make lint`: every registered script must exist, be executable, start with a shebang and have a README beside it, the shared library must not be executable, and scripts under `scripts/` that nobody registered are reported.
 
 ### Manifest (`scripts.yaml`)
 
@@ -98,7 +98,7 @@ macOS ships bash 3.2 as `/bin/bash`, so any script using a later feature — `${
   version; the shebang rewrite is what makes the dependency effective under cron and launchd, where
   `env bash` would otherwise find `/bin/bash`.
 
-`bin/check-bash-version.sh` re-derives the requirement from each script's source and fails if the
+`bin/lint/check-bash-version.sh` re-derives the requirement from each script's source and fails if the
 declaration is missing or too low. It runs in `make lint` and in CI, so the field cannot drift — **add
 a pattern there when adopting a newer construct**, since an undetected feature means an under-declared
 minimum and a package that installs but cannot run.
@@ -106,7 +106,16 @@ minimum and a package that installs but cannot run.
 ### Shared Libraries (`@include`)
 
 Shared code lives in `scripts/lib/`, one file per concern. In development a script `source`s what it needs;
-for publishing, `bin/compile-includes.sh` inlines it at build time so published scripts are self-contained.
+for publishing, `bin/compile/compile-includes.sh` inlines it at build time so published scripts are self-contained.
+
+The `bin/` tools have their own separate library, `bin/_lib/` (`paths.sh` for repo-root
+resolution and `log.sh` for logging), sourced at run time — never compiled or published.
+It is distinct from `scripts/lib/`: the publishable scripts' library is inlined by the
+compiler, while the bin tools source theirs directly. Both of its files follow the same
+conventions as `scripts/lib/` — no shebang, a `# shellcheck shell=bash` first line, and a
+double-source guard, which is what makes `paths.sh`'s `readonly` variables safe to source
+twice. `test/shared/bin-lib.bats` covers it directly, as each `scripts/lib/` file has its own
+suite. See [`bin/README.md`](bin/README.md).
 
 | Library | Holds |
 |---|---|
@@ -146,21 +155,21 @@ written one, and a generic parser would have to reproduce every script's diagnos
 `cli.sh` calls `show_usage`, which the script defines — the one inversion, and the alternative is repeating
 `log_error` + `show_usage` + `exit` at every error site.
 
-`bin/check-includes.sh` is the backstop, in `make lint` and the lint workflow. It computes the same closure
+`bin/lint/check-includes.sh` is the backstop, in `make lint` and the lint workflow. It computes the same closure
 the compiler does and fails when a script calls a library function nothing it includes provides — which
 otherwise works only for as long as some other include happens to pull that library in. It also checks that
 the `# shellcheck source=` hint, the `source` line and the `# @include` directive in a loader pair all name
 one file, since only the directive is acted on.
 
-**There is one compile path, and it writes to `dist/compiled/`.** `bin/compile-all-includes.sh` compiles
+**There is one compile path, and it writes to `dist/compiled/`.** `bin/compile/compile-all-includes.sh` compiles
 every publishable script there — a script with no directives is copied, so the directory is the complete
 set — and never touches the sources. That is what lets the same command run in a working tree
 (`make compile`), in the lint workflow and in a release, instead of one arrangement for CI and none for a
 developer.
 
-`bin/package-script.sh` compiles the script it is packaging into that directory before packaging it, so an
+`bin/package/package-script.sh` compiles the script it is packaging into that directory before packaging it, so an
 artefact can never be built from the development form and there is no freshness rule to get wrong.
-`bin/check-published-form.sh` compiles into a throwaway directory and asserts the result is self-contained.
+`bin/lint/check-published-form.sh` compiles into a throwaway directory and asserts the result is self-contained.
 Neither workflow has a separate compile step.
 
 The convention uses a three-line pattern in scripts:
@@ -201,7 +210,7 @@ Four properties are enforced, each because the alternative fails somewhere expen
   directive, so a drift publishes a program the development form never ran.
 - **A program under `scripts/` must contain no single quote** — an apostrophe in a comment is the likely
   way in. It is embedded as a single-quoted literal, which such a quote would end early.
-  `bin/check-programs.sh` says so during `make lint`; the compiler refuses it too, but only at packaging
+  `bin/lint/check-programs.sh` says so during `make lint`; the compiler refuses it too, but only at packaging
   time. Programs under `bin/` are exempt: those tools run theirs with `awk -f` and are never published as
   one file.
 - **Trailing newlines are stripped when embedding**, because `$(...)` strips them. Otherwise the published
@@ -210,25 +219,25 @@ Four properties are enforced, each because the alternative fails somewhere expen
   and print nothing, so returning "" would turn a packaging mistake into a script that silently reports
   no results.
 
-`bin/check-programs.sh` syntax-checks every program before it can run — the main reason for extracting
+`bin/lint/check-programs.sh` syntax-checks every program before it can run — the main reason for extracting
 them, since a typo in a pruning filter otherwise surfaces mid-run, on the server. Two details there are
 established by testing rather than by reading manuals: `awk -f prog /dev/null` *runs* BEGIN and END rather
 than only parsing, and `jq` exits 3 for a syntax error **and** for a variable it never received, so a
 filter using `--arg` values declares them in a `# lint-args:` header. A jq runtime error against the
 checker's `null` input exits 5 and is ignored, since it says nothing about whether the filter compiles.
 
-`bin/check-published-form.sh` compiles a throwaway copy of the tree and asserts that no published script
+`bin/lint/check-published-form.sh` compiles a throwaway copy of the tree and asserts that no published script
 still sources the library or reads a program, that each parses, and that every inlined program matches its
 file byte for byte. It must run on an **uncompiled** tree — compiling removes the directives it reads, so
 afterwards it would pass having checked nothing, which is why it refuses a tree that has none.
 
 ### Packaging System
 
-`bin/package-script.sh` reads metadata from `scripts.yaml` (via `yq`) and generates Homebrew formulas (`.rb`), Debian packages (`.deb`), and release tarballs (`.tar.gz`).
+`bin/package/package-script.sh` reads metadata from `scripts.yaml` (via `yq`) and generates Homebrew formulas (`.rb`), Debian packages (`.deb`), and release tarballs (`.tar.gz`).
 
 Only scripts registered in `scripts.yaml` are publishable. Scripts under `bin/` are internal tooling.
 
-`bin/smoke-package-all.sh` packages every manifest entry at a throwaway version. That is what catches a
+`bin/package/smoke-package-all.sh` packages every manifest entry at a throwaway version. That is what catches a
 manifest and a packager that have stopped agreeing — a new entry missing a field, or metadata that no
 longer matches the tree — before a release does. It runs in CI and from `make smoke`.
 
@@ -237,9 +246,9 @@ longer matches the tree — before a release does. It runs in CI and from `make 
 - **Per-script versioning**: tags follow `script-name-vX.Y.Z` (e.g., `unlock-pdf-v1.5.0`)
 - **Always `git fetch --tags` before creating a new release** to avoid version collisions with existing remote tags.
 - `.github/workflows/publish.yml` packages on release or manual dispatch, then pushes formulas to `jmerhar/homebrew-scripts` and signed `.deb` packages to `jmerhar/apt-scripts`. **The workflow holds no logic**: every step is a one-line call into `bin/`, so the release path is ShellCheck-clean, covered by tests, and runnable by hand.
-  - `bin/release-package.sh <event> [tag]` — takes `github.event_name` straight through, so the choice between publishing one script from a tag and republishing the latest of every script is made in tested code. It validates the `script-name-vX.Y.Z` tag, packages, uploads the tarball, and prints the commit message the downstream repositories carry.
-  - `bin/publish-downstream.sh <homebrew|apt> <checkout> <message>` — the fetch-reset-regenerate-push cycle both downstream repositories share, including the APT index rebuild and signing. It retries against a moving remote, which is what parallel releases produce; a failed fetch is another attempt rather than the end of the run.
-- `bin/update-readme-index.sh` regenerates the README script indexes in downstream repos from the manifest
+  - `bin/package/release-package.sh <event> [tag]` — takes `github.event_name` straight through, so the choice between publishing one script from a tag and republishing the latest of every script is made in tested code. It validates the `script-name-vX.Y.Z` tag, packages, uploads the tarball, and prints the commit message the downstream repositories carry.
+  - `bin/package/publish-downstream.sh <homebrew|apt> <checkout> <message>` — the fetch-reset-regenerate-push cycle both downstream repositories share, including the APT index rebuild and signing. It retries against a moving remote, which is what parallel releases produce; a failed fetch is another attempt rather than the end of the run.
+- `bin/docs/update-readme-index.sh` regenerates the README script indexes in downstream repos from the manifest
 - **Release notes**: every GitHub Release should include a summary of user-facing changes (new features, fixes, breaking changes). Use markdown headers (`### New features`, `### Fixes`, etc.) for multi-item releases, or a plain bullet list for single-item releases.
 
 ### Automated Tests
@@ -257,8 +266,9 @@ against that rather than `BATS_TEST_DIRNAME`, which is the suite's own directory
 
 ```bash
 make test      # the suite
+make test-ci   # the suite with the environment the runners have
 make lint      # ShellCheck, the manifest, bash versions, the awk/jq programs, the includes
-make check     # all three; gate a commit on this
+make check     # lint + test-ci + published form; gate a commit on this
 make smoke     # package every manifest entry at v0.0.0, catching manifest/packager drift
 make docs      # regenerate the README index sections from the manifest
 make compile   # compile every script into dist/compiled/, the form that gets published
@@ -266,7 +276,15 @@ make published # compile a throwaway copy and check every published script is se
 make coverage  # the suite under kcov, then the shared gate
 ```
 
-Two rules matter most:
+**`make check` gates on `test-ci`, not `test`.** Two environment differences have each already made a
+green local suite fail in CI: `GITHUB_ACTIONS` is set for the whole job, which makes every `log_error`
+emit an Actions annotation on stdout as well as its timestamped line, so a test counting occurrences of
+a message sees each one twice; and git's default branch is `master` on the runners, which several tests
+driving a bare fixture repository read. The Linux job hides the first of those — it runs the suite inside
+the kcov container, which does not inherit `GITHUB_ACTIONS` — so such a failure appears on macOS alone.
+`make test` stays for fast iteration; the gate uses the faithful environment.
+
+Three rules matter most:
 
 - **Code under test is reached only through `run_script`, `run_func` or `run_snippet`.** All three run
   it in a subprocess with `$0` set to the script's own path, because every script derives its library
@@ -276,6 +294,10 @@ Two rules matter most:
   not name its own `CONFIG_FILE` reads the repo's own committed `.conf` files, which on a real machine
   can name real volumes, so pass one wherever a config value decides what gets written. Assert on stub
   call logs, never on side effects, and write nothing outside `$BATS_TEST_TMPDIR`.
+- **Never assert on a count of a `log_error` message.** The bin tools log through `bin/_lib/log.sh`,
+  which prints the message twice under `GITHUB_ACTIONS` — once as the Actions annotation, once as the
+  timestamped line. Count the `[ERROR]:` line, so the assertion means "one per reported item" in both
+  environments.
 
 ### Environment seams
 
@@ -301,7 +323,7 @@ real system. The full set:
 
 ### Coverage
 
-Line coverage is measured by kcov through `bin/run-coverage.sh` and published to
+Line coverage is measured by kcov through `bin/coverage/run-coverage.sh` and published to
 [the shared site](https://jmerhar.github.io/coverage/scripts/); `coverage.toml` declares the suite and
 its gate, and the reporting is the shared actions from
 [jmerhar/coverage](https://github.com/jmerhar/coverage). Four things about it are not obvious:
@@ -312,10 +334,10 @@ its gate, and the reporting is the shared actions from
   script under `set -o nounset` dies before its function runs, and `--bash-method=DEBUG` measures
   nothing. Function-level calls therefore go through a harness kcov executes directly, written beside
   the script, so the library path it derives from `$(dirname "$0")` still resolves.
-  `bin/run-coverage.sh` removes them.
+  `bin/coverage/run-coverage.sh` removes them.
 - **bats is installed from source in the container, not from apt.** Debian ships 1.8, which predates
   `BATS_TEST_TIMEOUT`; a suite that bounds a test to turn a runaway loop into a failure would silently
-  have no bound. `BATS_VERSION` in `bin/run-coverage.sh` pins the same version a local run and the macOS
+  have no bound. `BATS_VERSION` in `bin/coverage/run-coverage.sh` pins the same version a local run and the macOS
   job use, so all three behave alike.
 - **Coverage is Linux-only, and that is deliberate.** kcov's macOS build ignores the shebang and execs
   `/bin/bash` — 3.2 there — so most of these scripts fail under it. The runner detects that and uses the
@@ -333,9 +355,9 @@ inside one. Both mattered for the figure, for the same reason: bash attributes a
 final line, so the first line reads as never executed and the lines between are not instrumented at all —
 and for a program those lines are not bash in the first place, they run as awk or jq. Programs now live in
 their own files, which are not measured. Keep new code single-statement-per-line, and a program longer than
-a line or two in a file; `bin/run-coverage.sh` is the exception, since it is excluded from the report.
+a line or two in a file; `bin/coverage/run-coverage.sh` is the exception, since it is excluded from the report.
 
-`--exclude-pattern` keeps `.conf` files and the per-script READMEs out of the measurement entirely, because
+`--exclude-pattern` keeps `.conf` files and every README out of the measurement entirely, because
 kcov's bash parser reads an ordinary prose line as code. Do not reach for `--exclude-line` or
 `--exclude-region` instead: in this build they also disable `--include-path`, and the figure stops meaning
 anything.
@@ -344,7 +366,7 @@ anything.
 
 Run the packager directly:
 ```bash
-./bin/package-script.sh unlock-pdf v1.0.0
+./bin/package/package-script.sh unlock-pdf v1.0.0
 ```
 Output lands in `./dist/tarballs/`, `./dist/homebrew/`, and `./dist/debian/`.
 

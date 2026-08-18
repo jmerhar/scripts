@@ -35,8 +35,8 @@ setup_common() {
   LIB_DIR="$REPO_ROOT/scripts/lib"
   export LIB_DIR
 
-  # Basename of the harness bin/run-coverage.sh places beside each script while measuring. Named here
-  # because both the seams below and the runner that creates them need to agree on it.
+  # Basename of the harness bin/coverage/run-coverage.sh places beside each script while measuring.
+  # Named here because both the seams below and the runner that creates them need to agree on it.
   COVERAGE_HARNESS_NAME="${COVERAGE_HARNESS_NAME:-_coverage-harness}"
   export COVERAGE_HARNESS_NAME
 
@@ -101,7 +101,7 @@ _coverage_prefix() {
 ########################################
 # Runs a script end to end through its command line, as a user would.
 # Executed directly rather than via `bash <script>`, both because that is how a user invokes it — every
-# published script is executable, which bin/check-manifest.sh enforces — and because kcov can only trace
+# published script is executable, which bin/lint/check-manifest.sh enforces — and because kcov can only trace
 # a script it runs itself.
 # Globals:
 #   COVERAGE_DIR
@@ -186,9 +186,9 @@ git_fixture_init() {
 ########################################
 # Writes the sourcing harness kcov executes, at the given path.
 # Created next to its target on demand, because it must live beside the script it sources: $0 is the
-# harness, and the scripts resolve their library relative to "$(dirname "$0")". Written here
-# rather than only by bin/run-coverage.sh so that a tool copied into a fixture tree — as the bin/ suites
-# do — gets one too. bin/run-coverage.sh deletes any that a run leaves behind.
+# harness, and the scripts resolve their library relative to "$(dirname "$0")". Written here rather
+# than only by bin/coverage/run-coverage.sh so that a tool copied into a fixture tree — as the bin/
+# suites do — gets one too. bin/coverage/run-coverage.sh deletes any that a run leaves behind.
 # Arguments:
 #   path: Where to write the harness.
 ########################################
@@ -224,7 +224,7 @@ HARNESS
 # BASH_SOURCE, which is unset inside a `-c` command string, so a script running under `set -o nounset`
 # — all of them here — dies before its function is reached. (--bash-method=DEBUG survives that but
 # measures nothing at all.) So under coverage the call goes through a harness script that kcov executes
-# directly; bin/run-coverage.sh places one beside every script for the duration of a run, so that
+# directly; bin/coverage/run-coverage.sh places one beside every script for the duration of a run, so that
 # $(dirname "$0") is still the script's own directory and its library include resolves, and the harness
 # exports SCRIPT_NAME so the config path and log prefix are the script's own rather than the harness's.
 # Globals:
@@ -292,12 +292,40 @@ run_snippet() {
 }
 
 ########################################
+# Prints a tool's subdirectory under bin/, e.g. "package" for package-script.sh.
+#
+# Found by locating the real file rather than from a hardcoded map, so a tool moved between groups needs
+# no change here. A name that matches nothing fails the test instead of yielding an empty subdirectory:
+# that would put the fixture's copy at bin/<name> — a path no tool ever resolves — and the suite would
+# then fail somewhere further on, describing the wrong problem.
+# Globals:
+#   REPO_ROOT
+# Arguments:
+#   tool: Filename of the tool, e.g. package-script.sh.
+# Outputs:
+#   The subdirectory name on stdout; a diagnostic on stderr when the tool does not exist.
+# Returns:
+#   0 when the tool was found, 1 otherwise.
+########################################
+_bin_tool_subdir() {
+  local found
+  found="$(find "${REPO_ROOT}/bin" -type f -name "$1" -print -quit)"
+  if [[ -z "${found}" ]]; then
+    printf 'test_helper: no tool named %s under %s/bin\n' "$1" "$REPO_ROOT" >&2
+    return 1
+  fi
+  dirname "${found#"${REPO_ROOT}/bin/"}"
+}
+
+########################################
 # Places one bin/ tool in a self-contained fake repository under the test's temp directory.
 #
 # The bin/ tools locate the manifest and their output directories relative to $0 and honour no override,
 # so testing them against the real repository would read the real manifest and write into the real
-# dist/. They source nothing, so a lone entry in a fixture tree works unmodified: it reads the fixture
-# manifest and writes only inside the test's own directory.
+# dist/. Each tool sources bin/_lib/{paths,log}.sh by a path relative to its own location, so the
+# fixture must reproduce bin/'s subdirectory layout rather than a flat copy: a tool at bin/<group>/
+# resolves its library as ../_lib/, and its sibling tools (package-script → compile-includes across
+# groups) as ../<group>/.
 #
 # Symlinked rather than copied, so that coverage is credited to the tool in bin/ and not to a path
 # under the temp directory that nothing measures — a copy makes these suites exercise the real logic
@@ -310,25 +338,28 @@ run_snippet() {
 # Globals:
 #   REPO_ROOT, BATS_TEST_TMPDIR; sets FAKE_REPO and FAKE_TOOL.
 # Arguments:
-#   tool: Filename of the tool in bin/, e.g. package-script.sh.
+#   tool: Filename of the tool in bin/, e.g. package-script.sh. Its subdirectory is found by locating
+#         the real file, so the caller passes only the basename.
 ########################################
 fake_repo_tool() {
   FAKE_REPO="$BATS_TEST_TMPDIR/repo"
-  FAKE_TOOL="$FAKE_REPO/bin/$1"
-  export FAKE_REPO FAKE_TOOL
-  mkdir -p "$FAKE_REPO/bin"
-  ln -sf "$REPO_ROOT/bin/$1" "$FAKE_TOOL"
+  export FAKE_REPO
 
-  # This directory stands in for the real bin/, so it mirrors it: the awk and jq programs a tool runs with
-  # `awk -f`, and the sibling tools one shells out to — package-script.sh compiles through
-  # compile-includes.sh, and compile-all-includes.sh does the same. Linking the lot rather than mapping
-  # each tool to its dependencies keeps one thing in step instead of two, and a test still invokes only
-  # what it names.
-  local sibling
-  for sibling in "$REPO_ROOT"/bin/*.sh "$REPO_ROOT"/bin/*.awk "$REPO_ROOT"/bin/*.jq; do
-    [ -e "$sibling" ] || continue
-    ln -sf "$sibling" "$FAKE_REPO/bin/$(basename "$sibling")"
-  done
+  local sub
+  sub="$(_bin_tool_subdir "$1")" || return 1
+  FAKE_TOOL="$FAKE_REPO/bin/${sub}/$1"
+  export FAKE_TOOL
+
+  # Mirror bin/ into the fixture, recreating each subdirectory (lint/, compile/, package/, docs/,
+  # coverage/, _lib/) so a tool's source ../_lib/ and cross-group sibling references resolve exactly
+  # as they do in the real tree. Linking the lot rather than mapping each tool to its dependencies keeps
+  # one thing in step instead of two, and a test still invokes only what it names.
+  local src dst
+  while IFS= read -r -d '' src; do
+    dst="$FAKE_REPO/bin/${src#"${REPO_ROOT}/bin/"}"
+    mkdir -p "$(dirname "$dst")"
+    ln -sf "$src" "$dst"
+  done < <(find "${REPO_ROOT}/bin" -type f \( -name '*.sh' -o -name '*.awk' -o -name '*.jq' \) -print0)
 }
 
 ########################################
@@ -343,7 +374,9 @@ fake_repo_tool() {
 #   The replacement script, read from stdin.
 ########################################
 fake_repo_replace_tool() {
-  local target="$FAKE_REPO/bin/$1"
+  local sub
+  sub="$(_bin_tool_subdir "$1")" || return 1
+  local target="$FAKE_REPO/bin/${sub}/$1"
   rm -f "$target"
   cat > "$target"
   chmod +x "$target"

@@ -8,8 +8,8 @@
 # workflow — with one code path and nothing to undo afterwards.
 #
 # Every script is compiled, not only the ones with directives, so dist/compiled/ is the complete set that
-# bin/package-script.sh and bin/check-published-form.sh read. A script with no directives is copied
-# unchanged.
+# bin/package/package-script.sh and bin/lint/check-published-form.sh read. A script with no directives
+# is copied unchanged.
 #
 # The library itself is skipped: it is what gets inlined, and it is not published as a package.
 #
@@ -26,10 +26,12 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-readonly HERE
-readonly COMPILER="${HERE}/compile-includes.sh"
-readonly DEFAULT_OUTPUT_DIR="${HERE}/../dist/compiled"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+readonly SCRIPT_DIR
+# shellcheck source=../_lib/paths.sh
+source "${SCRIPT_DIR}/../_lib/paths.sh"
+readonly COMPILER="${SCRIPT_DIR}/compile-includes.sh"
+readonly DEFAULT_OUTPUT_DIR="${REPO_ROOT}/dist/compiled"
 
 #######################################
 # Compiles every script under a directory into the output directory.
@@ -75,7 +77,7 @@ compile_tree() {
 #######################################
 # Parses arguments and compiles the tree.
 # Globals:
-#   HERE, DEFAULT_OUTPUT_DIR
+#   SCRIPT_DIR, DEFAULT_OUTPUT_DIR
 # Arguments:
 #   See the usage above.
 #######################################
@@ -103,7 +105,7 @@ main() {
     esac
   done
 
-  local root="${1:-${HERE}/../scripts}"
+  local root="${1:-${SCRIPTS_DIR}}"
   compile_tree "${root}" "${out_dir}"
 }
 

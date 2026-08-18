@@ -53,15 +53,15 @@ jobs:
         working-directory: scripts
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ./bin/release-package.sh "${{ github.event_name }}" "${{ github.event.release.tag_name }}"
+        run: ./bin/package/release-package.sh "${{ github.event_name }}" "${{ github.event.release.tag_name }}"
 
       # Both pushes run the same fetch-reset-regenerate-push cycle, which lives in
-      # bin/publish-downstream.sh: 49 lines of retry logic that could otherwise only be exercised by
-      # cutting a release. It is covered by test/bin/publish-downstream.bats.
+      # bin/package/publish-downstream.sh: 49 lines of retry logic that could otherwise only be
+      # exercised by cutting a release. It is covered by test/bin/publish-downstream.bats.
       - name: Commit and push Homebrew changes
         if: success() && (steps.package.outputs.commit_message != '')
         run: |
-          ./scripts/bin/publish-downstream.sh homebrew homebrew-scripts \
+          ./scripts/bin/package/publish-downstream.sh homebrew homebrew-scripts \
             "${{ steps.package.outputs.commit_message }}"
 
       - name: Sign and commit APT repository changes
@@ -70,5 +70,5 @@ jobs:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
-          ./scripts/bin/publish-downstream.sh apt apt-scripts \
+          ./scripts/bin/package/publish-downstream.sh apt apt-scripts \
             "${{ steps.package.outputs.commit_message }}"

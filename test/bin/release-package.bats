@@ -225,9 +225,11 @@ mkdir -p "$FAKE_REPO/dist/tarballs"
 : > "$FAKE_REPO/dist/tarballs/scripts-\$1-\$2.tar.gz"
 EOF
   # A message that already contains a newline: what a stray write into the captured stream produces.
-  run bash -c "sed 's|feat(%s): Release version %s|feat(%s): stray\\nRelease %s|' '$TOOL' > '$FAKE_REPO/bin/noisy.sh'
-    chmod +x '$FAKE_REPO/bin/noisy.sh'
-    '$FAKE_REPO/bin/noisy.sh' release alpha-tool-v1.2.3"
+  # noisy.sh sits in package/ beside the replaced package-script.sh, since release-package.sh invokes
+  # its packager as a same-directory sibling.
+  run bash -c "sed 's|feat(%s): Release version %s|feat(%s): stray\\nRelease %s|' '$TOOL' > '$FAKE_REPO/bin/package/noisy.sh'
+    chmod +x '$FAKE_REPO/bin/package/noisy.sh'
+    '$FAKE_REPO/bin/package/noisy.sh' release alpha-tool-v1.2.3"
   [ "$status" -ne 0 ]
   [[ "$output" == *"not a single line"* ]]
 }
@@ -241,10 +243,10 @@ EOF
 #!/usr/bin/env bash
 echo replaced
 EOF
-  run cat "$REPO_ROOT/bin/package-script.sh"
+  run cat "$REPO_ROOT/bin/package/package-script.sh"
   [[ "$output" == *"Creating Homebrew formula"* ]]
   [ "${#lines[@]}" -gt 100 ]
-  run cat "$FAKE_REPO/bin/package-script.sh"
+  run cat "$FAKE_REPO/bin/package/package-script.sh"
   [ "$output" = "#!/usr/bin/env bash
 echo replaced" ]
 }

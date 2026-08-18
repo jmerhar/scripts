@@ -7,7 +7,7 @@
 
 # Ignore generated packages
 /dist
-coverage/
+/coverage
 junit/
 _coverage-harness
 .coverage-report.py

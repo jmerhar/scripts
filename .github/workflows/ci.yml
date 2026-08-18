@@ -33,7 +33,7 @@ jobs:
       # Ubuntu 24.04 package, so run-coverage.sh uses the pinned upstream image, which brings kcov and
       # installs bats and yq itself.
       - name: Test with coverage
-        run: JUNIT_DIR=junit bin/run-coverage.sh
+        run: JUNIT_DIR=junit bin/coverage/run-coverage.sh
 
       # The suite, its label and its gate are declared in coverage.toml; the tooling behind this and the
       # three steps below is shared by every project publishing to the coverage site.

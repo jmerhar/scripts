@@ -29,29 +29,13 @@ set -o nounset
 set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
+readonly SCRIPT_DIR
+# shellcheck source=../_lib/paths.sh
+source "${SCRIPT_DIR}/../_lib/paths.sh"
+# shellcheck source=../_lib/log.sh
+source "${SCRIPT_DIR}/../_lib/log.sh"
 WORK=""
 
-#######################################
-# Prints a timestamped error message to stderr, and as a GitHub Actions annotation under CI.
-# Arguments:
-#   Message to print.
-#######################################
-log_error() {
-  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-    echo "::error::$*"
-  fi
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] [ERROR]: $*" >&2
-}
-
-#######################################
-# Prints a timestamped info message to stderr.
-# Arguments:
-#   Message to print.
-#######################################
-log_info() {
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] [INFO]: $*" >&2
-}
 
 #######################################
 # Removes the temporary copy of the tree.
@@ -65,14 +49,14 @@ cleanup() {
 #######################################
 # Copies the working tree to a temporary directory and compiles it there.
 # Globals:
-#   REPO_ROOT, WORK
+#   REPO_ROOT, SCRIPTS_DIR, WORK
 #######################################
 compile_copy() {
   WORK=$(mktemp -d)
   trap cleanup EXIT
   # Into a temporary directory rather than dist/compiled, so a check never disturbs an artefact a release
   # is about to package.
-  "${SCRIPT_DIR}/compile-all-includes.sh" -o "${WORK}" >/dev/null
+  "${SCRIPT_DIR}/../compile/compile-all-includes.sh" -o "${WORK}" >/dev/null
 }
 
 #######################################
@@ -115,7 +99,7 @@ check_self_contained() {
 
   # Defensive: with the compiler refusing a program that contains a single quote, there is no program
   # content that can make the compiled file invalid bash. This catches a fault in the compiler itself,
-  # not in a program — bin/check-programs.sh is what rejects a program that awk or jq cannot parse.
+  # not in a program — bin/lint/check-programs.sh is what rejects a program that awk or jq cannot parse.
   if ! bash -n "${compiled}" 2>/dev/null; then
     log_error "${rel} does not parse after compilation."
     bash -n "${compiled}" 2>&1 | head -n 5 >&2 || true
@@ -183,7 +167,7 @@ check_all() {
     check_self_contained "${rel}" || failed=1
     n=$(check_embedded_text "${rel}") || failed=1
     programs=$(( programs + n ))
-  done < <(find "${REPO_ROOT}/scripts" -mindepth 2 -type f -name '*.sh' -not -path '*/lib/*' -print0 | sort -z)
+  done < <(find "${SCRIPTS_DIR}" -mindepth 2 -type f -name '*.sh' -not -path '*/lib/*' -print0 | sort -z)
 
   if (( scripts == 0 )); then
     log_error "No publishable script found under scripts/: nothing was checked."

@@ -270,6 +270,6 @@ manifest_with() {
 # The check earns its place only if it holds for this repository; a failure here means a published
 # script cannot be run from a checkout.
 @test "this repository's own manifest passes" {
-  run_script "$REPO_ROOT/bin/check-manifest.sh"
+  run_script "$REPO_ROOT/bin/lint/check-manifest.sh"
   [ "$status" -eq 0 ]
 }

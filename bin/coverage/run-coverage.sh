@@ -23,7 +23,7 @@
 # CI uses the upstream image. A locally installed kcov is preferred because it avoids the container
 # round-trip; both produce identical figures.
 #
-# Usage: bin/run-coverage.sh
+# Usage: bin/coverage/run-coverage.sh
 #   JUNIT_DIR=junit          also write bats's JUnit report there, for Codecov's test analytics
 #   KCOV_FORCE_DOCKER=1      exercise the container path even with a local toolchain
 
@@ -31,8 +31,11 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-ROOT="$(cd "${HERE}/.." && pwd -P)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+readonly SCRIPT_DIR
+# shellcheck source=../_lib/paths.sh
+source "${SCRIPT_DIR}/../_lib/paths.sh"
+readonly ROOT="${REPO_ROOT}"
 
 # Pinned by digest so the reported percentage cannot drift when the tag moves. Image: kcov/kcov
 # v44-pre-test3; update deliberately, then re-check the gate in coverage.toml.
