@@ -29,6 +29,14 @@ if [[ "${_BIN_PATHS_SH_LOADED:-}" == "true" ]]; then
 fi
 _BIN_PATHS_SH_LOADED="true"
 
+# The root below is computed from SCRIPT_DIR, so a tool that forgot to set it would otherwise die on
+# "SCRIPT_DIR: unbound variable" pointing into a library it did not write. Named here, because the fix
+# belongs in the caller's preamble.
+if [[ -z "${SCRIPT_DIR:-}" ]]; then
+  printf '%s\n' "bin/_lib/paths.sh: SCRIPT_DIR must be set to the sourcing tool's directory first." >&2
+  exit 1
+fi
+
 # bin/ tools live at bin/<group>/, so the root is the caller's grandparent. cd -P resolves
 # symlinks, which matters under the test harness where a tool is reached through a fixture
 # tree of symlinks.

@@ -95,7 +95,9 @@ main() {
         shift 2
         ;;
       -h | --help)
-        sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+        # The header block itself, rather than a line range: a range silently truncates the help as
+        # soon as a line is added to the block above, and leaks code as soon as one is removed.
+        awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "${BASH_SOURCE[0]}"
         exit 0
         ;;
       *)

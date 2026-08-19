@@ -12,7 +12,7 @@ The tools are grouped by concern, one subdirectory each:
 
 | Directory | Holds |
 |---|---|
-| [`lint/`](lint/) | The five `check-*` scripts run by the lint workflow, and locally by `make lint` and `make published` |
+| [`lint/`](lint/) | The six `check-*` scripts run by the lint workflow, and locally by `make lint` and `make published` |
 | [`compile/`](compile/) | The `@include` compiler (one file and the whole tree) |
 | [`package/`](package/) | Packaging, the release smoke test, the release orchestrator, and the downstream push |
 | [`docs/`](docs/) | The README index generator (one file and every file) |
@@ -41,7 +41,13 @@ source "${SCRIPT_DIR}/../_lib/log.sh"
 The subdirectory depth — `bin/<group>/<tool>.sh`, so the root is `../..` from the tool —
 is stated once in `paths.sh` rather than reproduced in each tool. Both files carry a
 double-source guard, as `scripts/lib/` does: `paths.sh` marks its variables `readonly`, so
-without one a second source would abort the tool.
+without one a second source would abort the tool. `paths.sh` also refuses an unset
+`SCRIPT_DIR` by name, since the fix for that belongs in the caller's preamble rather than in
+a library the caller did not write.
+
+`lint/check-bin-library.sh` holds the tools to the rule above: source what you use, use what
+you source. Without it a tool calling `log_error` while sourcing only `paths.sh` loads
+perfectly and fails at the call, which for an error path can mean mid-release.
 
 `log.sh` adds the GitHub Actions `::error::`/`::warning::` annotation under CI so a failure
 shows as an annotation on the failing step rather than buried in the log. The annotation goes

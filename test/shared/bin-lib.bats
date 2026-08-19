@@ -105,6 +105,27 @@ printf "%s" "${REPO_ROOT}"'
   [ "$output" = "$FAKE_REPO_REAL" ]
 }
 
+# A tool that forgot the SCRIPT_DIR line would otherwise die on "SCRIPT_DIR: unbound variable" naming a
+# library it did not write, which sends the reader into paths.sh rather than to their own preamble.
+@test "paths.sh names a missing SCRIPT_DIR rather than dying on an unbound variable" {
+  local bad="$FAKE_REPO/bin/lint/no-script-dir.sh"
+  cat > "$bad" <<'EOF'
+#!/usr/bin/env bash
+set -o errexit
+set -o nounset
+set -o pipefail
+# shellcheck source=../_lib/paths.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../_lib/paths.sh"
+echo reached
+EOF
+  chmod +x "$bad"
+  run_script "$bad"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"SCRIPT_DIR must be set"* ]]
+  [[ "$output" != *"unbound variable"* ]]
+  [[ "$output" != *"reached"* ]]
+}
+
 # --- log.sh ------------------------------------------------------------------------------------
 
 @test "log_error writes a timestamped line to stderr" {

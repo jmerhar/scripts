@@ -56,7 +56,7 @@ log files. `log_command` runs a command with its output copied into `LOG_FILE`, 
 - **The index sections are generated, not written.** The root `README.md` and each `scripts/<topic>/README.md` hold a `<!-- BEGIN INDEX -->` block filled in from `scripts.yaml` by `bin/docs/update-all-indexes.sh`, which knows the set of indexes and derives the topic list from the manifest. Each script becomes a level-3 heading (linking to its directory), the manifest `description` as a paragraph, and a compact tagline of minimum bash version and dependencies. Run `make docs` after touching the manifest; `make lint` and the lint workflow run it with `--check` and fail when an index is stale.
 - Index links point at the **directory** (`scripts/<topic>/<script>/`), never at the README inside it. GitHub renders a directory's README when the directory is visited, so the shorter target works and shows the script's other files beside its docs. Do not add `README.md#<anchor>` targets: an anchor is the one thing a directory link cannot carry, and with one README per script there is nothing to anchor to.
 
-**Keep the docs in sync with the code.** A script's own README is hand-written, so a change to its options or behaviour means editing it in the same commit. Its index entry — the description paragraph and the dependency/min-bash tagline — comes from the manifest, so that is where a changed entry goes — never into the generated section by hand. `bin/lint/check-manifest.sh` is what makes the manifest agree with the tree in `make lint`: every registered script must exist, be executable, start with a shebang and have a README beside it, the shared library must not be executable, and scripts under `scripts/` that nobody registered are reported.
+**Keep the docs in sync with the code.** A script's own README is hand-written, so a change to its options or behaviour means editing it in the same commit. Its index entry — the description paragraph and the dependency/min-bash tagline — comes from the manifest, so that is where a changed entry goes — never into the generated section by hand. `bin/lint/check-manifest.sh` is what makes the manifest agree with the tree in `make lint`: every registered script must exist, be executable, start with a shebang and have a README beside it, neither shared library (`scripts/lib/` or `bin/_lib/`) must be executable, and scripts under `scripts/` that nobody registered are reported.
 
 ### Manifest (`scripts.yaml`)
 
@@ -114,8 +114,11 @@ It is distinct from `scripts/lib/`: the publishable scripts' library is inlined 
 compiler, while the bin tools source theirs directly. Both of its files follow the same
 conventions as `scripts/lib/` — no shebang, a `# shellcheck shell=bash` first line, and a
 double-source guard, which is what makes `paths.sh`'s `readonly` variables safe to source
-twice. `test/shared/bin-lib.bats` covers it directly, as each `scripts/lib/` file has its own
-suite. See [`bin/README.md`](bin/README.md).
+twice; `paths.sh` also refuses an unset `SCRIPT_DIR` by name rather than letting `nounset`
+blame a library the caller did not write. `test/shared/bin-lib.bats` covers both files
+directly, as each `scripts/lib/` file has its own suite, and
+`bin/lint/check-bin-library.sh` is the backstop that keeps every tool sourcing what it uses
+and using what it sources. See [`bin/README.md`](bin/README.md).
 
 | Library | Holds |
 |---|---|
@@ -160,6 +163,14 @@ the compiler does and fails when a script calls a library function nothing it in
 otherwise works only for as long as some other include happens to pull that library in. It also checks that
 the `# shellcheck source=` hint, the `source` line and the `# @include` directive in a loader pair all name
 one file, since only the directive is acted on.
+
+`bin/lint/check-bin-library.sh` is the same backstop for the `bin/` tools, which load `bin/_lib/` with a
+plain `source` at run time. There is no closure to compute there — the two library files depend on nothing
+— so the rule is simply that a tool sources the file providing each symbol it uses, uses every file it
+sources, and pairs each shellcheck hint with the `source` line beneath it. It is a separate tool because
+the two loading mechanisms share no implementation, and it counts the library's uppercase globals as
+provided symbols alongside its functions: `paths.sh` provides only variables, so a check that looked at
+functions alone would pass a tool reading `MANIFEST` without sourcing it.
 
 **There is one compile path, and it writes to `dist/compiled/`.** `bin/compile/compile-all-includes.sh` compiles
 every publishable script there — a script with no directives is copied, so the directory is the complete
@@ -267,7 +278,7 @@ against that rather than `BATS_TEST_DIRNAME`, which is the suite's own directory
 ```bash
 make test      # the suite
 make test-ci   # the suite with the environment the runners have
-make lint      # ShellCheck, the manifest, bash versions, the awk/jq programs, the includes
+make lint      # ShellCheck, the manifest, bash versions, the awk/jq programs, both libraries' use
 make check     # lint + test-ci + published form; gate a commit on this
 make smoke     # package every manifest entry at v0.0.0, catching manifest/packager drift
 make docs      # regenerate the README index sections from the manifest

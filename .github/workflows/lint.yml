@@ -53,6 +53,12 @@ jobs:
       - name: Check every script includes the libraries it uses
         run: ./bin/lint/check-includes.sh
 
+      # The same failure mode one directory over: the bin/ tools source bin/_lib/ at run time, so calling
+      # log_error without sourcing log.sh fails at the call rather than at load — which for an error path
+      # can mean mid-release.
+      - name: Check every bin tool sources the library files it uses
+        run: ./bin/lint/check-bin-library.sh
+
       # The README indexes are generated from the manifest, so a hand-edit or a manifest change
       # without a `make docs` leaves them stale. Regenerating into a temp file and diffing turns that
       # into a build failure rather than something a reader notices later.

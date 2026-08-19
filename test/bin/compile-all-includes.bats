@@ -59,6 +59,35 @@ compile_run() {
 
 # --- The walk ----------------------------------------------------------------------------------
 
+# --- Help --------------------------------------------------------------------------------------
+
+# The help is the file's own header block, printed by walking it rather than by a line range: a range
+# silently drops the last line of the help as soon as a line is added above it, and leaks `set -o` lines
+# as soon as one is removed. Both are invisible without an assertion on each end of the block.
+@test "-h prints the whole header block and nothing past it" {
+  run_script "$REPO_ROOT/bin/compile/compile-all-includes.sh" -h
+  [ "$status" -eq 0 ]
+  # The first and last lines of the block, so a range that slipped either way would show.
+  [[ "$output" == *"Compiles every publishable script into dist/compiled/"* ]]
+  [[ "$output" == *"-o DIR"* ]]
+  # Nothing below the block: the shebang, the strict-mode lines and the code itself.
+  [[ "$output" != *"set -o errexit"* ]]
+  [[ "$output" != *"#!/usr/bin/env bash"* ]]
+  [[ "$output" != *"SCRIPT_DIR="* ]]
+  # Comment markers are stripped from the start of every line, so it reads as help rather than as source.
+  # Not a search for "# " anywhere: the text itself mentions `# @include`.
+  local line
+  for line in "${lines[@]}"; do
+    [[ "$line" != \#* ]]
+  done
+}
+
+@test "--help is the same as -h" {
+  run_script "$REPO_ROOT/bin/compile/compile-all-includes.sh" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"-o DIR"* ]]
+}
+
 @test "a script's include is resolved in the compiled copy" {
   make_script system/one.sh
   compile_run

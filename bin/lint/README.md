@@ -1,10 +1,11 @@
 # `bin/lint/` — static checks
 
-The five `check-*` scripts that validate the manifest, the bash-version declarations, the
-awk/jq programs, the `@include` graph, and the published form. Each fails the build on its
-concern. All five run in the lint workflow; locally the first four run from `make lint`,
-while `check-published-form.sh` runs from `make published` — it compiles a throwaway tree,
-which is slower than the rest of `make lint` put together. `make check` runs both.
+The six `check-*` scripts that validate the manifest, the bash-version declarations, the
+awk/jq programs, the `@include` graph, the bin tools' own library use, and the published
+form. Each fails the build on its concern. All six run in the lint workflow; locally the
+first five run from `make lint`, while `check-published-form.sh` runs from `make published`
+— it compiles a throwaway tree, which is slower than the rest of `make lint` put together.
+`make check` runs both.
 
 | Script | Checks |
 |---|---|
@@ -12,7 +13,14 @@ which is slower than the rest of `make lint` put together. `make check` runs bot
 | `check-bash-version.sh` | Re-derives the bash requirement from each script's source and fails if `min_bash` is missing or too low for the features used. |
 | `check-programs.sh` | Syntax-checks every `.awk` and `.jq` program beside a script, and rejects a single quote in a program under `scripts/` (which would break embedding). |
 | `check-includes.sh` | Computes the `@include` closure and fails when a script calls a library function no included library provides, or a loader pair disagrees. |
+| `check-bin-library.sh` | The same rule one directory over, for `bin/_lib/`: a tool must source the library files whose symbols it uses, use every file it sources, and pair each shellcheck hint with the source line beneath it. |
 | `check-published-form.sh` | Compiles a throwaway copy and asserts every published script is self-contained: no surviving directive, no sourced library, every embedded program matching its file. |
 
 `check-published-form.sh` shells out to `../compile/compile-all-includes.sh` to compile the
 throwaway tree, the one cross-group call in this directory.
+
+`check-includes.sh` and `check-bin-library.sh` guard the same failure — a script or tool
+calling a library function nothing it loads provides — but the two loading mechanisms have
+nothing in common: one computes the compiler's transitive `@include` closure over
+`scripts/lib/`, the other reads plain `source` lines against a two-file library that depends
+on nothing. They stay separate because sharing a tool would mean sharing neither.

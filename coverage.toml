@@ -42,12 +42,14 @@ html = "coverage"
 # reads an ordinary prose line as code, so a file that is not bash at all is otherwise reported as bash
 # that never ran — a README beside a script cost 36 uncovered lines before it was excluded.
 #
-# The measured figure is 93.72% (3594/3835 lines) across 34 files, the bin tools' own library included:
+# The measured figure is 93.78% (3680/3924 lines) across 35 files, the bin tools' own library included:
 # `--include-path` names bin/ and recurses, so bin/_lib/ is measured like everything else, and both of its
 # files are fully covered by test/shared/bin-lib.bats. Two things push the figure up: an awk or jq program
 # in its own file is not measured at all, where its interior would otherwise count as bash that never ran;
 # and both shared libraries are exercised directly by their own suites rather than only through whichever
-# script happened to call them. What is left is the list above.
+# script happened to call them. What is left is the list above, plus one more instrumentation artefact:
+# the `done < <(...)` line closing a while-read loop reads as never executed even when the loop ran, for
+# the same reason a `\` continuation does.
 #
 # Raise it as coverage climbs; never lower it to make a red build pass, and never delete a guard to
 # flatter the number.

@@ -188,6 +188,28 @@ manifest_with() {
   [[ "$output" == *"is executable, but the library is sourced, not run"* ]]
 }
 
+# bin/_lib is checked the same way and for the same reason: paths.sh would fail on an unset SCRIPT_DIR if
+# anyone ran it. A file of its own rather than one of the two the fixture mirrors — those are symlinks
+# into the real tree, and replacing one takes the library out from under the tool being run.
+@test "fails when the bin library is marked executable" {
+  good_script alpha
+  manifest_with alpha
+  printf '# shellcheck shell=bash\n' > "$FAKE_REPO/bin/_lib/extra.sh"
+  chmod +x "$FAKE_REPO/bin/_lib/extra.sh"
+  run_script "$TOOL"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"bin/_lib/extra.sh is executable, but the library is sourced, not run"* ]]
+}
+
+@test "passes with a non-executable bin library file" {
+  good_script alpha
+  manifest_with alpha
+  printf '# shellcheck shell=bash\n' > "$FAKE_REPO/bin/_lib/extra.sh"
+  chmod -x "$FAKE_REPO/bin/_lib/extra.sh"
+  run_script "$TOOL"
+  [ "$status" -eq 0 ]
+}
+
 @test "passes with a non-executable shared library" {
   good_script alpha
   manifest_with alpha

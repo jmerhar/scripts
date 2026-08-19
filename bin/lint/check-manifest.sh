@@ -29,6 +29,7 @@ source "${SCRIPT_DIR}/../_lib/paths.sh"
 # shellcheck source=../_lib/log.sh
 source "${SCRIPT_DIR}/../_lib/log.sh"
 LIB_DIR="${SCRIPTS_DIR}/lib"
+BIN_LIB_DIR="${REPO_ROOT}/bin/_lib"
 
 #######################################
 # Prints usage instructions to stdout.
@@ -141,22 +142,32 @@ check_entry() {
 }
 
 #######################################
-# Checks that the shared library is not marked executable.
-# It is sourced, never run, and an exec bit on it would invite exactly that.
+# Checks that neither shared library is marked executable.
+# Both are sourced, never run, and an exec bit on either would invite exactly that.
 # Globals:
-#   LIB_DIR
+#   LIB_DIR, BIN_LIB_DIR, REPO_ROOT
 # Returns:
 #   0 when every library file is non-executable, 1 otherwise.
 #######################################
 check_library() {
   local failed=0
-  local file
-  for file in "${LIB_DIR}"/*.sh; do
-    [[ -e "${file}" ]] || continue
-    if mode_is_executable "$(file_mode "${file}")"; then
-      log_error "scripts/lib/$(basename "${file}") is executable, but the library is sourced, not run."
-      failed=1
-    fi
+  local dir file
+  # Both libraries: scripts/lib/ is inlined into published scripts, bin/_lib/ is sourced by the tools.
+  # Neither is ever run, and paths.sh in particular would fail on an unset SCRIPT_DIR if it were.
+  for dir in "${LIB_DIR}" "${BIN_LIB_DIR}"; do
+    for file in "${dir}"/*.sh; do
+      [[ -e "${file}" ]] || continue
+      # A symlink's own mode is always 0755 and is never what gets committed — git records 120000 for
+      # one — so the exec bit that matters belongs to the file it points at. The test fixtures mirror
+      # bin/_lib as links into the real tree, where the real files are checked directly.
+      if [[ -L "${file}" ]]; then
+        continue
+      fi
+      if mode_is_executable "$(file_mode "${file}")"; then
+        log_error "${file#"${REPO_ROOT}/"} is executable, but the library is sourced, not run."
+        failed=1
+      fi
+    done
   done
   return "${failed}"
 }

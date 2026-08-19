@@ -27,6 +27,7 @@ lint: ## ShellCheck everything, and validate the manifest and declared bash vers
 	bin/lint/check-bash-version.sh
 	bin/lint/check-programs.sh
 	bin/lint/check-includes.sh
+	bin/lint/check-bin-library.sh
 	$(MAKE) docs-check
 
 # Compiles every script into dist/compiled/ — the single file per script that gets published, carrying the
