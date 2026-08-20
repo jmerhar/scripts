@@ -19,7 +19,7 @@ Reports the progress of an MD RAID check (Debian's monthly mdcheck scrub), inclu
 
 ### [`memory-pressure-alert`](memory-pressure-alert/)
 
-Warns while a Mac is filling up — swap growing and free memory falling — rather than once it has already stalled, and names the heaviest applications by resident plus compressed memory.
+Warns while a Mac is filling up — swap growing and memory use climbing — rather than once it has already stalled, and names the heaviest applications by resident plus compressed memory.
 
 _(macOS only)_
 
