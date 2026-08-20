@@ -17,6 +17,10 @@ Reports the progress of an MD RAID check (Debian's monthly mdcheck scrub), inclu
 
 `bash 4.0+` · deps: `mdadm` _(Linux only)_
 
+### [`memory-pressure-alert`](memory-pressure-alert/)
+
+Warns while a Mac is filling up — swap growing and free memory falling — rather than once it has already stalled, and names the heaviest applications by resident plus compressed memory.
+
 ### [`nopasswd-sudo`](nopasswd-sudo/)
 
 Toggles temporary passwordless sudo for a user, with an in-session auto-revoke timer and a boot-time safety net so it never stays enabled by accident.

@@ -33,6 +33,13 @@ scripts:
     dependencies:
       debian: [mdadm]
 
+  memory-pressure-alert:
+    path: scripts/system/memory-pressure-alert/memory-pressure-alert.sh
+    description: "Warns while a Mac is filling up — swap growing and free memory falling — rather than once it has already stalled, and names the heaviest applications by resident plus compressed memory."
+    platforms: [homebrew]  # reads macOS vm.swapusage/memorystatus + notifies via osascript
+    dependencies:
+      common: []
+
   photo-backup:
     path: scripts/photography/photo-backup/photo-backup.sh
     description: "A robust script for backing up photo collections from multiple sources to a remote server using rsync."
