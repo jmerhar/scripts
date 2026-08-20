@@ -33,6 +33,10 @@ scripts:
   alpha-tool:
     path: scripts/utility/alpha-tool/alpha-tool.sh
     description: "First in the manifest."
+  mac-tool:
+    path: scripts/system/mac-tool/mac-tool.sh
+    description: "Only shipped to Homebrew, and declares nothing else."
+    platforms: [homebrew]
   linux-tool:
     path: scripts/system/linux-tool/linux-tool.sh
     description: "Runs an *arr thing | with a pipe. Only shipped to Debian."
@@ -296,6 +300,41 @@ EOF
   [[ "$alpha_block" != *"_(Linux only)_"* ]]
 }
 
+# The reverse case: a script the manifest publishes only to Homebrew is one Debian never receives, and
+# saying so on one side only would leave a reader of the other guessing.
+@test "--platform-note marks the scripts Debian never receives" {
+  run_script "$TOOL" "$README" --platform-note
+  run cat "$README"
+  local mac_block alpha_block
+  mac_block=$(awk '/^### `mac-tool`/{f=1; next} /^### /{f=0} f' "$README")
+  alpha_block=$(awk '/^### `alpha-tool`/{f=1; next} /^### /{f=0} f' "$README")
+  [[ "$mac_block" == *"_(macOS only)_"* ]]
+  [[ "$mac_block" != *"_(Linux only)_"* ]]
+  # A script published everywhere carries neither annotation.
+  [[ "$alpha_block" != *"_(macOS only)_"* ]]
+}
+
+# The annotation is appended to the tagline segments, so for a script that declares neither a minimum
+# bash version nor dependencies it becomes the entire line — and must not keep the space that
+# separated it from segments that are not there.
+@test "a platform annotation standing alone is not indented" {
+  run_script "$TOOL" "$README" --platform-note
+  run grep -n '_(macOS only)_' "$README"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *":_(macOS only)_" ]]
+}
+
+# Without the flag there is nothing to append, so such a script keeps having no tagline at all rather
+# than gaining an empty line where the annotation would have been.
+@test "without --platform-note a single-platform script has no tagline" {
+  run_script "$TOOL" "$README"
+  local mac_block
+  mac_block=$(awk '/^### `mac-tool`/{f=1; next} /^### /{f=0} f' "$README")
+  [[ "$mac_block" != *"only)_"* ]]
+  # Heading, blank, description, blank — no fifth line carrying a tagline.
+  [ "$(printf '%s' "$mac_block" | grep -c .)" = "1" ]
+}
+
 # --- Escaping in prose -------------------------------------------------------------------------
 
 # The description is plain prose, not a table cell, so an asterisk and a pipe are not escaped: a
@@ -314,13 +353,13 @@ EOF
 @test "--sort lists alphabetically instead of in manifest order" {
   run_script "$TOOL" "$README" --sort
   run bash -c "grep -oE '### \`[a-z-]+-tool\`' '$README' | sed 's/### \`//; s/\`//' | tr '\n' ' '"
-  [ "$output" = "alpha-tool linux-tool zebra-tool " ]
+  [ "$output" = "alpha-tool linux-tool mac-tool zebra-tool " ]
 }
 
 @test "without --sort the manifest order is kept" {
   run_script "$TOOL" "$README"
   run bash -c "grep -oE '### \`[a-z-]+-tool\`' '$README' | sed 's/### \`//; s/\`//' | tr '\n' ' '"
-  [ "$output" = "zebra-tool alpha-tool linux-tool " ]
+  [ "$output" = "zebra-tool alpha-tool mac-tool linux-tool " ]
 }
 
 # --- Check mode --------------------------------------------------------------------------------

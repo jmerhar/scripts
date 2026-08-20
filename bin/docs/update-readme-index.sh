@@ -38,7 +38,8 @@
 #   --topic NAME       Only include scripts under scripts/NAME/.
 #   --link MODE        none (default), repo (link to scripts/<topic>/<name>/), or
 #                      sibling (link to <name>/, relative to a topic README).
-#   --platform-note    Append _(Linux only)_ for scripts the manifest does not publish to Homebrew.
+#   --platform-note    Annotate single-platform scripts: _(Linux only)_ when the manifest does not
+#                      publish to Homebrew, _(macOS only)_ when it does not publish to Debian.
 #   --sort             List scripts alphabetically rather than in manifest order.
 #   --check            Do not write; exit non-zero if the file is not already up to date.
 #
@@ -71,7 +72,7 @@ Arguments:
 Options:
   --topic NAME       Only include scripts under scripts/NAME/.
   --link MODE        none (default), repo, or sibling.
-  --platform-note    Append _(Linux only)_ for scripts not published to Homebrew.
+  --platform-note    Mark single-platform scripts _(Linux only)_ or _(macOS only)_.
   --sort             List alphabetically rather than in manifest order.
   --check            Do not write; fail if the file is out of date.
 EOF
@@ -198,13 +199,18 @@ emit_script() {
 
   # The platform annotation is derived from the manifest's `platforms` rather than written into the
   # text, so it cannot contradict what is published: a script the manifest does not publish to
-  # Homebrew is one macOS cannot run.
+  # Homebrew is one macOS cannot run, and one it does not publish to Debian is the reverse. A script
+  # with no `platforms` key goes everywhere and is annotated on neither side.
   local platform_suffix=""
   if [[ "${platform_note}" == true ]]; then
     local platforms
     platforms=$(name="${name}" yq eval '.scripts[strenv(name)].platforms // [] | join(",")' "${MANIFEST}")
-    if [[ -n "${platforms}" && "${platforms}" != *homebrew* ]]; then
-      platform_suffix=" _(Linux only)_"
+    if [[ -n "${platforms}" ]]; then
+      if [[ "${platforms}" != *homebrew* ]]; then
+        platform_suffix=" _(Linux only)_"
+      elif [[ "${platforms}" != *debian* ]]; then
+        platform_suffix=" _(macOS only)_"
+      fi
     fi
   fi
 
@@ -221,7 +227,15 @@ emit_script() {
   # The tagline joins whatever segments exist; a script declaring neither a minimum bash version
   # nor dependencies emits no tagline line at all, rather than a blank one.
   local tagline
-  tagline=$(join_by ' · ' "${bash_seg}" "${deps_seg}")"${platform_suffix}"
+  tagline=$(join_by ' · ' "${bash_seg}" "${deps_seg}")
+  # The annotation qualifies the segments rather than standing alongside them, so it is appended with
+  # a space instead of joined with the separator. When there are no segments it becomes the whole
+  # tagline, where that leading space would render as a stray indent, so it is dropped.
+  if [[ -n "${tagline}" ]]; then
+    tagline+="${platform_suffix}"
+  else
+    tagline="${platform_suffix# }"
+  fi
 
   # No trailing blank: the separator between blocks is emitted by the caller, so the index
   # file never ends with a blank line that would double up against the one the splicer adds
