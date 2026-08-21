@@ -331,6 +331,7 @@ real system. The full set:
 | `mdcheck-progress` | `MDSTAT`, `SYS_BLOCK`, `MDCHECK_STATE_DIR`, `MDADM_CONF` | Nearly the whole tool reads machine state |
 | `nopasswd-sudo` | `DROPIN`, `SYSTEMD_UNIT_DIR` | Defaults are `/etc/sudoers.d` and `/etc/systemd/system`; the coverage job runs as root |
 | `subtitle-sync` | `CACHE_DIR` (via config) | Defaults under `$XDG_CACHE_HOME`, so a test would write to the real cache |
+| `ufw-docker-expose` | `DOCKER_BIN` | The double cannot simply be called `docker`: `bin/coverage/run-coverage.sh` and the bash-3.2 guard test run the real CLI for pinned images, and a stub of that name on `PATH` would be handed to them |
 
 ### Coverage
 

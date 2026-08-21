@@ -33,6 +33,13 @@ scripts:
     dependencies:
       debian: [mdadm]
 
+  ufw-docker-expose:
+    path: scripts/system/ufw-docker-expose/ufw-docker-expose.sh
+    description: "Opens external access to Docker-published container ports using ufw route rules keyed on the port rather than the container's address, so a redeploy that renumbers the container cannot silently close the port from outside, and constrained to container address ranges so the rules do not swallow traffic the host routes for a VPN exit node or subnet router."
+    platforms: [debian]   # ufw and its route rules are Linux-only
+    dependencies:
+      debian: [ufw]       # docker stays out: the publish check degrades without it, and naming a Docker package would fight a docker-ce install
+
   memory-pressure-alert:
     path: scripts/system/memory-pressure-alert/memory-pressure-alert.sh
     description: "Warns while a Mac is filling up — swap growing and memory use climbing — rather than once it has already stalled, and names the heaviest applications by resident plus compressed memory."

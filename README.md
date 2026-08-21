@@ -73,6 +73,12 @@ Resynchronizes drifting subtitles to a video's speech using a Whisper transcript
 
 `bash 4.3+` · deps: `ffmpeg`
 
+### [`ufw-docker-expose`](scripts/system/ufw-docker-expose/)
+
+Opens external access to Docker-published container ports using ufw route rules keyed on the port rather than the container's address, so a redeploy that renumbers the container cannot silently close the port from outside, and constrained to container address ranges so the rules do not swallow traffic the host routes for a VPN exit node or subnet router.
+
+deps: `ufw` _(Linux only)_
+
 ### [`unlock-pdf`](scripts/utility/unlock-pdf/)
 
 Decrypts a password-protected PDF file using the 'qpdf' command-line tool.

@@ -35,5 +35,11 @@ Finds orphaned media files left by *arr hard-linking and interactively removes t
 
 `bash 4.0+` · deps: `curl`, `jq`
 
+### [`ufw-docker-expose`](ufw-docker-expose/)
+
+Opens external access to Docker-published container ports using ufw route rules keyed on the port rather than the container's address, so a redeploy that renumbers the container cannot silently close the port from outside, and constrained to container address ranges so the rules do not swallow traffic the host routes for a VPN exit node or subnet router.
+
+deps: `ufw` _(Linux only)_
+
 <!-- END INDEX -->
 
