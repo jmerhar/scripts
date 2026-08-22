@@ -11,7 +11,7 @@ Three figures are reported together — an alert carries all of them and marks t
 | Reading | What it is |
 | --- | --- |
 | **used** | How much of RAM is in use, counted the way Activity Monitor and Stats count it: anonymous, wired and compressed pages, less the file cache and purgeable pages the kernel reclaims on demand. A healthy Mac runs high here — 70% is unremarkable — because macOS lends every spare page to the cache rather than leaving it idle. |
-| **swap** | How much has been written out to disk. The one reading that is near zero on a healthy Mac, and it accrues over days of uptime, so it gives the earliest warning. Once free swap reaches zero the machine stalls outright. |
+| **swap** | How much has been written out to disk, in GB. The one reading that is near zero on a healthy Mac, and it accrues over days of uptime, so it gives the earliest warning. Once free swap reaches zero the machine stalls outright. The percentage `--report` shows beside it is that size as a share of installed RAM — the same denominator the other two readings use, so it says how much of *this* machine has been pushed to disk. |
 | **compressed** | How much of RAM the kernel is holding squeezed in place instead of paging it out, since RAM is faster than disk. It is **already part of `used`**, so it is not memory consumed on top of that figure, and a third of RAM is ordinary. Read it as how hard the machine is working to stay out of swap: high with empty swap means the compressor is coping; high alongside growing swap means it has run out of room to squeeze. |
 
 So "62% compressed" on its own is not a verdict. Beside `swap 0 MB` it says the compressor is absorbing a heavy but survivable load; beside `swap 6000 MB` it says the machine is nearly out of ways to postpone the stall.
@@ -21,6 +21,8 @@ So "62% compressed" on its own is not a verdict. Beside `swap 0 MB` it says the 
 Memory, the compressor and the applications are reported as shares of installed RAM. Two reasons, and they are the same reason: a size only means something to a reader who remembers how much memory the machine has, and a threshold written as a size only fits the machine it was chosen on. What a healthy Mac holds compressed grows with the RAM it has, so `8192 MB` is deafening on an 8 GB laptop and silent on a 64 GB one, while `50%` fits both.
 
 Swap stays a size. What makes swap dangerous does not scale with RAM: a healthy machine of any size sits near zero, so a modest absolute figure is already a signal everywhere, and each page written costs the same disk round trip whatever the total. A share of RAM would only make the threshold late on large machines; a share of the swap file itself would say nothing at all, since macOS grows that file on demand and the used-to-total ratio therefore stays roughly constant however bad things get.
+
+Every size is shown in gigabytes to one decimal place, because these figures run to five digits in megabytes and only the leading two carry meaning — `24.9 GB` is read at a glance where `25450 MB` is not. The swap threshold is nevertheless set in whole megabytes (`SWAP_WARN_MB`, `--swap-mb`), which tunes it more finely than the display shows and keeps the comparison exact integer arithmetic.
 
 `--report` prints both forms of every figure, since it is read deliberately and has the room. An alert gives one — the form its threshold is written in, so it speaks the same units as the config file it is tuned by, and the space left over goes to the application names that say what to close.
 
@@ -34,6 +36,7 @@ The per-application shares can add up to more than 100%, and a single applicatio
 * **Blames the application, not the process** — totals are aggregated per command name, turning 56 renderers into one line.
 * **Reports the whole picture, not just the trigger** — every alert names all three readings in a fixed order and marks the one that crossed, so a figure that means nothing in isolation arrives beside the two that give it meaning.
 * **Thresholds that fit any machine** — memory and the compressor are shares of installed RAM, so the shipped defaults suit an 8 GB laptop and a 64 GB desktop without tuning.
+* **Says it as a warning** — the alert is logged at `WARN`, because a filling machine is a finding rather than a failure of the tool. A red `[ERROR]` line for a script doing its job teaches its reader to ignore the next one.
 * **Quiet by default** — raises nothing and exits 0 while healthy, so it suits a `launchd` agent running every few minutes. (One `[INFO]` line naming the config file it read is logged per run, from the shared config loader.)
 * **Fails safe** — an unreadable reading counts as healthy. Running unattended, a false alarm every few minutes trains you to ignore the real one.
 
@@ -70,18 +73,20 @@ Check the current state without waiting for a threshold:
 
 ```
 $ memory-pressure-alert --report
-used 77% (25450 MB) · swap 0 MB (0%) · compressed 33% (10907 MB)
-   13680 MB   41%   53 proc  Google
-    5837 MB   17%    2 proc  java
-    5364 MB   16%    1 proc  studio
+used 79% (25.3 GB) · swap 0.0 GB (0%) · compressed 29% (9.4 GB)
+    11.9 GB   37%   49 proc  Google
+     5.9 GB   18%    1 proc  studio
+     4.7 GB   14%    1 proc  idea
 ```
 
-The alert carries the same readings in the form each threshold is written in, with the heaviest applications appended:
+The alert carries the same readings in the form each threshold is judged on, with the heaviest applications appended:
 
 ```
 $ memory-pressure-alert --no-notify
-used 92% · ⚠ swap 4210 MB · ⚠ compressed 61%. Heaviest: Google 41%; java 17%; studio 16%
+[WARN]: used 92% · ⚠ swap 4.1 GB · ⚠ compressed 61%. Heaviest: Google 41%; studio 17%; idea 16%
 ```
+
+A warning, not an error: nothing has gone wrong with the tool when a machine fills up — reporting it is the job. `ERROR` is kept for the script's own failures, so a red line stays worth reading.
 
 Install it as a `launchd` agent so it keeps watch on its own:
 

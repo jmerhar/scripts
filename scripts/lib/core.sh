@@ -16,12 +16,14 @@ _CORE_SH_LOADED="true"
 if [[ -t 1 ]]; then
   _color_info=$(tput setaf 4)    # Blue for info
   _color_debug=$(tput setaf 8)   # Grey for debug
+  _color_warn=$(tput setaf 3)    # Yellow for warnings
   _color_error=$(tput setaf 1)   # Red for errors
   _color_reset=$(tput sgr0)
   _text_bold=$(tput bold)
 else
   _color_info=""
   _color_debug=""
+  _color_warn=""
   _color_error=""
   _color_reset=""
   _text_bold=""
@@ -117,6 +119,29 @@ log_info() {
 }
 
 ########################################
+# Logs a warning to the log file and to stderr.
+# When connected to a terminal, output is colorized.
+#
+# For a condition the script is reporting rather than suffering: a machine filling up, a threshold
+# crossed, an assumption worth stating out loud. ERROR says the script itself went wrong, so using it to
+# deliver a finding tells the reader the tool failed — and a red line for a working tool teaches them to
+# distrust the next one. Stderr, like ERROR, so a caller reading the output does not receive a diagnostic
+# as data.
+# Globals:
+#   _color_warn, _text_bold, _color_reset
+# Arguments:
+#   Message to print.
+########################################
+log_warn() {
+  log_message "WARN" "$*"
+  if [[ -t 2 ]]; then
+    printf "%b\n" "${_color_warn}${_text_bold}[WARN]: $*${_color_reset}" >&2
+  else
+    printf "%s\n" "[WARN]: $*" >&2
+  fi
+}
+
+########################################
 # Logs an error message to the log file and to stderr.
 # When connected to a terminal, output is colorized.
 # Globals:
@@ -161,11 +186,12 @@ log_debug() {
 # means every such script has to know the library's internal names — which is how one script came to blank
 # five variables by hand.
 # Globals:
-#   _color_info, _color_debug, _color_error, _color_reset, _text_bold
+#   _color_info, _color_debug, _color_warn, _color_error, _color_reset, _text_bold
 ########################################
 disable_log_colors() {
   _color_info=""
   _color_debug=""
+  _color_warn=""
   _color_error=""
   _color_reset=""
   _text_bold=""

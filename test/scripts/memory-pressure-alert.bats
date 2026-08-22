@@ -92,12 +92,12 @@ VMSTAT
 }
 
 @test "read_used reports a size the percentage cannot be rounded back into" {
-  # 12000 MB of 16384 is 73.24%, and 73% of 16384 is 11960 — so this sample is only reported correctly
-  # by a size that came from the page counts. Deriving one figure from the other loses hundreds of MB.
-  write_vmstat 768000 0 0 0 0 0
+  # 8354 MB of 16384 is 50.99%, and 50% of 16384 is 8192 — so this sample is only reported correctly by
+  # a size that came from the page counts. The reading stays in MB whatever the display does with it.
+  write_vmstat 534656 0 0 0 0 0
   run_func "$SCRIPT" read_used
   [ "$status" -eq 0 ]
-  [ "$output" = "73 12000" ]
+  [ "$output" = "50 8354" ]
 }
 
 @test "read_total_mb converts the installed byte count to whole MB" {
@@ -162,7 +162,7 @@ VMSTAT
   printf 'total = 4096.00M used = 3000.00M free = 1096.00M\n' > "$FIX/swap"
   run_script "$SCRIPT" --no-notify
   [ "$status" -eq 2 ]
-  [[ "$output" == *"swap 3000 MB"* ]]
+  [[ "$output" == *"swap 2.9 GB"* ]]
 }
 
 @test "does not alert just below the swap threshold" {
@@ -208,7 +208,9 @@ VMSTAT
   printf 'total = 4096.00M used = 100.00M free = 3996.00M\n' > "$FIX/swap"
   run_script "$SCRIPT" --no-notify --swap-mb 50
   [ "$status" -eq 2 ]
-  [[ "$output" == *"swap 100 MB"* ]]
+  # The threshold is set in MB and the reading is shown in GB: the two units are not the same, so the
+  # display has to convert rather than echo the number the flag was given.
+  [[ "$output" == *"swap 0.1 GB"* ]]
 }
 
 @test "an explicit flag beats the config file" {
@@ -233,7 +235,7 @@ VMSTAT
   write_vmstat 1000000 0 0 0 0 0
   run_script "$SCRIPT" --no-notify
   [ "$status" -eq 2 ]
-  [[ "$output" == *"swap 3000 MB"* ]]
+  [[ "$output" == *"swap 2.9 GB"* ]]
   [[ "$output" == *"used 95%"* ]]
 }
 
@@ -245,7 +247,7 @@ VMSTAT
   run_script "$SCRIPT" --no-notify
   [ "$status" -eq 2 ]
   [[ "$output" == *"used 75%"* ]]
-  [[ "$output" == *"swap 0 MB"* ]]
+  [[ "$output" == *"swap 0.0 GB"* ]]
   [[ "$output" == *"compressed 62%"* ]]
 }
 
@@ -255,9 +257,9 @@ VMSTAT
   write_vmstat 131072 0 0 655360 0 0
   run_script "$SCRIPT" --no-notify
   [ "$status" -eq 2 ]
-  [[ "$output" == *"used 75% · swap 0 MB · ⚠ compressed 62%."* ]]
-  [[ "$output" != *"12288 MB"* ]]
-  [[ "$output" != *"10240 MB"* ]]
+  [[ "$output" == *"used 75% · swap 0.0 GB · ⚠ compressed 62%."* ]]
+  [[ "$output" != *"12.0 GB"* ]]
+  [[ "$output" != *"10.0 GB"* ]]
 }
 
 @test "only the reading that crossed its threshold is marked" {
@@ -266,7 +268,7 @@ VMSTAT
   printf 'total = 4096.00M used = 3000.00M free = 1096.00M\n' > "$FIX/swap"
   run_script "$SCRIPT" --no-notify
   [ "$status" -eq 2 ]
-  [[ "$output" == *"⚠ swap 3000 MB"* ]]
+  [[ "$output" == *"⚠ swap 2.9 GB"* ]]
   [[ "$output" != *"⚠ used"* ]]
   [[ "$output" != *"⚠ compressed"* ]]
 }
@@ -277,7 +279,7 @@ VMSTAT
   printf 'total = 4096.00M used = 3000.00M free = 1096.00M\n' > "$FIX/swap"
   run_script "$SCRIPT" --no-notify
   [ "$status" -eq 2 ]
-  [[ "$output" == *"used 25% · ⚠ swap 3000 MB · compressed 0%"* ]]
+  [[ "$output" == *"used 25% · ⚠ swap 2.9 GB · compressed 0%"* ]]
 }
 
 @test "--report marks a reading that crossed its threshold" {
@@ -286,13 +288,13 @@ VMSTAT
   printf 'total = 4096.00M used = 3000.00M free = 1096.00M\n' > "$FIX/swap"
   run_script "$SCRIPT" --report
   [ "$status" -eq 0 ]
-  [[ "$output" == *"⚠ swap 3000 MB"* ]]
+  [[ "$output" == *"⚠ swap 2.9 GB"* ]]
 }
 
 @test "--report leaves the readings unmarked while every one is healthy" {
   run_script "$SCRIPT" --report
   [ "$status" -eq 0 ]
-  [[ "$output" == *"used 25% (4096 MB) · swap 0 MB (0%) · compressed 0% (0 MB)"* ]]
+  [[ "$output" == *"used 25% (4.0 GB) · swap 0.0 GB (0%) · compressed 0% (0.0 GB)"* ]]
 }
 
 @test "--report gives both forms of every figure" {
@@ -303,24 +305,25 @@ VMSTAT
   write_vmstat 131072 0 0 655360 0 0
   run_script "$SCRIPT" --report
   [ "$status" -eq 0 ]
-  [[ "$output" == *"used 75% (12288 MB) · ⚠ swap 3000 MB (18%) · ⚠ compressed 62% (10240 MB)"* ]]
+  [[ "$output" == *"used 75% (12.0 GB) · ⚠ swap 2.9 GB (18%) · ⚠ compressed 62% (10.0 GB)"* ]]
 }
 
 @test "--report shows a size taken from the sample, not one rebuilt from the percentage" {
-  # The two forms sit side by side here, so a size rebuilt from the rounded share would be visibly
-  # wrong: 73% of 16384 MB is 11960, where the sample holds 12000.
-  write_vmstat 768000 0 0 0 0 0
+  # The two forms sit side by side here, so a size rebuilt from the truncated share would be visibly
+  # wrong. The fixture is chosen for the gap to survive rounding to a tenth of a GB: 8354 MB is 50.99%
+  # of 16 GB, and 50% of 16 GB is 8192 MB — 8.2 GB against 8.0 GB.
+  write_vmstat 534656 0 0 0 0 0
   run_script "$SCRIPT" --report
   [ "$status" -eq 0 ]
-  [[ "$output" == *"used 73% (12000 MB)"* ]]
+  [[ "$output" == *"used 50% (8.2 GB)"* ]]
 }
 
 @test "--report gives the heaviest applications as sizes and shares" {
   printf 'COMMAND  MEM  CMPRS\nChrome  1024M  1024M\nSlack  256M  256M\n' > "$FIX/top"
   run_script "$SCRIPT" --report
   [ "$status" -eq 0 ]
-  [[ "$output" == *"2048 MB   12%    1 proc  Chrome"* ]]
-  [[ "$output" == *"512 MB    3%    1 proc  Slack"* ]]
+  [[ "$output" == *"2.0 GB   12%    1 proc  Chrome"* ]]
+  [[ "$output" == *"0.5 GB    3%    1 proc  Slack"* ]]
 }
 
 ########################################
@@ -370,7 +373,7 @@ VMSTAT
   printf 'total = 4096.00M used = 3000.00M free = 1096.00M\n' > "$FIX/swap"
   run_script "$SCRIPT" --report
   [ "$status" -eq 0 ]
-  [[ "$output" == *"swap 3000 MB"* ]]
+  [[ "$output" == *"swap 2.9 GB"* ]]
   [[ "$output" == *"used 25%"* ]]
 }
 
@@ -381,6 +384,25 @@ VMSTAT
   export NOTIFY_CMD=false
   run_script "$SCRIPT"
   [ "$status" -eq 2 ]
+}
+
+@test "the alert is logged as a warning, not an error" {
+  # The tool has not failed when a machine fills up: it has done its job. ERROR would say the script
+  # itself broke, and a red line for a working tool teaches its reader to ignore the next one.
+  printf 'total = 4096.00M used = 3000.00M free = 1096.00M\n' > "$FIX/swap"
+  run_script "$SCRIPT" --no-notify
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"[WARN]:"* ]]
+  [[ "$output" != *"[ERROR]:"* ]]
+}
+
+@test "sizes are rendered in gigabytes, never as five digits of megabytes" {
+  # 25450 MB has to be read digit by digit before it says anything; 24.9 GB does not.
+  printf 'total = 65536.00M used = 25450.00M free = 40086.00M\n' > "$FIX/swap"
+  run_script "$SCRIPT" --report
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"swap 24.9 GB"* ]]
+  [[ "$output" != *"25450"* ]]
 }
 
 @test "a size in MB passed to the compressor threshold is refused, not silently ignored" {

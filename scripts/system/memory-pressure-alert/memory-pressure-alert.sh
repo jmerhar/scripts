@@ -176,8 +176,11 @@ Raises nothing and exits 0 while healthy, so it suits a launchd agent.
 
 An alert reports all three readings and marks the one that crossed with ${READING_MARK}.
 Memory and the compressor are shares of installed RAM, so one threshold suits any
-machine; --report adds the other form of every figure. See ${_C_BOLD}Readings${_C_RESET} below for what
-each of them means.
+machine; swap is a size, in GB. --report adds the other form of every figure in
+brackets, and every percentage there is a share of installed RAM as well — including
+swap's, which is that many gigabytes expressed against the RAM they came out of, so
+the three readings can be compared on one scale. See ${_C_BOLD}Readings${_C_RESET} below for what each
+of them means.
 
 ${_C_BOLD}Options:${_C_RESET}
   -s, --swap-mb MB        Warn at this much swap in use (default: ${SWAP_WARN_MB})
@@ -199,10 +202,19 @@ ${_C_BOLD}Readings:${_C_RESET}
               healthy Mac runs high here — 70% is unremarkable — because macOS
               lends every spare page to the cache rather than leaving it idle.
 
-  swap        How much has been written out to disk. The one reading that is
-              near zero on a healthy Mac, and it accrues over days of uptime,
+  swap        How much has been written out to disk, in GB. The one reading that
+              is near zero on a healthy Mac, and it accrues over days of uptime,
               so it gives the earliest warning. Once free swap reaches zero the
               machine stalls outright.
+
+              A size rather than a share, because what makes swap dangerous does
+              not scale with RAM: a healthy machine of any size sits near zero,
+              and each page written costs the same disk round trip whatever the
+              total. Its threshold is therefore set in whole MB — SWAP_WARN_MB,
+              or --swap-mb — which tunes more finely than the GB display shows.
+              The percentage --report puts beside it is that size as a share of
+              installed RAM, the same denominator the other two readings use, so
+              it says how much of this machine has been pushed to disk.
 
   compressed  How much of RAM the kernel is holding squeezed in place instead of
               paging it out, since RAM is faster than disk. It is already part of
@@ -301,6 +313,23 @@ percent_of_ram() {
 }
 
 ########################################
+# Render a size given in MB as gigabytes.
+#
+# Every size a reader sees goes through this. Sizes here run to five digits in MB, where the leading two
+# carry the meaning: "25450 MB" has to be read digit by digit before it says anything, and "24.9 GB" does
+# not. Readings are held in MB internally because that is what the swap threshold is set in and integer
+# MB compare exactly, so the conversion belongs at the point of display rather than at the point of
+# measurement.
+# Arguments:
+#   $1 - the size in MB
+# Outputs:
+#   Writes the size and its unit to stdout, to one decimal place.
+########################################
+format_gb() {
+  awk -v mb="$1" 'BEGIN { printf "%.1f GB\n", mb / 1024 }'
+}
+
+########################################
 # Read compressed memory, in whole MB.
 # Globals:
 #   VMSTAT_CMD
@@ -335,13 +364,13 @@ read_top_offenders() {
 ########################################
 # Format one reading for display.
 #
-# The leading figure is the one the reading's threshold is written in, so an alert
-# speaks the same units as the config file it is tuned by. The other form follows in
-# brackets only when there is room for it: a notification is read at a glance and on
-# a lock screen, where a second number for each reading crowds out the application
-# names that say what to close.
+# The leading figure is the kind of figure the reading is judged as — a size for
+# swap, a share of installed RAM for the other two — so an alert says the thing its
+# threshold is about. The other form follows in brackets only when there is room for
+# it: a notification is read at a glance and on a lock screen, where a second number
+# for each reading crowds out the application names that say what to close.
 # Arguments:
-#   $1 - label, $2 - the figure its threshold is written in, $3 - the same reading
+#   $1 - label, $2 - the figure its threshold is judged on, $3 - the same reading
 #        in the other form, $4 - "true" when it crossed its threshold,
 #   $5 - "true" to include the other form
 # Outputs:
@@ -649,16 +678,16 @@ main() {
   # an alert arrives unbidden in a notification and gets the one its threshold uses.
   local both=${opt_report}
   local used_text swap_text comp_text
-  used_text=$(format_reading used "${used_percent}%" "${used_mb} MB" "${used_hot}" "${both}")
-  swap_text=$(format_reading swap "${swap_mb} MB" "${swap_percent}%" "${swap_hot}" "${both}")
-  comp_text=$(format_reading compressed "${compressor_percent}%" "${compressor_mb} MB" "${comp_hot}" "${both}")
+  used_text=$(format_reading used "${used_percent}%" "$(format_gb "${used_mb}")" "${used_hot}" "${both}")
+  swap_text=$(format_reading swap "$(format_gb "${swap_mb}")" "${swap_percent}%" "${swap_hot}" "${both}")
+  comp_text=$(format_reading compressed "${compressor_percent}%" "$(format_gb "${compressor_mb}")" "${comp_hot}" "${both}")
   local readings="${used_text} · ${swap_text} · ${comp_text}"
   log_debug "${readings}"
 
   if [[ ${opt_report} == true ]]; then
     printf '%s\n' "${readings}"
     read_top_offenders | while read -r mb procs app; do
-      printf '  %6s MB  %3s%%  %3s proc  %s\n' "${mb}" "$(percent_of_ram "${mb}" "${total_mb}")" "${procs}" "${app}"
+      printf '  %9s  %3s%%  %3s proc  %s\n' "$(format_gb "${mb}")" "$(percent_of_ram "${mb}" "${total_mb}")" "${procs}" "${app}"
     done
     return 0
   fi
@@ -678,7 +707,7 @@ main() {
   done)
   offenders=${offenders%; }
   body=$(printf '%s. Heaviest: %s' "${readings}" "${offenders:-unknown}")
-  log_error "${body}"
+  log_warn "${body}"
   deliver "${body}" "${opt_no_notify}"
   # 2 rather than 1, matching dmarc-report: 1 is what cli.sh's die_usage exits for
   # a usage error, so a raised condition needs its own code to stay distinguishable.

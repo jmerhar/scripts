@@ -44,7 +44,7 @@ html = "coverage"
 # reads an ordinary prose line as code, so a file that is not bash at all is otherwise reported as bash
 # that never ran — a README beside a script cost 36 uncovered lines before it was excluded.
 #
-# The measured figure is 93.87% (3963/4222 lines) across 37 files, the bin tools' own library included:
+# The measured figure is 93.83% (3969/4230 lines) across 37 files, the bin tools' own library included:
 # `--include-path` names bin/ and recurses, so bin/_lib/ is measured like everything else, and both of its
 # files are fully covered by test/shared/bin-lib.bats. Two things push the figure up: an awk or jq program
 # in its own file is not measured at all, where its interior would otherwise count as bash that never ran;

@@ -122,7 +122,7 @@ and using what it sources. See [`bin/README.md`](bin/README.md).
 
 | Library | Holds |
 |---|---|
-| `core.sh` | `SCRIPT_NAME`, the install prefix, `log_info`/`log_error`/`log_debug` (and their writer `log_message`), `disable_log_colors`, `enable_debug_mode`, `default_log_file`, `log_command` |
+| `core.sh` | `SCRIPT_NAME`, the install prefix, `log_info`/`log_warn`/`log_error`/`log_debug` (and their writer `log_message`), `disable_log_colors`, `enable_debug_mode`, `default_log_file`, `log_command` |
 | `config.sh` | `load_config`, `load_optional_config`, `validate_config` — needs `core.sh` |
 | `program.sh` | `load_program` — needs `core.sh` |
 | `colors.sh` | the `_C_*` palette and `setup_colors <wanted>` |

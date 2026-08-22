@@ -77,8 +77,22 @@ setup() { setup_common; }
   [ "$output" = "[ERROR]: bad thing" ]
 }
 
+@test "log_warn writes to stderr" {
+  # Stderr like log_error, so a caller reading a script's output does not receive a diagnostic as data.
+  run_snippet "$LIB_DIR/core.sh" 'log_warn "getting full" 2>/dev/null'
+  [ -z "$output" ]
+  run_snippet "$LIB_DIR/core.sh" 'log_warn "getting full" 2>&1 >/dev/null'
+  [ "$output" = "[WARN]: getting full" ]
+}
+
+@test "log_warn is not silenced by _LOG_QUIET" {
+  # It reports a finding the caller asked for; only log_info is chatter.
+  run_snippet "$LIB_DIR/core.sh" '_LOG_QUIET=true; log_warn "still said" 2>&1'
+  [ "$output" = "[WARN]: still said" ]
+}
+
 @test "log output carries no escape codes when not on a terminal" {
-  run_snippet "$LIB_DIR/core.sh" 'log_info "plain"; log_error "plain" 2>&1'
+  run_snippet "$LIB_DIR/core.sh" 'log_info "plain"; log_warn "plain" 2>&1; log_error "plain" 2>&1'
   [[ "$output" != *$'\e'* ]]
 }
 
@@ -143,6 +157,12 @@ setup() { setup_common; }
   local log="$BATS_TEST_TMPDIR/app.log"
   run_snippet "$LIB_DIR/core.sh" "LOG_FILE='$log'; log_error 'oops' 2>/dev/null"
   [[ "$(cat "$log")" == *"[ERROR]: oops" ]]
+}
+
+@test "log_warn is recorded at WARN level" {
+  local log="$BATS_TEST_TMPDIR/app.log"
+  run_snippet "$LIB_DIR/core.sh" "LOG_FILE='$log'; log_warn 'filling up' 2>/dev/null"
+  [[ "$(cat "$log")" == *"[WARN]: filling up" ]]
 }
 
 @test "log_debug writes nothing to the log file while disabled" {
@@ -231,8 +251,12 @@ setup() { setup_common; }
 # is how one script came to blank five variables by hand.
 @test "disable_log_colors empties the log colours" {
   local tool; tool=$(lib_at opt/tools colourtool core.sh)
-  run_snippet "$tool" 'disable_log_colors
-    printf "[%s%s%s%s%s]" "${_color_info}" "${_color_debug}" "${_color_error}" "${_color_reset}" "${_text_bold}"'
+  # Seeded first, because core.sh picks its colours from `[[ -t 1 ]]` and bats is never a terminal: every
+  # one of these is already empty here, so an unseeded assertion holds however few of them the function
+  # actually clears.
+  run_snippet "$tool" '_color_info=X _color_debug=X _color_warn=X _color_error=X _color_reset=X _text_bold=X
+    disable_log_colors
+    printf "[%s%s%s%s%s%s]" "${_color_info}" "${_color_debug}" "${_color_warn}" "${_color_error}" "${_color_reset}" "${_text_bold}"'
   [ "$output" = "[]" ]
 }
 
