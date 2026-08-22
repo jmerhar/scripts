@@ -19,7 +19,19 @@
 #     anonymous plus wired plus compressed pages, with the file cache and
 #     purgeable pages excluded because the kernel can take those back at will.
 #     A naive total-minus-free reads ~99% at all times and says nothing.
-#   * the compressor — how much has been squeezed rather than paged out.
+#   * the compressor — how much of that used memory the kernel is holding
+#     squeezed in place instead of paging it out, since RAM is faster than disk.
+#     It is already counted inside "memory used", and a large figure is ordinary:
+#     it measures how hard the machine is working to stay out of swap, not how
+#     short of memory it is.
+#
+# Memory and the compressor are read as shares of installed RAM rather than as
+# sizes, so one set of thresholds fits an 8 GB laptop and a 128 GB desktop alike:
+# what a healthy machine compresses grows with the RAM it has, so a fixed size in
+# MB is either deafening on a small machine or silent on a large one. Swap stays a
+# size, because what makes it dangerous does not scale with RAM — a healthy
+# machine of any size sits near zero, and the pages it writes cost the same disk
+# round trip whatever the total.
 #
 # The alert names the heaviest applications, and it measures them by resident
 # plus *compressed* memory. Resident size alone is actively misleading here: a
@@ -27,6 +39,12 @@
 # few hundred megabytes each, so the real cause looks innocent while some idle
 # background process looks like the problem. Totals are aggregated per
 # application, since blame belongs to the app, not to its 56th renderer.
+#
+# Every alert carries all three readings and marks the one that crossed, rather
+# than reporting the crossed reading alone. None of them means anything by itself
+# — 12 GB compressed is unremarkable on a machine whose swap is empty and alarming
+# on one that has been paging for days — so the figure that tripped the threshold
+# is of no use without the two that say how bad the situation actually is.
 #
 # Designed to be run from a launchd agent every few minutes. It raises nothing
 # and exits 0 while the machine is healthy, so it can be left running
@@ -80,6 +98,10 @@ readonly LAUNCHCTL_CMD LAUNCH_AGENTS_DIR AGENT_LOG_DIR
 # turning a notification into a list nobody reads on a lock screen.
 readonly TOP_OFFENDERS=3
 
+# Marks the reading that crossed its threshold, so an alert carrying all three
+# still says which of them it is about.
+readonly READING_MARK="⚠"
+
 # launchd identifies an agent by a reverse-DNS label, which is also the plist's
 # basename, so the two can never drift apart.
 readonly AGENT_LABEL="si.merhar.memory-pressure-alert"
@@ -96,12 +118,46 @@ readonly DEFAULT_INTERVAL_SECONDS=300
 # trouble.
 SWAP_WARN_MB=2048
 USED_WARN_PERCENT=85
-COMPRESSOR_WARN_MB=8192
+COMPRESSOR_WARN_PERCENT=50
 
-# The threshold's meaning inverted when the reading became "used" rather than "free", so an old
-# setting left in a config file would mean the opposite of what its author intended — 25 would read
-# as "warn above 25% used", which is always. The old name is therefore refused rather than honoured.
-readonly RETIRED_CONFIG_KEY="PRESSURE_WARN_PERCENT"
+########################################
+# Refuse a configuration key whose value cannot be carried over.
+#
+# A key whose reading changed unit or sense cannot simply be renamed: the number a
+# config file already holds would mean something else under the new name, and the
+# author would go on believing a threshold is in force that is not. Saying so is the
+# only way they find out, since a threshold that never fires looks like a quiet
+# machine.
+# Globals:
+#   Reads the variable named by $1.
+# Arguments:
+#   $1 - the retired key, $2 - the key that replaces it, $3 - why the value cannot
+#        carry over, $4 - the replacement's default
+# Outputs:
+#   Writes an error when the retired key is set.
+########################################
+reject_retired_key() {
+  [[ -n ${!1:-} ]] || return 0
+  log_error "$1 is no longer read — $3. Replace it with $2 (default $4)."
+}
+
+########################################
+# Reject a threshold that is not a whole percentage.
+#
+# A percentage above 100 can never be reached, so it silently disables the reading it
+# governs. That is the shape a stale size in MB takes once a threshold becomes a
+# share of memory, and it is indistinguishable from a healthy machine.
+# Arguments:
+#   $1 - the threshold's name, $2 - its value
+# Returns:
+#   0 when valid; exits 1 through die_usage otherwise.
+########################################
+validate_percent() {
+  if [[ $2 =~ ^[0-9]+$ ]] && (( $2 <= 100 )); then
+    return 0
+  fi
+  die_usage "$1 must be a whole percentage from 0 to 100, not '$2'."
+}
 
 ########################################
 # Print the usage text.
@@ -118,10 +174,15 @@ plus compressed memory, aggregated per application.
 
 Raises nothing and exits 0 while healthy, so it suits a launchd agent.
 
+An alert reports all three readings and marks the one that crossed with ${READING_MARK}.
+Memory and the compressor are shares of installed RAM, so one threshold suits any
+machine; --report adds the other form of every figure. See ${_C_BOLD}Readings${_C_RESET} below for what
+each of them means.
+
 ${_C_BOLD}Options:${_C_RESET}
   -s, --swap-mb MB        Warn at this much swap in use (default: ${SWAP_WARN_MB})
   -u, --used PERCENT      Warn at this much memory in use (default: ${USED_WARN_PERCENT})
-  -c, --compressor MB     Warn at this much compressed memory (default: ${COMPRESSOR_WARN_MB})
+  -c, --compressor PCT    Warn at this much of RAM held compressed (default: ${COMPRESSOR_WARN_PERCENT})
   -r, --report            Print the current readings and exit, whatever their values
   -n, --no-notify         Print to stdout instead of sending a notification
       --install           Install a launchd agent that runs this periodically
@@ -130,6 +191,26 @@ ${_C_BOLD}Options:${_C_RESET}
       --no-color          Disable coloured output
   -d, --debug             Enable debug logging
   -h, --help              Show this help message
+
+${_C_BOLD}Readings:${_C_RESET}
+  used        How much of RAM is in use, counted the way Activity Monitor and
+              Stats count it: anonymous, wired and compressed pages, less the
+              file cache and purgeable pages the kernel reclaims on demand. A
+              healthy Mac runs high here — 70% is unremarkable — because macOS
+              lends every spare page to the cache rather than leaving it idle.
+
+  swap        How much has been written out to disk. The one reading that is
+              near zero on a healthy Mac, and it accrues over days of uptime,
+              so it gives the earliest warning. Once free swap reaches zero the
+              machine stalls outright.
+
+  compressed  How much of RAM the kernel is holding squeezed in place instead of
+              paging it out, since RAM is faster than disk. It is already part of
+              "used", so it is not memory consumed on top of that figure, and a
+              third of RAM is ordinary. Read it as how hard the machine is working
+              to stay out of swap: high with empty swap means the compressor is
+              coping, high alongside growing swap means it has run out of room to
+              squeeze.
 
 ${_C_BOLD}Exit Codes:${_C_RESET}
   0  Healthy, a report was printed, or the agent was installed or removed
@@ -158,32 +239,65 @@ read_swap_mb() {
 }
 
 ########################################
-# Read used memory as a percentage of the total.
+# Read used memory, as a percentage of the total and in whole MB.
 #
 # Counted the way Activity Monitor and Stats count it: anonymous, wired and
 # compressed pages, with the file cache and purgeable pages subtracted because the
 # kernel reclaims those on demand and they are not a shortage. A plain
 # total-minus-free would read about 99% on any healthy Mac and never move.
 #
-# All of it comes from one vm_stat call, so every figure describes the same instant
-# — sampling them separately would let the parts disagree and push the total past
-# 100%.
+# Both forms come back from one call, and one vm_stat sample, so every figure
+# describes the same instant — sampling them separately would let the parts
+# disagree and push the total past 100%, or print a size that contradicts the
+# percentage beside it.
 # Globals:
 #   VMSTAT_CMD, MEMSIZE_CMD
 # Outputs:
-#   Writes the integer percentage to stdout, or 0 when it cannot be read.
+#   Writes "<percentage> <MB>" to stdout, or "0 0" when it cannot be read.
 ########################################
-read_used_percent() {
+read_used() {
   local out total
   out=$(${VMSTAT_CMD} 2>/dev/null) || out=""
   total=$(${MEMSIZE_CMD} 2>/dev/null) || total=""
   # A missing reading must not look like an emergency: this runs unattended, and a
   # false alarm every few minutes teaches the user to ignore the real one.
-  [[ ${total} =~ ^[0-9]+$ ]] && (( total > 0 )) || { printf '0\n'; return 0; }
+  [[ ${total} =~ ^[0-9]+$ ]] && (( total > 0 )) || { printf '0 0\n'; return 0; }
 
   local prog
-  prog=$(load_program used-percent.awk)  # @embed used-percent.awk
+  prog=$(load_program used-memory.awk)  # @embed used-memory.awk
   printf '%s\n' "${out}" | awk -v total="${total}" "${prog}"
+}
+
+########################################
+# Read installed memory, in whole MB.
+#
+# Wanted separately from the used reading because it is the denominator every
+# other share is taken against, and because a size is only interpretable beside it.
+# Globals:
+#   MEMSIZE_CMD
+# Outputs:
+#   Writes the integer MB to stdout, or 0 when it cannot be read.
+########################################
+read_total_mb() {
+  local total
+  total=$(${MEMSIZE_CMD} 2>/dev/null) || total=""
+  [[ ${total} =~ ^[0-9]+$ ]] || { printf '0\n'; return 0; }
+  printf '%s\n' $(( total / 1048576 ))
+}
+
+########################################
+# Express a size as a percentage of installed memory.
+#
+# Zero when the total is unknown, which keeps an unreadable machine looking healthy
+# rather than raising an alarm nobody can act on every few minutes.
+# Arguments:
+#   $1 - the size in MB, $2 - installed memory in MB
+# Outputs:
+#   Writes the integer percentage to stdout.
+########################################
+percent_of_ram() {
+  (( $2 > 0 )) || { printf '0\n'; return 0; }
+  printf '%s\n' $(( $1 * 100 / $2 ))
 }
 
 ########################################
@@ -224,14 +338,25 @@ read_top_offenders() {
 }
 
 ########################################
-# Format the readings as a single human-readable line.
+# Format one reading for display.
+#
+# The leading figure is the one the reading's threshold is written in, so an alert
+# speaks the same units as the config file it is tuned by. The other form follows in
+# brackets only when there is room for it: a notification is read at a glance and on
+# a lock screen, where a second number for each reading crowds out the application
+# names that say what to close.
 # Arguments:
-#   $1 - swap MB, $2 - used percent, $3 - compressor MB
+#   $1 - label, $2 - the figure its threshold is written in, $3 - the same reading
+#        in the other form, $4 - "true" when it crossed its threshold,
+#   $5 - "true" to include the other form
 # Outputs:
-#   Writes the summary to stdout.
+#   Writes the formatted reading to stdout.
 ########################################
-format_readings() {
-  printf 'swap %s MB · used %s%% · compressed %s MB\n' "$1" "$2" "$3"
+format_reading() {
+  local text="$1 $2"
+  [[ $5 == true ]] && text="${text} ($3)"
+  [[ $4 == true ]] && text="${READING_MARK} ${text}"
+  printf '%s\n' "${text}"
 }
 
 ########################################
@@ -497,51 +622,69 @@ main() {
 
   load_optional_config
 
-  # Said out loud rather than ignored quietly: a config written against the old free-memory threshold
-  # would otherwise keep its setting silently dropped, and the user would believe a threshold was in
-  # force that is not.
-  if [[ -n ${!RETIRED_CONFIG_KEY:-} ]]; then
-    log_error "${RETIRED_CONFIG_KEY} is no longer read — the reading is now memory *used*, so its" \
-      "meaning inverted. Replace it with USED_WARN_PERCENT (default ${USED_WARN_PERCENT})."
-  fi
+  reject_retired_key PRESSURE_WARN_PERCENT USED_WARN_PERCENT "it governed memory free where the reading is memory used, so its sense is inverted" "${USED_WARN_PERCENT}"
+  reject_retired_key COMPRESSOR_WARN_MB COMPRESSOR_WARN_PERCENT "the threshold is a share of installed RAM, so a size in MB reads as a percentage it can never reach" "${COMPRESSOR_WARN_PERCENT}"
 
   # Explicit flags win over the config file.
   [[ -n ${opt_swap} ]] && SWAP_WARN_MB=${opt_swap}
   [[ -n ${opt_used} ]] && USED_WARN_PERCENT=${opt_used}
-  [[ -n ${opt_compressor} ]] && COMPRESSOR_WARN_MB=${opt_compressor}
+  [[ -n ${opt_compressor} ]] && COMPRESSOR_WARN_PERCENT=${opt_compressor}
 
-  local swap_mb used_percent compressor_mb readings
+  # Checked after the merge so a bad value is caught wherever it came from, and before
+  # any reading is taken so the complaint is about the setting rather than the machine.
+  validate_percent USED_WARN_PERCENT "${USED_WARN_PERCENT}"
+  validate_percent COMPRESSOR_WARN_PERCENT "${COMPRESSOR_WARN_PERCENT}"
+
+  local total_mb swap_mb used_percent used_mb compressor_mb
+  total_mb=$(read_total_mb)
   swap_mb=$(read_swap_mb)
-  used_percent=$(read_used_percent)
+  read -r used_percent used_mb <<<"$(read_used)"
   compressor_mb=$(read_compressor_mb)
-  readings=$(format_readings "${swap_mb}" "${used_percent}" "${compressor_mb}")
+
+  local swap_percent compressor_percent
+  swap_percent=$(percent_of_ram "${swap_mb}" "${total_mb}")
+  compressor_percent=$(percent_of_ram "${compressor_mb}" "${total_mb}")
+
+  # Decided before anything is printed, so a report and an alert mark the same
+  # figures rather than each judging the readings for itself.
+  local used_hot=false swap_hot=false comp_hot=false
+  (( used_percent >= USED_WARN_PERCENT )) && used_hot=true
+  (( swap_mb >= SWAP_WARN_MB )) && swap_hot=true
+  (( compressor_percent >= COMPRESSOR_WARN_PERCENT )) && comp_hot=true
+
+  # A report is read deliberately and has the width for both forms of every figure;
+  # an alert arrives unbidden in a notification and gets the one its threshold uses.
+  local both=${opt_report}
+  local used_text swap_text comp_text
+  used_text=$(format_reading used "${used_percent}%" "${used_mb} MB" "${used_hot}" "${both}")
+  swap_text=$(format_reading swap "${swap_mb} MB" "${swap_percent}%" "${swap_hot}" "${both}")
+  comp_text=$(format_reading compressed "${compressor_percent}%" "${compressor_mb} MB" "${comp_hot}" "${both}")
+  local readings="${used_text} · ${swap_text} · ${comp_text}"
   log_debug "${readings}"
 
   if [[ ${opt_report} == true ]]; then
     printf '%s\n' "${readings}"
     read_top_offenders | while read -r mb procs app; do
-      printf '  %6s MB  %3s proc  %s\n' "${mb}" "${procs}" "${app}"
+      printf '  %6s MB  %3s%%  %3s proc  %s\n' "${mb}" "$(percent_of_ram "${mb}" "${total_mb}")" "${procs}" "${app}"
     done
     return 0
   fi
 
-  local -a reasons=()
-  (( swap_mb >= SWAP_WARN_MB )) && reasons+=("swap ${swap_mb} MB")
-  (( used_percent >= USED_WARN_PERCENT )) && reasons+=("${used_percent}% memory used")
-  (( compressor_mb >= COMPRESSOR_WARN_MB )) && reasons+=("${compressor_mb} MB compressed")
-
-  if (( ${#reasons[@]} == 0 )); then
+  if [[ ${used_hot} == false && ${swap_hot} == false && ${comp_hot} == false ]]; then
     log_debug "Healthy — no threshold crossed."
     return 0
   fi
 
-  local offenders
-  # Named in the alert because identifying the cause is the whole point: without
-  # it the user is told the machine is filling up and left to guess by what.
-  offenders=$(read_top_offenders | awk '{printf "%s %.1f GB; ", $3, $1/1024}' | sed 's/; $//')
-  local body
-  body=$(printf '%s. Heaviest: %s' \
-    "$(IFS=', '; printf '%s' "${reasons[*]}")" "${offenders:-unknown}")
+  local offenders body
+  # Named in the alert because identifying the cause is the whole point: without it
+  # the user is told the machine is filling up and left to guess by what. Reported as
+  # shares of RAM for the same reason the readings are: a size means nothing to a
+  # reader who has to remember how much memory the machine has.
+  offenders=$(read_top_offenders | while read -r mb procs app; do
+    printf '%s %s%%; ' "${app}" "$(percent_of_ram "${mb}" "${total_mb}")"
+  done)
+  offenders=${offenders%; }
+  body=$(printf '%s. Heaviest: %s' "${readings}" "${offenders:-unknown}")
   log_error "${body}"
   deliver "${body}" "${opt_no_notify}"
   # 2 rather than 1, matching dmarc-report: 1 is what cli.sh's die_usage exits for

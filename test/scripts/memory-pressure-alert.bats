@@ -74,12 +74,59 @@ VMSTAT
   [ "$output" = "0" ]
 }
 
-@test "read_used_percent treats an unreadable total as healthy" {
-  # Zero is the healthy end of this reading, where the old free-memory figure had 100.
+@test "read_used treats an unreadable total as healthy" {
+  # Zero is the healthy end of this reading, and both forms have to say so: a size beside a nil
+  # percentage would read as a machine that is full but somehow at ease.
   printf 'not-a-number\n' > "$FIX/memsize"
-  run_func "$SCRIPT" read_used_percent
+  run_func "$SCRIPT" read_used
+  [ "$status" -eq 0 ]
+  [ "$output" = "0 0" ]
+}
+
+@test "read_used reports the percentage and the size from one sample" {
+  # 2 GB anonymous plus 10 GB compressed of 16 GB installed.
+  write_vmstat 131072 0 0 655360 0 0
+  run_func "$SCRIPT" read_used
+  [ "$status" -eq 0 ]
+  [ "$output" = "75 12288" ]
+}
+
+@test "read_used reports a size the percentage cannot be rounded back into" {
+  # 12000 MB of 16384 is 73.24%, and 73% of 16384 is 11960 — so this sample is only reported correctly
+  # by a size that came from the page counts. Deriving one figure from the other loses hundreds of MB.
+  write_vmstat 768000 0 0 0 0 0
+  run_func "$SCRIPT" read_used
+  [ "$status" -eq 0 ]
+  [ "$output" = "73 12000" ]
+}
+
+@test "read_total_mb converts the installed byte count to whole MB" {
+  run_func "$SCRIPT" read_total_mb
+  [ "$status" -eq 0 ]
+  [ "$output" = "16384" ]
+}
+
+@test "read_total_mb reports zero rather than failing when the total is unreadable" {
+  # It is the denominator of every share, so an unreadable total has to leave those at zero rather
+  # than divide by it.
+  printf 'not-a-number\n' > "$FIX/memsize"
+  run_func "$SCRIPT" read_total_mb
   [ "$status" -eq 0 ]
   [ "$output" = "0" ]
+}
+
+@test "percent_of_ram is zero when the installed total is unknown" {
+  # Reached whenever hw.memsize cannot be read, and a division by zero there would kill the run under
+  # errexit — turning an unreadable reading into a failing agent rather than a quiet one.
+  run_func "$SCRIPT" percent_of_ram 4096 0
+  [ "$status" -eq 0 ]
+  [ "$output" = "0" ]
+}
+
+@test "percent_of_ram takes the share of installed memory" {
+  run_func "$SCRIPT" percent_of_ram 4096 16384
+  [ "$status" -eq 0 ]
+  [ "$output" = "25" ]
 }
 
 @test "read_compressor_mb converts pages using the page size vm_stat states" {
@@ -135,14 +182,26 @@ VMSTAT
   write_vmstat 892928 0 0 0 0 0
   run_script "$SCRIPT" --no-notify
   [ "$status" -eq 2 ]
-  [[ "$output" == *"85% memory used"* ]]
+  [[ "$output" == *"used 85%"* ]]
 }
 
-@test "alerts on compressed memory" {
-  printf 'Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages occupied by compressor: 1048576.\n' > "$FIX/vmstat"
+@test "alerts on compressed memory as a share of installed RAM" {
+  write_vmstat 131072 0 0 655360 0 0
   run_script "$SCRIPT" --no-notify
   [ "$status" -eq 2 ]
-  [[ "$output" == *"16384 MB compressed"* ]]
+  [[ "$output" == *"⚠ compressed 62%"* ]]
+  # The share is what the threshold is compared against, so the same 10 GB has to raise the alert on a
+  # 16 GB machine and stay quiet on a 64 GB one — which a fixed size in MB could not do.
+  [[ "$output" != *"⚠ used"* ]]
+}
+
+@test "the same compressed size stays quiet on a machine with more RAM" {
+  # The whole reason the threshold is a share: 10 GB compressed of 64 GB is 15%, which is a machine
+  # coping, where the same figure on a 16 GB machine is one running out of room to squeeze.
+  printf '68719476736\n' > "$FIX/memsize"
+  write_vmstat 131072 0 0 655360 0 0
+  run_script "$SCRIPT" --no-notify
+  [ "$status" -eq 0 ]
 }
 
 @test "thresholds are configurable from the command line" {
@@ -155,16 +214,16 @@ VMSTAT
 @test "an explicit flag beats the config file" {
   # The config is loaded after the options are parsed, so a flag written straight
   # into the config global would be silently overwritten by the file.
-  printf 'COMPRESSOR_WARN_MB=999999\n' > "$CONFIG_FILE"
-  printf 'Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages occupied by compressor: 65536.\n' > "$FIX/vmstat"
-  run_script "$SCRIPT" --no-notify --compressor 512
+  printf 'COMPRESSOR_WARN_PERCENT=99\n' > "$CONFIG_FILE"
+  write_vmstat 131072 0 0 655360 0 0
+  run_script "$SCRIPT" --no-notify --compressor 10
   [ "$status" -eq 2 ]
-  [[ "$output" == *"1024 MB compressed"* ]]
+  [[ "$output" == *"⚠ compressed 62%"* ]]
 }
 
 @test "the config file applies when no flag overrides it" {
-  printf 'COMPRESSOR_WARN_MB=512\n' > "$CONFIG_FILE"
-  printf 'Mach Virtual Memory Statistics: (page size of 16384 bytes)\nPages occupied by compressor: 65536.\n' > "$FIX/vmstat"
+  printf 'COMPRESSOR_WARN_PERCENT=10\n' > "$CONFIG_FILE"
+  write_vmstat 131072 0 0 655360 0 0
   run_script "$SCRIPT" --no-notify
   [ "$status" -eq 2 ]
 }
@@ -175,7 +234,93 @@ VMSTAT
   run_script "$SCRIPT" --no-notify
   [ "$status" -eq 2 ]
   [[ "$output" == *"swap 3000 MB"* ]]
-  [[ "$output" == *"95% memory used"* ]]
+  [[ "$output" == *"used 95%"* ]]
+}
+
+@test "an alert carries every reading, not only the one that crossed" {
+  # A single reading cannot be acted on: 62% compressed means nothing until the reader also knows that
+  # swap is empty and memory is three quarters full, which is the difference between a machine coping
+  # and a machine about to stall.
+  write_vmstat 131072 0 0 655360 0 0
+  run_script "$SCRIPT" --no-notify
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"used 75%"* ]]
+  [[ "$output" == *"swap 0 MB"* ]]
+  [[ "$output" == *"compressed 62%"* ]]
+}
+
+@test "an alert gives one form of each figure, the one its threshold is written in" {
+  # A notification is read at a glance and truncated on a lock screen, so the second form of every
+  # figure would crowd out the application names that say what to close.
+  write_vmstat 131072 0 0 655360 0 0
+  run_script "$SCRIPT" --no-notify
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"used 75% · swap 0 MB · ⚠ compressed 62%."* ]]
+  [[ "$output" != *"12288 MB"* ]]
+  [[ "$output" != *"10240 MB"* ]]
+}
+
+@test "only the reading that crossed its threshold is marked" {
+  # The mark is what tells the reader which figure raised the alert, since all three are reported
+  # whatever their values; marking the wrong one would point at an innocent reading.
+  printf 'total = 4096.00M used = 3000.00M free = 1096.00M\n' > "$FIX/swap"
+  run_script "$SCRIPT" --no-notify
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"⚠ swap 3000 MB"* ]]
+  [[ "$output" != *"⚠ used"* ]]
+  [[ "$output" != *"⚠ compressed"* ]]
+}
+
+@test "the readings lead with memory used and swap, and compressed comes last" {
+  # Ordered for a reader looking at a notification cold: the two figures that need no explanation
+  # first, the one that does last.
+  printf 'total = 4096.00M used = 3000.00M free = 1096.00M\n' > "$FIX/swap"
+  run_script "$SCRIPT" --no-notify
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"used 25% · ⚠ swap 3000 MB · compressed 0%"* ]]
+}
+
+@test "--report marks a reading that crossed its threshold" {
+  # The report and the alert judge the readings once, together, so a report cannot show a figure as
+  # unremarkable that the very next scheduled run alerts on.
+  printf 'total = 4096.00M used = 3000.00M free = 1096.00M\n' > "$FIX/swap"
+  run_script "$SCRIPT" --report
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"⚠ swap 3000 MB"* ]]
+}
+
+@test "--report leaves the readings unmarked while every one is healthy" {
+  run_script "$SCRIPT" --report
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"used 25% (4096 MB) · swap 0 MB (0%) · compressed 0% (0 MB)"* ]]
+}
+
+@test "--report gives both forms of every figure" {
+  # Read deliberately rather than glanced at, so it has the room for the share and the size of each
+  # reading. Every one of the six figures here differs, so a pair reported against the wrong reading
+  # cannot pass.
+  printf 'total = 4096.00M used = 3000.00M free = 1096.00M\n' > "$FIX/swap"
+  write_vmstat 131072 0 0 655360 0 0
+  run_script "$SCRIPT" --report
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"used 75% (12288 MB) · ⚠ swap 3000 MB (18%) · ⚠ compressed 62% (10240 MB)"* ]]
+}
+
+@test "--report shows a size taken from the sample, not one rebuilt from the percentage" {
+  # The two forms sit side by side here, so a size rebuilt from the rounded share would be visibly
+  # wrong: 73% of 16384 MB is 11960, where the sample holds 12000.
+  write_vmstat 768000 0 0 0 0 0
+  run_script "$SCRIPT" --report
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"used 73% (12000 MB)"* ]]
+}
+
+@test "--report gives the heaviest applications as sizes and shares" {
+  printf 'COMMAND  MEM  CMPRS\nChrome  1024M  1024M\nSlack  256M  256M\n' > "$FIX/top"
+  run_script "$SCRIPT" --report
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"2048 MB   12%    1 proc  Chrome"* ]]
+  [[ "$output" == *"512 MB    3%    1 proc  Slack"* ]]
 }
 
 ########################################
@@ -199,12 +344,22 @@ VMSTAT
   [[ "${lines[0]}" == "768 1 Slack" ]]
 }
 
-@test "the alert names the heaviest application" {
+@test "the alert names the heaviest application, as a share of RAM" {
+  # A share rather than a size, for the same reason the readings are: it says whether the application
+  # is the cause without the reader having to remember how much memory the machine has.
   printf 'total = 4096.00M used = 3000.00M free = 1096.00M\n' > "$FIX/swap"
-  printf 'COMMAND  MEM  CMPRS\nChrome  2048M  20480M\n' > "$FIX/top"
+  printf 'COMMAND  MEM  CMPRS\nChrome  2048M  6144M\nSlack  256M  256M\n' > "$FIX/top"
   run_script "$SCRIPT" --no-notify
   [ "$status" -eq 2 ]
-  [[ "$output" == *"Chrome"* ]]
+  [[ "$output" == *"Heaviest: Chrome 50%; Slack 3%"* ]]
+}
+
+@test "the alert says so rather than naming nothing when no application can be read" {
+  printf 'total = 4096.00M used = 3000.00M free = 1096.00M\n' > "$FIX/swap"
+  : > "$FIX/top"
+  run_script "$SCRIPT" --no-notify
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"Heaviest: unknown"* ]]
 }
 
 ########################################
@@ -228,11 +383,54 @@ VMSTAT
   [ "$status" -eq 2 ]
 }
 
+@test "a size in MB passed to the compressor threshold is refused, not silently ignored" {
+  # The habit a size leaves behind: 8192 as a percentage can never be reached, so it would disable the
+  # reading entirely and look exactly like a machine that never fills up.
+  run_script "$SCRIPT" --no-notify --compressor 8192
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"percentage from 0 to 100"* ]]
+}
+
+@test "a percentage threshold above 100 is refused wherever it was set" {
+  run_script "$SCRIPT" --no-notify --used 150
+  [ "$status" -eq 1 ]
+  printf 'COMPRESSOR_WARN_PERCENT=200\n' > "$CONFIG_FILE"
+  run_script "$SCRIPT" --no-notify
+  [ "$status" -eq 1 ]
+}
+
+@test "a percentage threshold that is not a whole number is refused" {
+  run_script "$SCRIPT" --no-notify --compressor 62.5
+  [ "$status" -eq 1 ]
+  run_script "$SCRIPT" --no-notify --compressor abc
+  [ "$status" -eq 1 ]
+}
+
+@test "a threshold of exactly 100 percent is allowed" {
+  # Reachable, since the used reading is clamped there — so it means "only when memory is entirely
+  # accounted for", which is a legitimate if severe choice.
+  write_vmstat 2000000 2000000 0 0 0 0
+  run_script "$SCRIPT" --no-notify --used 100 --compressor 100
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"⚠ used 100%"* ]]
+}
+
 @test "--help exits 0 and describes the options" {
   run_script "$SCRIPT" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"--swap-mb"* ]]
   [[ "$output" == *"--report"* ]]
+}
+
+@test "--help explains what each reading means, compressed included" {
+  # "compressed 62%" is unreadable without it, and the help is the only place the tool can say what the
+  # figure is before someone decides whether to worry about it. The part that matters most is that it
+  # is not consumption on top of the used figure, which is what makes a large number look alarming.
+  run_script "$SCRIPT" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Readings:"* ]]
+  [[ "$output" == *"compressed"* ]]
+  [[ "$output" == *"already part of"* ]]
 }
 
 @test "an unknown option is a usage error" {
@@ -428,32 +626,33 @@ STUB
   [[ "$output" != *"free"* ]]
 }
 
-@test "read_used_percent reports zero when the sample carries no page size" {
+@test "read_used reports zero when the sample carries no page size" {
   # The counts are pages, so without the page size they cannot be turned into bytes at all. The
   # sample therefore carries real counts: assuming a page size instead of refusing would convert them
   # against a guess, and on the wrong architecture that is a figure twice or half the truth.
   printf 'Pages active: 500000.\nPages wired down: 100000.\n' > "$FIX/vmstat"
-  run_func "$SCRIPT" read_used_percent
+  run_func "$SCRIPT" read_used
   [ "$status" -eq 0 ]
-  [ "$output" = "0" ]
+  [ "$output" = "0 0" ]
 }
 
-@test "read_used_percent never exceeds 100 percent" {
+@test "read_used never exceeds the installed total, in either form" {
   # The kernel keeps moving pages while a sample is taken, so the parts can add to more than the
-  # installed total; a figure above 100 would be nonsense on a dashboard.
+  # installed total. Both forms are clamped from the same byte count, so a report cannot show 100% of
+  # 16 GB beside a size larger than the machine has.
   write_vmstat 2000000 2000000 0 0 0 0
-  run_func "$SCRIPT" read_used_percent
+  run_func "$SCRIPT" read_used
   [ "$status" -eq 0 ]
-  [ "$output" = "100" ]
+  [ "$output" = "100 16384" ]
 }
 
-@test "read_used_percent floors at zero when the cache exceeds anonymous memory" {
+@test "read_used floors at zero when the cache exceeds anonymous memory" {
   # Subtracting the reclaimable pages could otherwise go negative, which would read as healthy by
   # accident rather than by decision.
   write_vmstat 1000 0 0 0 500000 500000
-  run_func "$SCRIPT" read_used_percent
+  run_func "$SCRIPT" read_used
   [ "$status" -eq 0 ]
-  [ "$output" = "0" ]
+  [ "$output" = "0 0" ]
 }
 
 @test "a config still setting the retired free-memory threshold is told so" {
@@ -464,6 +663,24 @@ STUB
   [ "$status" -eq 0 ]
   [[ "$output" == *"PRESSURE_WARN_PERCENT is no longer read"* ]]
   [[ "$output" == *"USED_WARN_PERCENT"* ]]
+}
+
+@test "a config still setting the compressor threshold as a size is told so" {
+  # Same trap in the other direction: 8192 read as a percentage is a threshold nothing reaches, so the
+  # key has to be refused rather than quietly dropped.
+  printf 'COMPRESSOR_WARN_MB=8192\n' > "$CONFIG_FILE"
+  run_script "$SCRIPT" --report
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"COMPRESSOR_WARN_MB is no longer read"* ]]
+  [[ "$output" == *"COMPRESSOR_WARN_PERCENT"* ]]
+}
+
+@test "both retired keys are reported, not just the first" {
+  printf 'PRESSURE_WARN_PERCENT=25\nCOMPRESSOR_WARN_MB=8192\n' > "$CONFIG_FILE"
+  run_script "$SCRIPT" --report
+  [ "$status" -eq 0 ]
+  # Counted on the [ERROR]: prefix, since GITHUB_ACTIONS makes log_error print its message twice.
+  [ "$(printf '%s\n' "$output" | grep -c '\[ERROR\]:')" -eq 2 ]
 }
 
 @test "a path containing XML metacharacters still yields a well-formed plist" {

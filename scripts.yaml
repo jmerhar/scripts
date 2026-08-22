@@ -43,7 +43,7 @@ scripts:
   memory-pressure-alert:
     path: scripts/system/memory-pressure-alert/memory-pressure-alert.sh
     description: "Warns while a Mac is filling up — swap growing and memory use climbing — rather than once it has already stalled, and names the heaviest applications by resident plus compressed memory."
-    platforms: [homebrew]  # reads macOS vm.swapusage/memorystatus + notifies via osascript
+    platforms: [homebrew]  # reads macOS vm.swapusage/hw.memsize/vm_stat + notifies via osascript
     dependencies:
       common: []
 
