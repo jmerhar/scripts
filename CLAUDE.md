@@ -278,7 +278,7 @@ against that rather than `BATS_TEST_DIRNAME`, which is the suite's own directory
 ```bash
 make test      # the suite
 make test-ci   # the suite with the environment the runners have
-make lint      # ShellCheck, the manifest, bash versions, the awk/jq programs, both libraries' use
+make lint      # ShellCheck, the manifest, bash versions, the awk/jq programs, both libraries' use, continuations
 make check     # lint + test-ci + published form; gate a commit on this
 make smoke     # package every manifest entry at v0.0.0, catching manifest/packager drift
 make docs      # regenerate the README index sections from the manifest
@@ -372,8 +372,10 @@ are not bash in the first place, they run as awk or jq. Programs live in their o
 measured. Write a long command on one long line instead: line length is free, where a continuation is not.
 Keep new code single-statement-per-line, and a program longer than a line or two in a file.
 `bin/coverage/run-coverage.sh` is the one file exempt, since `--exclude-pattern` keeps it out of the report.
-Verify with `grep -rn '\\$' scripts/ bin/ --include='*.sh' | grep -v run-coverage.sh`, which must print
-nothing.
+`bin/lint/check-continuations.sh` enforces this in `make lint` and in the lint workflow, so it is a build
+failure rather than something to remember. What it cannot see is a command spread over several lines
+*without* a backslash — a quoted multi-line `awk` or `jq` program being the usual way to write one, which
+is why those live in their own files instead.
 
 `--exclude-pattern` keeps `.conf` files and every README out of the measurement entirely, because
 kcov's bash parser reads an ordinary prose line as code. Do not reach for `--exclude-line` or

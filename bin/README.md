@@ -12,7 +12,7 @@ The tools are grouped by concern, one subdirectory each:
 
 | Directory | Holds |
 |---|---|
-| [`lint/`](lint/) | The six `check-*` scripts run by the lint workflow, and locally by `make lint` and `make published` |
+| [`lint/`](lint/) | The seven `check-*` scripts run by the lint workflow, and locally by `make lint` and `make published` |
 | [`compile/`](compile/) | The `@include` compiler (one file and the whole tree) |
 | [`package/`](package/) | Packaging, the release smoke test, the release orchestrator, and the downstream push |
 | [`docs/`](docs/) | The README index generator (one file and every file) |
@@ -48,6 +48,14 @@ a library the caller did not write.
 `lint/check-bin-library.sh` holds the tools to the rule above: source what you use, use what
 you source. Without it a tool calling `log_error` while sourcing only `paths.sh` loads
 perfectly and fails at the call, which for an error path can mean mid-release.
+
+`lint/check-continuations.sh` enforces the one formatting rule that is not cosmetic: no file
+under `scripts/` or `bin/` may carry a `\` line continuation, because kcov attributes a
+multi-line command to its final line and so counts the lines it spans as never executed. The
+cost is invisible in the diff that causes it — it surfaces only as a coverage gate with less
+headroom than the code deserves, which is how seventeen of them accumulated under a note
+claiming there were none. `bin/coverage/run-coverage.sh` is exempt because
+`--exclude-pattern` keeps it out of the report.
 
 `log.sh` adds the GitHub Actions `::error::`/`::warning::` annotation under CI so a failure
 shows as an annotation on the failing step rather than buried in the log. The annotation goes

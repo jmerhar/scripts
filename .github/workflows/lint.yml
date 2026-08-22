@@ -59,6 +59,12 @@ jobs:
       - name: Check every bin tool sources the library files it uses
         run: ./bin/lint/check-bin-library.sh
 
+      # kcov attributes a multi-line command to its final line, so a `\` continuation hides the lines it
+      # spans. Nothing about that is visible in the diff that adds one — it shows up as a coverage gate
+      # with less headroom than the code deserves, which is why it is a build failure and not a habit.
+      - name: Check no measured file carries a line continuation
+        run: ./bin/lint/check-continuations.sh
+
       # The README indexes are generated from the manifest, so a hand-edit or a manifest change
       # without a `make docs` leaves them stale. Regenerating into a temp file and diffing turns that
       # into a build failure rather than something a reader notices later.
