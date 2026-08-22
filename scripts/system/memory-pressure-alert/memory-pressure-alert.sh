@@ -310,13 +310,11 @@ percent_of_ram() {
 read_compressor_mb() {
   local out pages page_size
   out=$(${VMSTAT_CMD} 2>/dev/null) || out=""
-  pages=$(printf '%s\n' "${out}" \
-    | sed -n 's/^Pages occupied by compressor: *\([0-9]*\)\..*$/\1/p')
+  pages=$(printf '%s\n' "${out}" | sed -n 's/^Pages occupied by compressor: *\([0-9]*\)\..*$/\1/p')
   [[ -z ${pages} ]] && { printf '0\n'; return 0; }
   # vm_stat states its own page size, which differs between Intel and Apple
   # silicon; reading it back avoids assuming either.
-  page_size=$(printf '%s\n' "${out}" \
-    | sed -n 's/^Mach Virtual Memory Statistics: (page size of \([0-9]*\) bytes).*$/\1/p')
+  page_size=$(printf '%s\n' "${out}" | sed -n 's/^Mach Virtual Memory Statistics: (page size of \([0-9]*\) bytes).*$/\1/p')
   [[ -z ${page_size} ]] && page_size=16384
   printf '%s\n' $(( pages * page_size / 1048576 ))
 }
@@ -331,10 +329,7 @@ read_compressor_mb() {
 read_top_offenders() {
   local prog
   prog=$(load_program offenders.awk)  # @embed offenders.awk
-  ${TOP_CMD} 2>/dev/null \
-    | awk -v want="${TOP_OFFENDERS}" "${prog}" \
-    | sort -rn \
-    | head -n "${TOP_OFFENDERS}"
+  ${TOP_CMD} 2>/dev/null | awk -v want="${TOP_OFFENDERS}" "${prog}" | sort -rn | head -n "${TOP_OFFENDERS}"
 }
 
 ########################################
@@ -377,8 +372,7 @@ deliver() {
   fi
   # A notification is best-effort: under heavy memory pressure osascript is
   # itself liable to be slow or refused, and the log line is what survives.
-  ${NOTIFY_CMD} -e "display notification \"${body//\"/}\" with title \"Memory pressure\"" \
-    >/dev/null 2>&1 || log_error "Could not post the notification: ${body}"
+  ${NOTIFY_CMD} -e "display notification \"${body//\"/}\" with title \"Memory pressure\"" >/dev/null 2>&1 || log_error "Could not post the notification: ${body}"
   return 0
 }
 
@@ -608,8 +602,7 @@ main() {
     local interval=${opt_interval:-${DEFAULT_INTERVAL_SECONDS}}
     # Rejected here rather than left to launchd, which accepts a nonsensical
     # StartInterval by ignoring the key and running the agent only at load.
-    [[ ${interval} =~ ^[1-9][0-9]*$ ]] \
-      || die_usage "--interval must be a whole number of seconds above zero."
+    [[ ${interval} =~ ^[1-9][0-9]*$ ]] || die_usage "--interval must be a whole number of seconds above zero."
     if install_agent "${interval}"; then
       return 0
     fi

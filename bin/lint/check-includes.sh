@@ -170,8 +170,7 @@ check_calls() {
     [[ -n "${provided[${fn}]:-}" ]] && continue
     [[ "${defined}" == *" ${fn} "* ]] && continue
     # Called, rather than merely mentioned in a comment.
-    if grep -qE "(^|[^#[:alnum:]_-])${fn}[[:space:]]*(\\\$|\"|'|[a-zA-Z0-9_/.-]|$|\\))" \
-        <(sed 's/#.*//' "${path}"); then
+    if grep -qE "(^|[^#[:alnum:]_-])${fn}[[:space:]]*(\\\$|\"|'|[a-zA-Z0-9_/.-]|$|\\))" <(sed 's/#.*//' "${path}"); then
       log_error "${path#"${REPO_ROOT}/"} calls ${fn}, provided by ${owner[${fn}]}, which it does not include."
       failed=1
     fi

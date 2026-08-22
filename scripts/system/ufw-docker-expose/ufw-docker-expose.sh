@@ -206,8 +206,7 @@ apply_rules() {
   local port="$1" proto="$2" subnet
   for subnet in "${_subnets[@]}"; do
     if [[ "${_action}" == "allow" ]]; then
-      run_ufw route allow proto "${proto}" to "${subnet}" port "${port}" \
-        comment "${SCRIPT_NAME}: container port ${port}/${proto}"
+      run_ufw route allow proto "${proto}" to "${subnet}" port "${port}" comment "${SCRIPT_NAME}: container port ${port}/${proto}"
     else
       run_ufw route delete allow proto "${proto}" to "${subnet}" port "${port}"
     fi

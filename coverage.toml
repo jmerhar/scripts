@@ -17,7 +17,9 @@ report = "coverage/kcov-merged/coverage.json"
 html = "coverage"
 # Set just under the measured figure so a real regression fails while a defensive line here or there is
 # tolerated. Every publishable script has a behavioural suite, and no measured file has a `\` continuation
-# left, so what remains uncovered is code the tests cannot drive rather than logic they miss:
+# left — a rule, not a coincidence: see the coverage section of CLAUDE.md for the grep that proves it and
+# why one costs more than its indentation is worth. So what remains uncovered is code the tests cannot
+# drive rather than logic they miss:
 #
 #   * branches for a tool that is absent. dot_clean, flock, ionice, visudo and systemd-run are stubbed so
 #     the two CI runners agree, which means each one's "command not found, skipping" path never runs;
@@ -42,7 +44,7 @@ html = "coverage"
 # reads an ordinary prose line as code, so a file that is not bash at all is otherwise reported as bash
 # that never ran — a README beside a script cost 36 uncovered lines before it was excluded.
 #
-# The measured figure is 93.78% (3680/3924 lines) across 35 files, the bin tools' own library included:
+# The measured figure is 93.87% (3963/4222 lines) across 37 files, the bin tools' own library included:
 # `--include-path` names bin/ and recurses, so bin/_lib/ is measured like everything else, and both of its
 # files are fully covered by test/shared/bin-lib.bats. Two things push the figure up: an awk or jq program
 # in its own file is not measured at all, where its interior would otherwise count as bash that never ran;

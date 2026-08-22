@@ -46,9 +46,7 @@ readonly COMMON_OPTS=(--platform-note --sort)
 list_topics() {
   # The topic is the directory component under scripts/, read from the same `path:` the generator
   # builds its links from, so an index and its links cannot describe different places.
-  yq eval '.scripts[].path' "${MANIFEST}" \
-    | sed -n 's|^scripts/\([^/]*\)/.*|\1|p' \
-    | sort -u
+  yq eval '.scripts[].path' "${MANIFEST}" | sed -n 's|^scripts/\([^/]*\)/.*|\1|p' | sort -u
 }
 
 #######################################
@@ -81,8 +79,7 @@ update_all() {
 
   local failed=0 topic readme
 
-  if ! "${GENERATOR}" "${REPO_ROOT}/README.md" \
-      "${COMMON_OPTS[@]}" --link repo "${extra[@]}"; then
+  if ! "${GENERATOR}" "${REPO_ROOT}/README.md" "${COMMON_OPTS[@]}" --link repo "${extra[@]}"; then
     failed=1
   fi
 
@@ -93,8 +90,7 @@ update_all() {
       failed=1
       continue
     fi
-    if ! "${GENERATOR}" "${readme}" \
-        "${COMMON_OPTS[@]}" --topic "${topic}" --link sibling "${extra[@]}"; then
+    if ! "${GENERATOR}" "${readme}" "${COMMON_OPTS[@]}" --topic "${topic}" --link sibling "${extra[@]}"; then
       failed=1
     fi
   done < <(list_topics)

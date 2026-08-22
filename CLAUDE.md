@@ -331,6 +331,7 @@ real system. The full set:
 | `mdcheck-progress` | `MDSTAT`, `SYS_BLOCK`, `MDCHECK_STATE_DIR`, `MDADM_CONF` | Nearly the whole tool reads machine state |
 | `nopasswd-sudo` | `DROPIN`, `SYSTEMD_UNIT_DIR` | Defaults are `/etc/sudoers.d` and `/etc/systemd/system`; the coverage job runs as root |
 | `subtitle-sync` | `CACHE_DIR` (via config) | Defaults under `$XDG_CACHE_HOME`, so a test would write to the real cache |
+| `memory-pressure-alert` | `SWAPUSAGE_CMD`, `MEMSIZE_CMD`, `VMSTAT_CMD`, `TOP_CMD`, `NOTIFY_CMD`, `LAUNCHCTL_CMD`, `LAUNCH_AGENTS_DIR`, `AGENT_LOG_DIR` | Every reading is live kernel state; the notifier would post to the developer's desktop and `--install` would load a real launchd agent |
 | `ufw-docker-expose` | `DOCKER_BIN` | The double cannot simply be called `docker`: `bin/coverage/run-coverage.sh` and the bash-3.2 guard test run the real CLI for pinned images, and a stub of that name on `PATH` would be handed to them |
 
 ### Coverage
@@ -362,12 +363,17 @@ tests cannot drive rather than logic they miss: branches for a tool that is abse
 they should never fire. Set the gate to what is reachable and say why; never lower it to make a build
 pass.
 
-No publishable script has a `\` continuation left, and no multi-line `awk` or `jq` program is quoted
-inside one. Both mattered for the figure, for the same reason: bash attributes a multi-line command to its
-final line, so the first line reads as never executed and the lines between are not instrumented at all —
-and for a program those lines are not bash in the first place, they run as awk or jq. Programs now live in
-their own files, which are not measured. Keep new code single-statement-per-line, and a program longer than
-a line or two in a file; `bin/coverage/run-coverage.sh` is the exception, since it is excluded from the report.
+**No measured file contains a `\` line continuation, and that is a rule to keep rather than a state of
+affairs** — every file under `scripts/` and `bin/` is instrumented, so a continuation added anywhere there
+silently costs coverage. Nor is any multi-line `awk` or `jq` program quoted inside one. Both mattered for
+the figure, for the same reason: bash attributes a multi-line command to its final line, so the first line
+reads as never executed and the lines between are not instrumented at all — and for a program those lines
+are not bash in the first place, they run as awk or jq. Programs live in their own files, which are not
+measured. Write a long command on one long line instead: line length is free, where a continuation is not.
+Keep new code single-statement-per-line, and a program longer than a line or two in a file.
+`bin/coverage/run-coverage.sh` is the one file exempt, since `--exclude-pattern` keeps it out of the report.
+Verify with `grep -rn '\\$' scripts/ bin/ --include='*.sh' | grep -v run-coverage.sh`, which must print
+nothing.
 
 `--exclude-pattern` keeps `.conf` files and every README out of the measurement entirely, because
 kcov's bash parser reads an ordinary prose line as code. Do not reach for `--exclude-line` or

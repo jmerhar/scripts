@@ -110,8 +110,7 @@ refresh_apt() {
       exit 1
     fi
 
-    gpg --batch --pinentry-mode loopback --passphrase "${GPG_PASSPHRASE:-}" \
-      --default-key "jmerhar-bot" --clearsign -o dists/stable/InRelease dists/stable/Release
+    gpg --batch --pinentry-mode loopback --passphrase "${GPG_PASSPHRASE:-}" --default-key "jmerhar-bot" --clearsign -o dists/stable/InRelease dists/stable/Release
 
     "${GENERATOR}" README.md
   )
