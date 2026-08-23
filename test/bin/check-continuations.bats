@@ -10,8 +10,8 @@
 # and, worse, teach whoever hits it to distrust the check.
 #
 # The tool takes directory roots, so most tests hand it a temp directory of hand-written files. The
-# exemption is the exception: it names a path relative to the repository root, so testing it needs the
-# fake repository fixture, where the tool's own location decides what that root is.
+# coverage harness is the exception: proving that nothing under bin/ is exempt needs the fake repository
+# fixture, where the tool's own location decides what the repository root is.
 
 load ../test_helper
 
@@ -109,12 +109,12 @@ EOF
   [[ "$output" == *"bad.sh:2"* ]]
 }
 
-# --- The coverage runner's exemption -----------------------------------------------------------
+# --- Nothing is exempt -------------------------------------------------------------------------
 
-@test "the coverage runner is exempt, because nothing measures it" {
-  # test/test_helper.bash passes --exclude-pattern=run-coverage.sh to kcov, so a continuation there costs
-  # no coverage. The fixture is needed because the exemption is a path relative to the repository root,
-  # which the tool derives from its own location.
+@test "the coverage harness is not exempt, though nothing measures it" {
+  # bin/coverage/ is kept out of the report, so a continuation there costs no coverage — and it was
+  # exempt on that reasoning until the thirty-line docker invocation hiding behind the exemption made the
+  # case against it. A continuation costs a reader whatever kcov does.
   fake_repo_tool check-continuations.sh
   fake_repo_replace_tool run-coverage.sh <<'EOF'
 #!/usr/bin/env bash
@@ -122,10 +122,11 @@ docker run --rm \
   -v x:y image
 EOF
   run_script "$FAKE_TOOL" "$FAKE_REPO/bin"
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"run-coverage.sh:2"* ]]
 }
 
-@test "the exemption covers that path alone, not every tool beside it" {
+@test "a continuation in any other bin tool is reported too" {
   fake_repo_tool check-continuations.sh
   fake_repo_replace_tool check-manifest.sh <<'EOF'
 #!/usr/bin/env bash

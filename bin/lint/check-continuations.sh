@@ -26,6 +26,9 @@
 #              deliberately outside that set: nothing measures the suite, so a continuation there costs
 #              nothing and reads better than a long line.
 #
+# Nothing under those roots is exempt. bin/coverage/ is not measured, so a continuation there costs no
+# coverage, but it costs a reader the same and an exemption is one more rule to carry.
+#
 # Exits non-zero if any file carries a continuation.
 
 set -o errexit
@@ -43,11 +46,6 @@ source "${SCRIPT_DIR}/../_lib/log.sh"
 # excludes a line ending in two backslashes: there the final backslash is a literal, the command ends,
 # and kcov sees nothing unusual.
 readonly CONTINUATION_RE='(^|[^\])\\$'
-
-# The one measured-path exception, because it is not measured: test/test_helper.bash passes
-# --exclude-pattern=run-coverage.sh to kcov, so continuations there cost no coverage. Matched as a path
-# relative to the repository root, so it exempts that one file rather than every file with the name.
-readonly EXEMPT_PATH="bin/coverage/run-coverage.sh"
 
 #######################################
 # Prints usage instructions to stdout.
@@ -88,10 +86,15 @@ check_file() {
 #######################################
 # Checks every shell file under the given roots.
 #
+# No file is exempt, the coverage harness under bin/coverage/ included. Nothing measures that directory,
+# so a continuation there costs no coverage — but it costs a reader just as much, and an exemption is one
+# more rule to know. The thirty-line docker invocation that used to sit behind this one was the argument
+# against keeping it.
+#
 # Symlinks are followed: the test fixtures mirror bin/ as links into the real tree, and a check that
 # skipped them would pass by looking at nothing.
 # Globals:
-#   REPO_ROOT, EXEMPT_PATH
+#   REPO_ROOT
 # Arguments:
 #   Directories to search.
 # Returns:
@@ -100,9 +103,6 @@ check_file() {
 check_all() {
   local failed=0 count=0 path
   while IFS= read -r -d '' path; do
-    if [[ "${path#"${REPO_ROOT}/"}" == "${EXEMPT_PATH}" ]]; then
-      continue
-    fi
     count=$(( count + 1 ))
     check_file "${path}" || failed=1
   done < <(find -L "$@" -type f -name '*.sh' -print0 | sort -z)

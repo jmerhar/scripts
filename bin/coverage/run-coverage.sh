@@ -21,7 +21,12 @@
 #
 # kcov is not packaged for Ubuntu 24.04 (its Debian package was dropped over an FTBFS with GCC 15), so
 # CI uses the upstream image. A locally installed kcov is preferred because it avoids the container
-# round-trip; both produce identical figures.
+# round-trip; both produce identical figures. What runs inside the container is
+# bin/coverage/in-container.sh, invoked through the mount.
+#
+# Both files are measured like anything else under bin/. kcov reports only what it observes running, so
+# they appear because test/bin/run-coverage.bats and test/bin/in-container.bats drive them — through the
+# seams below, never the real kcov, bats or docker.
 #
 # Usage: bin/coverage/run-coverage.sh
 #   JUNIT_DIR=junit          also write bats's JUnit report there, for Codecov's test analytics
@@ -49,11 +54,25 @@ export YQ_VERSION
 # Debian's bats is 1.8, which predates BATS_TEST_TIMEOUT (added in 1.9). A suite that bounds a test to turn
 # a runaway loop into a failure would silently have no bound there, so bats is installed from source at the
 # version a local run and the macOS job use — all three then behave the same.
+#
+# Normalised to a leading v, which the release tags carry, because bats exports BATS_VERSION itself: run
+# from inside a suite — as this script's own tests do — the value is whatever the outer bats is, without
+# the prefix, and the archive URL built from it is a 404 rather than an error that says so.
 BATS_VERSION=${BATS_VERSION:-v1.14.0}
+BATS_VERSION="v${BATS_VERSION#v}"
 export BATS_VERSION
 
 COVERAGE_HARNESS_NAME="_coverage-harness"
 export COVERAGE_HARNESS_NAME
+
+# The three tools this decides between, named through the environment so a test can hand it doubles. They
+# cannot be stubbed on PATH under the names they really have: a `kcov` or `bats` earlier on PATH would be
+# picked up by the coverage harness tracing the test, and a `docker` would be handed to
+# ufw-docker-expose's suite, which runs the real CLI against pinned images.
+: "${KCOV_BIN:=kcov}"
+: "${BATS_BIN:=bats}"
+: "${DOCKER_BIN:=docker}"
+readonly KCOV_BIN BATS_BIN DOCKER_BIN
 
 cd "${ROOT}"
 
@@ -83,7 +102,7 @@ local_kcov_runs_modern_bash() {
   probe="${probe_dir}/probe.sh"
   printf '#!/usr/bin/env bash\nprintf "%%s" "${BASH_VERSINFO[0]}"\n' > "${probe}"
   chmod +x "${probe}"
-  out="$(kcov --include-path="${probe}" "${probe_dir}/out" "${probe}" 2>/dev/null || true)"
+  out="$(${KCOV_BIN} --include-path="${probe}" "${probe_dir}/out" "${probe}" 2>/dev/null || true)"
   rm -rf "${probe_dir}"
   [[ "${out}" =~ ^[0-9]+$ ]] && (( out >= 4 ))
 }
@@ -107,7 +126,7 @@ fi
 # path without pruning PATH to hide kcov, which would also hide python3 and everything else Homebrew
 # provides and make the run fail somewhere unrelated.
 use_local=false
-if [[ -z "${KCOV_FORCE_DOCKER:-}" ]] && command -v kcov &>/dev/null && command -v bats &>/dev/null; then
+if [[ -z "${KCOV_FORCE_DOCKER:-}" ]] && command -v "${KCOV_BIN}" &>/dev/null && command -v "${BATS_BIN}" &>/dev/null; then
   if local_kcov_runs_modern_bash; then
     use_local=true
   else
@@ -117,45 +136,26 @@ fi
 
 if [[ "${use_local}" == true ]]; then
   echo "Running the suite under the locally installed kcov …"
-  COVERAGE_DIR="${ROOT}/coverage" bats --recursive "${bats_report[@]}" test/
+  COVERAGE_DIR="${ROOT}/coverage" ${BATS_BIN} --recursive "${bats_report[@]}" test/
 else
   if [[ -n "${KCOV_FORCE_DOCKER:-}" ]]; then
     echo "KCOV_FORCE_DOCKER is set; running the suite in ${KCOV_IMAGE} …"
   else
     echo "Running the suite in ${KCOV_IMAGE} …"
   fi
-  docker run --rm -v "${ROOT}":/src -w /src \
-    -e "JUNIT_DIR=${JUNIT_DIR:-}" -e "COVERAGE_HARNESS_NAME=${COVERAGE_HARNESS_NAME}" \
-    -e "YQ_VERSION=${YQ_VERSION}" -e "BATS_VERSION=${BATS_VERSION}" \
-    --entrypoint bash "${KCOV_IMAGE}" -c '
-    set -euo pipefail
-    apt-get update -qq >/dev/null
-    # wget fetches bats and yq; the rest are what the scripts under test shell out to, and a suite covering
-    # a script that needs one fails for want of the tool rather than for a fault in the code. Keep this in
-    # step with what the suites exercise.
-    # procps is for bats, not for the scripts: its per-test timeout shells out to ps/pkill, and without
-    # them every test in a file that sets BATS_TEST_TIMEOUT aborts with "Cannot execute timeout".
-    # git is for the release suites: they drive real repositories rather than stubbing git, because what
-    # they check is that a fetch-reset really discards a failed commit and a rejected push really retries.
-    packages="wget libxml2-utils zip unzip jq procps git"
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $packages >/dev/null
-    # Not the distribution package: see the BATS_VERSION note above.
-    wget -qO /tmp/bats.tar.gz \
-      "https://github.com/bats-core/bats-core/archive/refs/tags/${BATS_VERSION}.tar.gz"
-    tar -xzf /tmp/bats.tar.gz -C /tmp
-    "/tmp/bats-core-${BATS_VERSION#v}/install.sh" /usr/local >/dev/null
-    # Distribution "yq" is the Python jq wrapper, which does not speak the v4 expressions the packaging
-    # scripts use, so mikefarah'"'"'s build is fetched at the version the workflows pin.
-    wget -qO /usr/local/bin/yq \
-      "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_$(dpkg --print-architecture)"
-    chmod +x /usr/local/bin/yq
-    report=()
-    if [ -n "$JUNIT_DIR" ]; then report=(--report-formatter junit --output "/src/$JUNIT_DIR"); fi
-    COVERAGE_DIR=/src/coverage bats --recursive "${report[@]}" test/
-    # The container runs as root; keep what it wrote readable by the host user and later CI steps.
-    chmod -R a+rX /src/coverage
-    if [ -n "$JUNIT_DIR" ]; then chmod -R a+rX "/src/$JUNIT_DIR"; fi
-  '
+  # Assembled as an array rather than one command: every -e is a decision with a reason, and a run of
+  # them wrapped across continuations hides the lines it spans from kcov as well as from a reader.
+  docker_args=(run --rm)
+  docker_args+=(-v "${ROOT}:/src" -w /src)
+  docker_args+=(-e "JUNIT_DIR=${JUNIT_DIR:-}")
+  docker_args+=(-e "COVERAGE_HARNESS_NAME=${COVERAGE_HARNESS_NAME}")
+  docker_args+=(-e "YQ_VERSION=${YQ_VERSION}")
+  docker_args+=(-e "BATS_VERSION=${BATS_VERSION}")
+  docker_args+=(--entrypoint bash "${KCOV_IMAGE}")
+  # Invoked through the mount rather than passed as a -c string, so the provisioning is a file that
+  # ShellCheck reads, a test can source, and a comment can be written in.
+  docker_args+=(/src/bin/coverage/in-container.sh)
+  ${DOCKER_BIN} "${docker_args[@]}"
 fi
 
 if [[ ! -f coverage/kcov-merged/coverage.json ]]; then

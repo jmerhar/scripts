@@ -12,11 +12,11 @@ The tools are grouped by concern, one subdirectory each:
 
 | Directory | Holds |
 |---|---|
-| [`lint/`](lint/) | The seven `check-*` scripts run by the lint workflow, and locally by `make lint` and `make published` |
+| [`lint/`](lint/) | The eight `check-*` scripts run by the lint workflow, and locally by `make lint` and `make published` |
 | [`compile/`](compile/) | The `@include` compiler (one file and the whole tree) |
 | [`package/`](package/) | Packaging, the release smoke test, the release orchestrator, and the downstream push |
 | [`docs/`](docs/) | The README index generator (one file and every file) |
-| [`coverage/`](coverage/) | The kcov coverage runner |
+| [`coverage/`](coverage/) | The kcov coverage runner, and the script it runs inside the container |
 | [`_lib/`](_lib/) | Shared path resolution and logging, sourced (not run) by the tools above |
 
 Each group directory has its own README describing the scripts it holds; `_lib/` is
@@ -54,8 +54,16 @@ under `scripts/` or `bin/` may carry a `\` line continuation, because kcov attri
 multi-line command to its final line and so counts the lines it spans as never executed. The
 cost is invisible in the diff that causes it — it surfaces only as a coverage gate with less
 headroom than the code deserves, which is how seventeen of them accumulated under a note
-claiming there were none. `bin/coverage/run-coverage.sh` is exempt because
-`--exclude-pattern` keeps it out of the report.
+claiming there were none. Nothing is exempt, the coverage harness included: kcov reports only
+the files it observes running, so `bin/coverage/` was never measured by accident rather than by
+exclusion — and a continuation costs a reader whatever kcov does.
+
+`lint/check-inline-programs.sh` is the other half of that rule: a quoted multi-line `awk` or
+`jq` program is also one command spanning several lines, and its interior is not even bash.
+It is detected per line by [`lint/inline-programs.awk`](lint/inline-programs.awk) — textual
+rather than a quote state machine carried across the file, so an apostrophe in a comment or a
+heredoc cannot desynchronise it. A single-line program stays inline; only a program that runs
+past its opening line has to move into a file.
 
 `log.sh` adds the GitHub Actions `::error::`/`::warning::` annotation under CI so a failure
 shows as an annotation on the failing step rather than buried in the log. The annotation goes

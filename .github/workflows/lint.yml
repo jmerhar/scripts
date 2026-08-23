@@ -65,6 +65,12 @@ jobs:
       - name: Check no measured file carries a line continuation
         run: ./bin/lint/check-continuations.sh
 
+      # The other half of the same problem: a quoted multi-line awk or jq program is one bash command
+      # spanning several lines, so kcov counts its first line as dead and does not instrument the rest —
+      # which is not bash anyway. Three of them were sitting in dmarc-report when this check was added.
+      - name: Check no script holds a multi-line awk or jq program
+        run: ./bin/lint/check-inline-programs.sh
+
       # The README indexes are generated from the manifest, so a hand-edit or a manifest change
       # without a `make docs` leaves them stale. Regenerating into a temp file and diffing turns that
       # into a build failure rather than something a reader notices later.

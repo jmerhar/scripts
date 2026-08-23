@@ -94,7 +94,7 @@ _assert_stubs_first() {
 ########################################
 _coverage_prefix() {
   [[ -n "${COVERAGE_DIR:-}" ]] || return 0
-  printf 'kcov --include-path=%s/scripts,%s/bin --exclude-pattern=.conf,.md,%s,run-coverage.sh %s' \
+  printf 'kcov --include-path=%s/scripts,%s/bin --exclude-pattern=.conf,.md,%s %s' \
     "$REPO_ROOT" "$REPO_ROOT" "$COVERAGE_HARNESS_NAME" "$COVERAGE_DIR"
 }
 
@@ -380,6 +380,21 @@ fake_repo_replace_tool() {
   rm -f "$target"
   cat > "$target"
   chmod +x "$target"
+}
+
+########################################
+# Asserts a named call log recorded a call whose argv matches a pattern.
+#
+# The seam-driven doubles a suite writes itself record into their own file rather than into STUB_CALLS,
+# since they are not the shared stub — so the assertion takes the log to read.
+# Arguments:
+#   log: Path to the call log.
+#   pattern: A grep extended-regular-expression matched against whole recorded lines.
+# Returns:
+#   0 if at least one recorded call matches, 1 otherwise.
+########################################
+stub_called_in() {
+  grep -qE "$2" "$1"
 }
 
 ########################################

@@ -605,9 +605,9 @@ print_outcomes() {
 
   # $5 = count, $12 = aligned_pass, $6 = disposition.
   local pass fail
-  read -r pass fail <<<"$(awk -F'\t' '
-    { if ($12 == 1) p += $5; else f += $5 }
-    END { printf "%d %d", p + 0, f + 0 }' "${_records_tsv}")"
+  local prog
+  prog=$(load_program overall-pass-fail.awk)  # @embed overall-pass-fail.awk
+  read -r pass fail <<<"$(awk -F'\t' "${prog}" "${_records_tsv}")"
   local total=$(( pass + fail )) rate=0
   (( total > 0 )) && rate=$(( fail * 100 / total ))
 
@@ -676,9 +676,9 @@ analyze_flags() {
 
   # 2) SPF/DKIM temperror/permerror anywhere in auth_results → DNS/config faults.
   local err_msgs
-  err_msgs=$(awk -F'\t' '
-    { if ($10 ~ /:(temperror|permerror)/ || $11 ~ /:(temperror|permerror)/) e += $5 }
-    END { print e + 0 }' "${_records_tsv}")
+  local prog
+  prog=$(load_program auth-errors.awk)  # @embed auth-errors.awk
+  err_msgs=$(awk -F'\t' "${prog}" "${_records_tsv}")
   if (( err_msgs > 0 )); then
     local err_flag
     err_flag="${err_msgs} msg saw an SPF/DKIM temperror or permerror"
@@ -839,8 +839,9 @@ print_flags() {
   fi
 
   # Only actionable categories drive a nonzero exit.
-  if awk -F'\t' '$1 == "policy" || $1 == "align" || $1 == "config" {found = 1}
-     END {exit !found}' "${_flags_file}"; then
+  local prog
+  prog=$(load_program actionable-flags.awk)  # @embed actionable-flags.awk
+  if awk -F'\t' "${prog}" "${_flags_file}"; then
     return 1
   fi
   return 0

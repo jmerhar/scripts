@@ -278,7 +278,7 @@ against that rather than `BATS_TEST_DIRNAME`, which is the suite's own directory
 ```bash
 make test      # the suite
 make test-ci   # the suite with the environment the runners have
-make lint      # ShellCheck, the manifest, bash versions, the awk/jq programs, both libraries' use, continuations
+make lint      # ShellCheck, the manifest, bash versions, the awk/jq programs, both libraries' use, multi-line commands
 make check     # lint + test-ci + published form; gate a commit on this
 make smoke     # package every manifest entry at v0.0.0, catching manifest/packager drift
 make docs      # regenerate the README index sections from the manifest
@@ -332,6 +332,8 @@ real system. The full set:
 | `nopasswd-sudo` | `DROPIN`, `SYSTEMD_UNIT_DIR` | Defaults are `/etc/sudoers.d` and `/etc/systemd/system`; the coverage job runs as root |
 | `subtitle-sync` | `CACHE_DIR` (via config) | Defaults under `$XDG_CACHE_HOME`, so a test would write to the real cache |
 | `memory-pressure-alert` | `SWAPUSAGE_CMD`, `MEMSIZE_CMD`, `VMSTAT_CMD`, `TOP_CMD`, `NOTIFY_CMD`, `LAUNCHCTL_CMD`, `LAUNCH_AGENTS_DIR`, `AGENT_LOG_DIR` | Every reading is live kernel state; the notifier would post to the developer's desktop and `--install` would load a real launchd agent |
+| `run-coverage` | `KCOV_BIN`, `BATS_BIN`, `DOCKER_BIN` | None can be stubbed on PATH under its real name: a `kcov` or `bats` there is picked up by the harness tracing the test, and a `docker` is handed to `ufw-docker-expose`'s suite |
+| `in-container` | `SRC`, `TMP`, `PREFIX`, `BATS_BIN` | Its defaults are a container's own filesystem, so the real steps install into the developer's `/usr/local` and extract into their `/tmp` — one run of an early version of its suite did exactly that |
 | `ufw-docker-expose` | `DOCKER_BIN` | The double cannot simply be called `docker`: `bin/coverage/run-coverage.sh` and the bash-3.2 guard test run the real CLI for pinned images, and a stub of that name on `PATH` would be handed to them |
 
 ### Coverage
@@ -352,6 +354,13 @@ its gate, and the reporting is the shared actions from
   `BATS_TEST_TIMEOUT`; a suite that bounds a test to turn a runaway loop into a failure would silently
   have no bound. `BATS_VERSION` in `bin/coverage/run-coverage.sh` pins the same version a local run and the macOS
   job use, so all three behave alike.
+- **An unexecuted file is absent from the report, not 0%.** kcov's bash backend reports only what it
+  observes running, so a script no test drives simply does not appear — which is why
+  `--exclude-pattern` never needed to name `run-coverage.sh`, and why there is no cost to measuring the
+  coverage harness. The way to measure it is to drive it: `test/bin/run-coverage.bats` and
+  `test/bin/in-container.bats` do, through the seams above. `.conf` files and READMEs still need
+  excluding, because kcov's bash parser reads a prose line as code once something in the same
+  directory is traced.
 - **Coverage is Linux-only, and that is deliberate.** kcov's macOS build ignores the shebang and execs
   `/bin/bash` — 3.2 there — so most of these scripts fail under it. The runner detects that and uses the
   pinned container instead, which is also what CI does, so `make coverage` needs Docker rather than a
@@ -372,10 +381,13 @@ are not bash in the first place, they run as awk or jq. Programs live in their o
 measured. Write a long command on one long line instead: line length is free, where a continuation is not.
 Keep new code single-statement-per-line, and a program longer than a line or two in a file.
 `bin/coverage/run-coverage.sh` is the one file exempt, since `--exclude-pattern` keeps it out of the report.
-`bin/lint/check-continuations.sh` enforces this in `make lint` and in the lint workflow, so it is a build
-failure rather than something to remember. What it cannot see is a command spread over several lines
-*without* a backslash — a quoted multi-line `awk` or `jq` program being the usual way to write one, which
-is why those live in their own files instead.
+Both halves are enforced in `make lint` and in the lint workflow, so each is a build failure rather than
+something to remember: `bin/lint/check-continuations.sh` for the backslash, and
+`bin/lint/check-inline-programs.sh` for a quoted multi-line `awk` or `jq` program, which is one command
+spanning several lines for the same reason and whose interior is not bash at all. Nothing is exempt from
+either. The one
+shape neither can help is a multi-line quoted argument with no file to move to, which is what
+dmarc-report's two `xmllint --xpath` expressions are.
 
 `--exclude-pattern` keeps `.conf` files and every README out of the measurement entirely, because
 kcov's bash parser reads an ordinary prose line as code. Do not reach for `--exclude-line` or

@@ -11,7 +11,9 @@
 #
 #   * `awk -f prog.awk /dev/null` does not merely parse — it runs BEGIN and END. That is safe for these
 #     programs, which only compute and print, but it means output has to be discarded and it is the
-#     reason a program with side effects must never be checked this way. A parse error exits 2.
+#     reason a program with side effects must never be checked this way. A syntax error exits 2, and only
+#     2 is read as one: a program that signals through its exit status — `exit !found` in an END block,
+#     for a filter used as a condition — would otherwise be impossible to keep in a file.
 #   * `jq` exits 3 for a syntax error *and* for an undefined variable, so a filter using `--arg` values
 #     has to be given them or it fails for the wrong reason. Each such file declares them in a
 #     `# lint-args:` header comment, which doubles as documentation of what the filter expects.
@@ -71,8 +73,14 @@ lint_args() {
 #######################################
 # Syntax-checks one awk program.
 #
-# Runs it against /dev/null, which executes BEGIN and END; output is discarded because the check is
-# only interested in whether the program parses.
+# Runs it against /dev/null, which executes BEGIN and END; output is discarded because the check is only
+# interested in whether the program parses.
+#
+# Only status 2 is a failure, which is what both awks this repository runs on report a syntax error as —
+# macOS's one-true-awk and the container's mawk agree on that. Any other nonzero status is the program
+# saying something through its own exit: a filter used as a condition ends with `exit !found`, and reading
+# that as a parse error would make such a program impossible to keep in a file at all, which is the one
+# place it can be checked.
 # Arguments:
 #   path: Program file.
 # Returns:
@@ -82,7 +90,7 @@ check_awk() {
   local path="$1"
   local output status=0
   output=$(awk -f "${path}" /dev/null 2>&1) || status=$?
-  if (( status != 0 )); then
+  if (( status == 2 )); then
     log_error "${path#"${REPO_ROOT}/"} is not valid awk:"
     printf '%s\n' "${output}" >&2
     return 1

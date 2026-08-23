@@ -32,6 +32,18 @@ program() {
 
 # --- Valid programs ----------------------------------------------------------------------------
 
+@test "an awk program that exits nonzero by design is not a syntax error" {
+  # A filter used as a condition ends with `exit !found`, so running it against /dev/null exits 1 with
+  # nothing wrong. Only status 2 — what both awks report a syntax error as — means the program is broken.
+  program cond.awk <<'EOF'
+$1 == "policy" { found = 1 }
+END { exit !found }
+EOF
+  run_script "$TOOL" "$DIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"All 1 program(s) parse."* ]]
+}
+
 @test "reports success and a count when every program parses" {
   program a.awk <<'EOF'
 BEGIN { print "hi" }
