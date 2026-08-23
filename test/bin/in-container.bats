@@ -88,6 +88,9 @@ STUB
 
   export BATS_VERSION=v1.14.0
   export YQ_VERSION=v4.52.4
+  # Unset for the same reason as in run-coverage.bats: CI exports one, and run_suite then chmods a report
+  # directory this fixture never made.
+  unset JUNIT_DIR
 }
 
 # --- Provisioning ------------------------------------------------------------------------------
@@ -159,7 +162,9 @@ STUB
   chmod 700 "$SRC_DIR/coverage"
   run_func "$TOOL" run_suite
   [ "$status" -eq 0 ]
-  [[ "$(stat -f '%Lp' "$SRC_DIR/coverage" 2>/dev/null || stat -c '%a' "$SRC_DIR/coverage")" == *"5" ]]
+  # Read from ls rather than stat, whose format flags differ between the platforms: GNU stat reads -f as
+  # "filesystem" and succeeds with something else entirely rather than failing over to the BSD form.
+  [[ "$(ls -ld "$SRC_DIR/coverage" | cut -c1-10)" == "drwxr-xr-x" ]]
 }
 
 @test "sourcing the script provisions nothing" {

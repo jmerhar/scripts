@@ -287,11 +287,13 @@ make published # compile a throwaway copy and check every published script is se
 make coverage  # the suite under kcov, then the shared gate
 ```
 
-**`make check` gates on `test-ci`, not `test`.** Two environment differences have each already made a
+**`make check` gates on `test-ci`, not `test`.** Three environment differences have each already made a
 green local suite fail in CI: `GITHUB_ACTIONS` is set for the whole job, which makes every `log_error`
 emit an Actions annotation on stdout as well as its timestamped line, so a test counting occurrences of
-a message sees each one twice; and git's default branch is `master` on the runners, which several tests
-driving a bare fixture repository read. The Linux job hides the first of those — it runs the suite inside
+a message sees each one twice; git's default branch is `master` on the runners, which several tests
+driving a bare fixture repository read; and the Linux job runs the coverage entry point as
+`JUNIT_DIR=junit …`, so that variable is exported into every test, which the coverage harness's own
+suites must therefore unset rather than assume absent. The Linux job hides the first of those — it runs the suite inside
 the kcov container, which does not inherit `GITHUB_ACTIONS` — so such a failure appears on macOS alone.
 `make test` stays for fast iteration; the gate uses the faithful environment.
 

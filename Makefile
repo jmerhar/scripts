@@ -70,6 +70,7 @@ test: ## Run the bats suite
 test-ci: ## Run the suite with the environment CI has
 	GITHUB_ACTIONS=true \
 	GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=init.defaultBranch GIT_CONFIG_VALUE_0=master \
+	JUNIT_DIR=junit \
 	bats --recursive test/
 
 # Measured in the pinned kcov container, even locally: kcov's macOS build ignores the shebang and execs

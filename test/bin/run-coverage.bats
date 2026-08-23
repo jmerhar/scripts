@@ -29,6 +29,9 @@ setup() {
   export KCOV_BIN="$BIN/kcov-double"
   export BATS_BIN="$BIN/bats-double"
   export DOCKER_BIN="$BIN/docker-double"
+  # The CI coverage job runs this tool as `JUNIT_DIR=junit …`, so the variable is in the environment of
+  # every test there. Left inherited, the tests that assert on its absence assert on the runner instead.
+  unset JUNIT_DIR
 }
 
 ########################################
