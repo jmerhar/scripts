@@ -51,7 +51,7 @@ html = "coverage"
 # needed to name the coverage runner, and there is no cost to measuring the harness. Both of its files are
 # measured, driven through their seams by test/bin/run-coverage.bats and test/bin/in-container.bats.
 #
-# The measured figure is 94.01% (4142/4406 lines) across 41 files, the bin tools' own library included:
+# The measured figure is 94.13% (4313/4582 lines) across 42 files, the bin tools' own library included:
 # `--include-path` names bin/ and recurses, so bin/_lib/ is measured like everything else, and both of its
 # files are fully covered by test/shared/bin-lib.bats. Two things push the figure up: an awk or jq program
 # in its own file is not measured at all, where its interior would otherwise count as bash that never ran;
