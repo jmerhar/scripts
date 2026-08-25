@@ -22,6 +22,9 @@ setup() {
   NOPASSWD="$REPO_ROOT/scripts/system/nopasswd-sudo/nopasswd-sudo.sh"
   PRUNE="$REPO_ROOT/scripts/system/prune-orphaned-torrents/prune-orphaned-torrents.sh"
   DMARC="$REPO_ROOT/scripts/utility/dmarc-report/dmarc-report.sh"
+  NORMALIZE="$REPO_ROOT/scripts/media/normalize-release-names/normalize-release-names.sh"
+  DOVI="$REPO_ROOT/scripts/media/dovi-active-area/dovi-active-area.sh"
+  TRANSCODE="$REPO_ROOT/scripts/media/transcode-audio/transcode-audio.sh"
   LINKSERIES="$REPO_ROOT/scripts/media/link-series/link-series.sh"
   SUBREPORT="$REPO_ROOT/scripts/media/subtitle-report/subtitle-report.sh"
   SUBSYNC="$REPO_ROOT/scripts/media/subtitle-sync/subtitle-sync.sh"
@@ -277,6 +280,48 @@ require_non_root() {
   run_script "$DMARC" --nonsense
   [ "$status" -eq 1 ]
   [[ "$output" == *"Unknown option '--nonsense'."* ]]
+}
+
+@test "normalize-release-names help lists every documented option" {
+  run_script "$NORMALIZE" --help
+  [ "$status" -eq 0 ]
+  for opt in --recursive --keep-case --yes --dry-run --no-color --debug --help; do
+    [[ "$output" == *"$opt"* ]] || { echo "missing $opt from usage" >&2; return 1; }
+  done
+}
+
+@test "normalize-release-names reports an option whose argument is missing" {
+  run_func "$NORMALIZE" require_option_value --something
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Option '--something' requires an argument."* ]]
+}
+
+@test "dovi-active-area help lists every documented option" {
+  run_script "$DOVI" --help
+  [ "$status" -eq 0 ]
+  for opt in --fix --yes --keep-original --dry-run --sample --frame --no-color --debug --help; do
+    [[ "$output" == *"$opt"* ]] || { echo "missing $opt from usage" >&2; return 1; }
+  done
+}
+
+@test "dovi-active-area reports an option whose argument is missing" {
+  run_script "$DOVI" --sample
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Option '--sample' requires an argument."* ]]
+}
+
+@test "transcode-audio help lists every documented option" {
+  run_script "$TRANSCODE" --help
+  [ "$status" -eq 0 ]
+  for opt in --format --bitrate --stereo --replace --yes --dry-run --no-color --debug --help; do
+    [[ "$output" == *"$opt"* ]] || { echo "missing $opt from usage" >&2; return 1; }
+  done
+}
+
+@test "transcode-audio reports an option whose argument is missing" {
+  run_script "$TRANSCODE" --format
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Option '--format' requires an argument."* ]]
 }
 
 @test "link-series rejects an unknown option" {

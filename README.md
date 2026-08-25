@@ -19,6 +19,12 @@ Aggregates a folder of DMARC RUA reports (.xml.gz/.zip) into one overall report,
 
 `bash 4.0+` · deps: `curl`, `jq` (+`libxml2` macOS, `libxml2-utils`, `unzip` Linux)
 
+### [`dovi-active-area`](scripts/media/dovi-active-area/)
+
+Reports the Dolby Vision L5 active area of Matroska files, and on request zeroes it by rewriting the RPU in place, so a display stops cropping or letterboxing a picture that already fills its frame. Requires the external tool 'dovi_tool', which Debian has no package for.
+
+`bash 4.0+` · deps: `ffmpeg`, `jq`, `mediainfo`, `mkvtoolnix` (+`dovi_tool` macOS)
+
 ### [`link-series`](scripts/media/link-series/)
 
 Links episodes from a download folder into a series' library folder, taking the show and season from the destination directory itself, so manually acquired releases join the library without a second copy of the file.
@@ -49,6 +55,12 @@ Toggles temporary passwordless sudo for a user, with an in-session auto-revoke t
 
 deps: `sudo` _(Linux only)_
 
+### [`normalize-release-names`](scripts/media/normalize-release-names/)
+
+Brings episode filenames to one spelling — dots for separators, lower case, and the season and episode as S01E02 — so that sidecar pairing, library linking and episode parsers all match the same names. Renames subtitles alongside their video and refuses a rename whose destination is taken.
+
+`bash 4.0+`
+
 ### [`photo-backup`](scripts/photography/photo-backup/)
 
 A robust script for backing up photo collections from multiple sources to a remote server using rsync.
@@ -78,6 +90,12 @@ Reports on subtitle coverage for a media library, detecting embedded tracks and 
 Resynchronizes drifting subtitles to a video's speech using a Whisper transcript as reference and alass for segment-aware alignment (handles ad-break, global-offset, and speed drift). Requires the external tools 'alass' and 'whisper-ctranslate2' on PATH.
 
 `bash 4.3+` · deps: `ffmpeg`
+
+### [`transcode-audio`](scripts/media/transcode-audio/)
+
+Re-encodes the audio of Matroska files to a codec the playback chain can decode (AC-3 by default, for a receiver that cannot take Dolby Digital Plus), in one ffmpeg pass that copies the video, subtitles and chapters and keeps every audio track with its language and flags.
+
+`bash 4.0+` · deps: `ffmpeg`, `jq`
 
 ### [`ufw-docker-expose`](scripts/system/ufw-docker-expose/)
 

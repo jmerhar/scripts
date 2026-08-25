@@ -72,10 +72,25 @@ scripts:
       homebrew: [libxml2]           # provides xmllint (unzip/gzip ship with macOS)
       debian: [libxml2-utils, unzip]
 
+  dovi-active-area:
+    path: scripts/media/dovi-active-area/dovi-active-area.sh
+    description: "Reports the Dolby Vision L5 active area of Matroska files, and on request zeroes it by rewriting the RPU in place, so a display stops cropping or letterboxing a picture that already fills its frame. Requires the external tool 'dovi_tool', which Debian has no package for."
+    min_bash: "4.0"       # ${var,,}
+    dependencies:
+      common: [ffmpeg, jq, mediainfo, mkvtoolnix]
+      homebrew: [dovi_tool]     # Debian has no dovi_tool package; the README says where to get a binary
+
   link-series:
     path: scripts/media/link-series/link-series.sh
     description: "Links episodes from a download folder into a series' library folder, taking the show and season from the destination directory itself, so manually acquired releases join the library without a second copy of the file."
     min_bash: "4.0"        # ${var,,}
+    dependencies:
+      common: []
+
+  normalize-release-names:
+    path: scripts/media/normalize-release-names/normalize-release-names.sh
+    description: "Brings episode filenames to one spelling — dots for separators, lower case, and the season and episode as S01E02 — so that sidecar pairing, library linking and episode parsers all match the same names. Renames subtitles alongside their video and refuses a rename whose destination is taken."
+    min_bash: "4.0"       # ${var,,}
     dependencies:
       common: []
 
@@ -92,6 +107,13 @@ scripts:
     min_bash: "4.3"        # local -n
     dependencies:
       common: [ffmpeg]
+
+  transcode-audio:
+    path: scripts/media/transcode-audio/transcode-audio.sh
+    description: "Re-encodes the audio of Matroska files to a codec the playback chain can decode (AC-3 by default, for a receiver that cannot take Dolby Digital Plus), in one ffmpeg pass that copies the video, subtitles and chapters and keeps every audio track with its language and flags."
+    min_bash: "4.0"       # ${var^^}
+    dependencies:
+      common: [ffmpeg, jq]
 
   unlock-pdf:
     path: scripts/utility/unlock-pdf/unlock-pdf.sh

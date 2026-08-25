@@ -226,6 +226,93 @@ case "${command_name}" in
     fi
     ;;
 
+  ffprobe)
+    # Answered per file — ffprobe.<basename>.stdout — as well as from the plain ffprobe.stdout the
+    # generic handling above prints. A transcode inspects two files in one run, the source and the
+    # result it verifies, and those have to be able to disagree: that disagreement is the whole point of
+    # the verification.
+    subject=""
+    for arg in "$@"; do
+      if [[ -f "${arg}" || "${arg}" == *.mkv ]]; then
+        subject="${arg}"
+      fi
+    done
+    if [[ -n "${subject}" ]]; then
+      reply="${fixtures}/ffprobe.$(basename "${subject}").stdout"
+      if [[ -f "${reply}" ]]; then
+        cat "${reply}"
+      fi
+    fi
+    ;;
+
+  mkvextract)
+    # `mkvextract tracks <in> <id>:<out>` — the destination is the part after the colon, so it is found
+    # by shape rather than by position: the track id is discovered at run time and is not always 0.
+    out=""
+    for arg in "$@"; do
+      if [[ "${arg}" =~ ^[0-9]+:(.+)$ ]]; then
+        out="${BASH_REMATCH[1]}"
+      fi
+    done
+    if [[ -n "${out}" ]] && may_write "${out}"; then
+      printf 'stub elementary stream\n' > "${out}"
+    fi
+    ;;
+
+  mkvmerge)
+    # Two shapes. `-J <file>` asks for the file's JSON on stdout, which the generic fixture above
+    # answers; `-o <file>` produces a container, and the caller checks it is non-empty before replacing
+    # anything with it.
+    out=""
+    prev=""
+    for arg in "$@"; do
+      if [[ "${prev}" == "-o" ]]; then
+        out="${arg}"
+      fi
+      prev="${arg}"
+    done
+    if [[ -n "${out}" ]] && may_write "${out}"; then
+      printf 'stub matroska\n' > "${out}"
+    fi
+    ;;
+
+  *dovi_tool*)
+    # Substring-matched because DOVI_TOOL_BIN is configurable, like the two tools below.
+    #
+    # `info` is answered per RPU file — dovi_tool.info.<basename>.stdout — because one run reads two
+    # different RPUs and needs a different answer for each: the sample taken from the source says what
+    # the file declares, and the rewritten RPU says whether the rewrite worked. A single fixture could
+    # only ever describe one of them, which is exactly the pair a suite needs to tell apart.
+    #
+    # The other subcommands produce a file, named by -o or --rpu-out.
+    if [[ "${1:-}" == "info" ]]; then
+      rpu=""
+      prev=""
+      for arg in "$@"; do
+        if [[ "${prev}" == "-i" ]]; then
+          rpu="${arg}"
+        fi
+        prev="${arg}"
+      done
+      reply="${fixtures}/dovi_tool.info.$(basename "${rpu:-none}").stdout"
+      if [[ -f "${reply}" ]]; then
+        cat "${reply}"
+      fi
+    else
+      out=""
+      prev=""
+      for arg in "$@"; do
+        if [[ "${prev}" == "-o" || "${prev}" == "--rpu-out" ]]; then
+          out="${arg}"
+        fi
+        prev="${arg}"
+      done
+      if [[ -n "${out}" ]] && may_write "${out}"; then
+        printf 'stub rpu\n' > "${out}"
+      fi
+    fi
+    ;;
+
   *alass*)
     # Substring-matched for the same reason as the transcriber above: ALASS_BIN is configurable.
     #

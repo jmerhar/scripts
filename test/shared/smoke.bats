@@ -58,6 +58,12 @@ teardown() {
   [[ "$output" == *"Usage: prune-orphaned-torrents"* ]]
 }
 
+@test "smoke: normalize-release-names shows usage for --help" {
+  run_script "$REPO_ROOT/scripts/media/normalize-release-names/normalize-release-names.sh" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage: normalize-release-names"* ]]
+}
+
 @test "smoke: compare-dirs shows usage for --help" {
   run_script "$REPO_ROOT/scripts/utility/compare-dirs/compare-dirs.sh" --help
   [ "$status" -eq 0 ]
@@ -68,6 +74,18 @@ teardown() {
   run_script "$REPO_ROOT/scripts/utility/dmarc-report/dmarc-report.sh" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: dmarc-report"* ]]
+}
+
+@test "smoke: dovi-active-area shows usage for --help" {
+  run_script "$REPO_ROOT/scripts/media/dovi-active-area/dovi-active-area.sh" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage: dovi-active-area"* ]]
+}
+
+@test "smoke: transcode-audio shows usage for --help" {
+  run_script "$REPO_ROOT/scripts/media/transcode-audio/transcode-audio.sh" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage: transcode-audio"* ]]
 }
 
 @test "smoke: link-series shows usage for --help" {
