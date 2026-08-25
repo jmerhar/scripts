@@ -236,3 +236,34 @@ dpkg_describes() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"Unexpected arguments: extra"* ]]
 }
+
+# --- Paths the earlier tests did not reach -------------------------------------------------------
+
+# The assertion of last resort: whatever the version arithmetic decided, a package belonging to the
+# running kernel stops the run rather than the boot.
+@test "a package list touching the running kernel stops the run" {
+  # dpkg is made to claim the running kernel's package belongs to a version that is not being kept, which
+  # is the shape a mistake in the version arithmetic would take.
+  printf '#!/usr/bin/env bash\nif [[ "$*" == *"linux-image-[0-9]*"* ]]; then printf "linux-image-6.8.0-124-generic ii\\n"; printf "linux-image-6.8.0-138-generic ii\\n"; exit 0; fi\nprintf "linux-image-6.8.0-136-generic ii\\n"\nexit 0\n' > "$DPKG_QUERY_BIN"
+  chmod +x "$DPKG_QUERY_BIN"
+  run_script "$SCRIPT" --yes < /dev/null
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"belongs to the running kernel 6.8.0-136-generic"* ]]
+  run bash -c "grep -cE 'apt-get(-double)? purge' '$STUB_CALLS' || true"
+  [ "$output" = "0" ]
+}
+
+@test "an old kernel with nothing left to purge is reported as nothing to do" {
+  # The image is known to dpkg but holds no files, and neither does anything else for that version.
+  printf '#!/usr/bin/env bash\nif [[ "$*" == *"linux-image-[0-9]*"* ]]; then printf "linux-image-6.8.0-124-generic ii\\n"; printf "linux-image-6.8.0-136-generic ii\\n"; exit 0; fi\nif [[ "$*" == *"6.8.0-124"* ]]; then printf "linux-image-6.8.0-124-generic un\\n"; fi\nexit 0\n' > "$DPKG_QUERY_BIN"
+  chmod +x "$DPKG_QUERY_BIN"
+  run_script "$SCRIPT" --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no packages left to purge"* ]]
+}
+
+@test "--no-color and --debug are accepted" {
+  run_script "$SCRIPT" --no-color --debug --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Keeping:"* ]]
+}

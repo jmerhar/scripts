@@ -242,3 +242,49 @@ names() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"Unknown option '--nonsense'."* ]]
 }
+
+# --- Paths the earlier tests did not reach -------------------------------------------------------
+
+@test "answering yes renames just that file" {
+  file "Some Show 1x02.mkv"
+  file "Some Show 1x03.mkv"
+  printf 'yn' > "$BATS_TEST_TMPDIR/answers"
+  run_script "$SCRIPT" "$DIR" < "$BATS_TEST_TMPDIR/answers"
+  [ "$status" -eq 0 ]
+  [ -f "$DIR/some.show.S01E02.mkv" ]
+  [ -f "$DIR/Some Show 1x03.mkv" ]
+}
+
+@test "end of input stops the run rather than declining everything" {
+  file "Some Show 1x02.mkv"
+  file "Some Show 1x03.mkv"
+  run_script "$SCRIPT" "$DIR" < /dev/null
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Stopping here."* ]]
+}
+
+# A rename can fail for reasons no check anticipates — a directory that stopped being writable between
+# the listing and the move, for one — and the run has to carry on and report it.
+@test "a rename that fails is reported and counted" {
+  file "Some Show 1x02.mkv"
+  run_snippet "$SCRIPT" "mv() { return 1; }; _assume_yes=true; process_file '$DIR/Some Show 1x02.mkv'; printf 'conflicts=%s' \"\$_conflicts\""
+  [[ "$output" == *"Could not rename"* ]]
+  [[ "$output" == *"conflicts=1"* ]]
+}
+
+@test "--debug is accepted" {
+  file "some.show.S01E02.mkv"
+  run_script "$SCRIPT" --debug --yes "$DIR"
+  [ "$status" -eq 0 ]
+}
+
+@test "a directory whose name looks like an option is usable after --" {
+  run_snippet "$SCRIPT" 'parse_options -- --odd; printf "%s" "$_target"'
+  [ "$output" = "--odd" ]
+}
+
+@test "more than one directory argument is refused" {
+  run_script "$SCRIPT" "$DIR" "$DIR"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Expected at most one directory argument, got 2."* ]]
+}

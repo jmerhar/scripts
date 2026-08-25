@@ -31,6 +31,8 @@ html = "coverage"
 #   * guards that exist precisely because they should never fire;
 #   * the four lines of bin/coverage/in-container.sh's entry point, which no test may reach: running it
 #     rather than sourcing one of its functions would apt-get its way through the developer's machine;
+#   * the `sudo` arm of the two scripts that escalate — smart-check and remove-old-kernels — since the
+#     coverage container runs as root and takes the other branch every time;
 #   * the interiors of the two multi-line `xmllint --xpath` expressions in dmarc-report. Bash attributes
 #     the whole command to one line, so kcov counts the rest as never-executed bash even though it runs —
 #     as XPath. No test can reach those lines. XPath has no program-file option and both expressions
@@ -51,7 +53,7 @@ html = "coverage"
 # needed to name the coverage runner, and there is no cost to measuring the harness. Both of its files are
 # measured, driven through their seams by test/bin/run-coverage.bats and test/bin/in-container.bats.
 #
-# The measured figure is 94.13% (4313/4582 lines) across 42 files, the bin tools' own library included:
+# The measured figure is 94.60% (5436/5746 lines) across 48 files, the bin tools' own library included:
 # `--include-path` names bin/ and recurses, so bin/_lib/ is measured like everything else, and both of its
 # files are fully covered by test/shared/bin-lib.bats. Two things push the figure up: an awk or jq program
 # in its own file is not measured at all, where its interior would otherwise count as bash that never ran;
