@@ -4,6 +4,13 @@ defaults:
   license: "MIT"
 
 scripts:
+  build-ffmpeg-nonfree:
+    path: scripts/system/build-ffmpeg-nonfree/build-ffmpeg-nonfree.sh
+    description: "Builds a lean ffmpeg and ffprobe with the nonfree libfdk-aac encoder in a throwaway container matching the host's release, from each component's latest stable tag or from pinned ones, and installs them where they shadow the distribution's copy."
+    platforms: [debian]   # builds an Ubuntu binary in an Ubuntu container, for a Linux host
+    dependencies:
+      debian: [git]       # docker stays out: naming a package would fight a docker-ce install
+
   local-backup:
     path: scripts/system/local-backup/local-backup.sh
     description: "A generic script to create and automatically prune rsync-based system backups."
@@ -32,6 +39,20 @@ scripts:
     platforms: [debian]   # reads MD sysfs + mdadm's mdcheck systemd units — Linux-only
     dependencies:
       debian: [mdadm]
+
+  remove-old-kernels:
+    path: scripts/system/remove-old-kernels/remove-old-kernels.sh
+    description: "Purges the kernel packages a Debian or Ubuntu system no longer needs, keeping the running kernel even when it is not the newest installed, and naming every package it removes rather than letting apt decide what else is unneeded."
+    platforms: [debian]   # dpkg and apt
+    dependencies:
+      debian: [sudo]      # only to purge; listing needs no privileges
+
+  smart-check:
+    path: scripts/system/smart-check/smart-check.sh
+    description: "Reports the SMART findings that actually predict a disk failing — reallocated and pending sectors, any attribute past the drive's own failure threshold, solid-state wear, temperature and interface errors — with an exit status a cron job or monitor can act on."
+    platforms: [debian]   # reads Linux device paths; smartctl on macOS needs different handling
+    dependencies:
+      debian: [smartmontools, jq]
 
   ufw-docker-expose:
     path: scripts/system/ufw-docker-expose/ufw-docker-expose.sh

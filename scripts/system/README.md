@@ -5,6 +5,12 @@ User-facing scripts for system administration tasks. For installation instructio
 ## Scripts
 
 <!-- BEGIN INDEX -->
+### [`build-ffmpeg-nonfree`](build-ffmpeg-nonfree/)
+
+Builds a lean ffmpeg and ffprobe with the nonfree libfdk-aac encoder in a throwaway container matching the host's release, from each component's latest stable tag or from pinned ones, and installs them where they shadow the distribution's copy.
+
+deps: `git` _(Linux only)_
+
 ### [`local-backup`](local-backup/)
 
 A generic script to create and automatically prune rsync-based system backups.
@@ -34,6 +40,18 @@ deps: `sudo` _(Linux only)_
 Finds orphaned media files left by *arr hard-linking and interactively removes the corresponding torrents from Deluge.
 
 `bash 4.0+` · deps: `curl`, `jq`
+
+### [`remove-old-kernels`](remove-old-kernels/)
+
+Purges the kernel packages a Debian or Ubuntu system no longer needs, keeping the running kernel even when it is not the newest installed, and naming every package it removes rather than letting apt decide what else is unneeded.
+
+deps: `sudo` _(Linux only)_
+
+### [`smart-check`](smart-check/)
+
+Reports the SMART findings that actually predict a disk failing — reallocated and pending sectors, any attribute past the drive's own failure threshold, solid-state wear, temperature and interface errors — with an exit status a cron job or monitor can act on.
+
+deps: `smartmontools`, `jq` _(Linux only)_
 
 ### [`ufw-docker-expose`](ufw-docker-expose/)
 

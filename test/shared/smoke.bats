@@ -58,6 +58,24 @@ teardown() {
   [[ "$output" == *"Usage: prune-orphaned-torrents"* ]]
 }
 
+@test "smoke: build-ffmpeg-nonfree shows usage for --help" {
+  run_script "$REPO_ROOT/scripts/system/build-ffmpeg-nonfree/build-ffmpeg-nonfree.sh" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage: build-ffmpeg-nonfree"* ]]
+}
+
+@test "smoke: remove-old-kernels shows usage for --help" {
+  run_script "$REPO_ROOT/scripts/system/remove-old-kernels/remove-old-kernels.sh" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage: remove-old-kernels"* ]]
+}
+
+@test "smoke: smart-check shows usage for --help" {
+  run_script "$REPO_ROOT/scripts/system/smart-check/smart-check.sh" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage: smart-check"* ]]
+}
+
 @test "smoke: normalize-release-names shows usage for --help" {
   run_script "$REPO_ROOT/scripts/media/normalize-release-names/normalize-release-names.sh" --help
   [ "$status" -eq 0 ]

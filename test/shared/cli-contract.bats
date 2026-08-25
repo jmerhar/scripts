@@ -22,6 +22,9 @@ setup() {
   NOPASSWD="$REPO_ROOT/scripts/system/nopasswd-sudo/nopasswd-sudo.sh"
   PRUNE="$REPO_ROOT/scripts/system/prune-orphaned-torrents/prune-orphaned-torrents.sh"
   DMARC="$REPO_ROOT/scripts/utility/dmarc-report/dmarc-report.sh"
+  BUILDFF="$REPO_ROOT/scripts/system/build-ffmpeg-nonfree/build-ffmpeg-nonfree.sh"
+  KERNELS="$REPO_ROOT/scripts/system/remove-old-kernels/remove-old-kernels.sh"
+  SMART="$REPO_ROOT/scripts/system/smart-check/smart-check.sh"
   NORMALIZE="$REPO_ROOT/scripts/media/normalize-release-names/normalize-release-names.sh"
   DOVI="$REPO_ROOT/scripts/media/dovi-active-area/dovi-active-area.sh"
   TRANSCODE="$REPO_ROOT/scripts/media/transcode-audio/transcode-audio.sh"
@@ -280,6 +283,28 @@ require_non_root() {
   run_script "$DMARC" --nonsense
   [ "$status" -eq 1 ]
   [[ "$output" == *"Unknown option '--nonsense'."* ]]
+}
+
+@test "build-ffmpeg-nonfree rejects an unknown option" {
+  run_script "$BUILDFF" --nonsense
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Unknown option '--nonsense'."* ]]
+}
+
+@test "remove-old-kernels help lists every documented option" {
+  run_script "$KERNELS" --help
+  [ "$status" -eq 0 ]
+  for opt in --keep --yes --dry-run --no-color --debug --help; do
+    [[ "$output" == *"$opt"* ]] || { echo "missing $opt from usage" >&2; return 1; }
+  done
+}
+
+@test "smart-check help lists every documented option" {
+  run_script "$SMART" --help
+  [ "$status" -eq 0 ]
+  for opt in --wear --temp --crc --quiet --no-color --debug --help; do
+    [[ "$output" == *"$opt"* ]] || { echo "missing $opt from usage" >&2; return 1; }
+  done
 }
 
 @test "normalize-release-names help lists every documented option" {
