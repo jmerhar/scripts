@@ -19,6 +19,12 @@ Aggregates a folder of DMARC RUA reports (.xml.gz/.zip) into one overall report,
 
 `bash 4.0+` · deps: `curl`, `jq` (+`libxml2` macOS, `libxml2-utils`, `unzip` Linux)
 
+### [`link-series`](scripts/media/link-series/)
+
+Links episodes from a download folder into a series' library folder, taking the show and season from the destination directory itself, so manually acquired releases join the library without a second copy of the file.
+
+`bash 4.0+`
+
 ### [`local-backup`](scripts/system/local-backup/)
 
 A generic script to create and automatically prune rsync-based system backups.

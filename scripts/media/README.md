@@ -5,6 +5,12 @@ Tools for keeping a TV and film library in order — subtitle coverage and timin
 ## Scripts
 
 <!-- BEGIN INDEX -->
+### [`link-series`](link-series/)
+
+Links episodes from a download folder into a series' library folder, taking the show and season from the destination directory itself, so manually acquired releases join the library without a second copy of the file.
+
+`bash 4.0+`
+
 ### [`subtitle-report`](subtitle-report/)
 
 Reports on subtitle coverage for a media library, detecting embedded tracks and sidecar files and breaking down counts by language and source.

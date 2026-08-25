@@ -72,6 +72,13 @@ scripts:
       homebrew: [libxml2]           # provides xmllint (unzip/gzip ship with macOS)
       debian: [libxml2-utils, unzip]
 
+  link-series:
+    path: scripts/media/link-series/link-series.sh
+    description: "Links episodes from a download folder into a series' library folder, taking the show and season from the destination directory itself, so manually acquired releases join the library without a second copy of the file."
+    min_bash: "4.0"        # ${var,,}
+    dependencies:
+      common: []
+
   subtitle-report:
     path: scripts/media/subtitle-report/subtitle-report.sh
     description: "Reports on subtitle coverage for a media library, detecting embedded tracks and sidecar files and breaking down counts by language and source."

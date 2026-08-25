@@ -70,6 +70,12 @@ teardown() {
   [[ "$output" == *"Usage: dmarc-report"* ]]
 }
 
+@test "smoke: link-series shows usage for --help" {
+  run_script "$REPO_ROOT/scripts/media/link-series/link-series.sh" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage: link-series"* ]]
+}
+
 @test "smoke: subtitle-report shows usage for --help" {
   run_script "$REPO_ROOT/scripts/media/subtitle-report/subtitle-report.sh" --help
   [ "$status" -eq 0 ]

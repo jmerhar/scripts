@@ -22,6 +22,7 @@ setup() {
   NOPASSWD="$REPO_ROOT/scripts/system/nopasswd-sudo/nopasswd-sudo.sh"
   PRUNE="$REPO_ROOT/scripts/system/prune-orphaned-torrents/prune-orphaned-torrents.sh"
   DMARC="$REPO_ROOT/scripts/utility/dmarc-report/dmarc-report.sh"
+  LINKSERIES="$REPO_ROOT/scripts/media/link-series/link-series.sh"
   SUBREPORT="$REPO_ROOT/scripts/media/subtitle-report/subtitle-report.sh"
   SUBSYNC="$REPO_ROOT/scripts/media/subtitle-sync/subtitle-sync.sh"
   UNLOCK="$REPO_ROOT/scripts/utility/unlock-pdf/unlock-pdf.sh"
@@ -276,6 +277,26 @@ require_non_root() {
   run_script "$DMARC" --nonsense
   [ "$status" -eq 1 ]
   [[ "$output" == *"Unknown option '--nonsense'."* ]]
+}
+
+@test "link-series rejects an unknown option" {
+  run_script "$LINKSERIES" --nonsense
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Unknown option '--nonsense'."* ]]
+}
+
+@test "link-series help lists every documented option" {
+  run_script "$LINKSERIES" --help
+  [ "$status" -eq 0 ]
+  for opt in --temp-dir --quality --symlink --dry-run --no-color --debug --help; do
+    [[ "$output" == *"$opt"* ]] || { echo "missing $opt from usage" >&2; return 1; }
+  done
+}
+
+@test "link-series reports an option whose argument is missing" {
+  run_script "$LINKSERIES" --quality
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Option '--quality' requires an argument."* ]]
 }
 
 @test "subtitle-report rejects an unknown option" {
