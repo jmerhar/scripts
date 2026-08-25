@@ -259,7 +259,9 @@ device_json() {
   fi
 
   if [[ -n "${suggested_type}" ]]; then
-    log_debug "Auto-detection told us nothing about ${device}; retrying as -d ${suggested_type}."
+    # To stderr: this function's standard output is the document its caller captures, so a diagnostic
+    # written there would be parsed as part of it.
+    log_debug "Auto-detection told us nothing about ${device}; retrying as -d ${suggested_type}." >&2
     json="$("${command[@]}" -j -H -A -i -d "${suggested_type}" "${device}" 2>/dev/null || true)"
     if usable_json "${json}"; then
       printf '%s' "${json}"

@@ -328,3 +328,43 @@ scan_lists() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"Unknown option '--nonsense'."* ]]
 }
+
+# --- Paths the earlier tests did not reach -------------------------------------------------------
+
+@test "every threshold option is recorded as parse_options sees it" {
+  run_snippet "$SCRIPT" 'parse_options -w 30 -t 55 -c 5 -q -C /dev/sdx; printf "%s|%s|%s|%s|%s|%s" "$_wear_opt" "$_temp_opt" "$_crc_opt" "$_quiet" "$_no_color" "${_devices[0]}"'
+  [ "$output" = "30|55|5|true|true|/dev/sdx" ]
+}
+
+@test "the long spelling of every option is accepted too" {
+  run_snippet "$SCRIPT" 'parse_options --wear 30 --temp 55 --crc 5 --quiet --no-color --debug; printf "%s|%s|%s|%s" "$_wear_opt" "$_temp_opt" "$_crc_opt" "$IS_DEBUG_MODE"'
+  [ "$output" = "30|55|5|true" ]
+}
+
+@test "the wear threshold from the command line is what is compared" {
+  device_doc ssd true 40 177:Wear_Leveling_Count:58:0:1008
+  run_script "$SCRIPT" --wear 60 /dev/ssd
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"58% of rated life left"* ]]
+}
+
+@test "the CRC threshold from the command line is what is compared" {
+  device_doc sda true 40 199:UDMA_CRC_Error_Count:99:0:8
+  run_script "$SCRIPT" --crc 8 /dev/sda
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"CRC"* ]]
+}
+
+@test "a device whose name looks like an option is usable after --" {
+  healthy_doc sda
+  run_snippet "$SCRIPT" 'parse_options -- -weird-name; printf "%s" "${_devices[0]}"'
+  [ "$output" = "-weird-name" ]
+}
+
+@test "--debug says when it fell back to the scanned device type" {
+  scan_lists "/dev/sda -d scsi"
+  healthy_doc sda.scsi
+  run_script "$SCRIPT" --debug
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Auto-detection told us nothing about /dev/sda"* ]]
+}

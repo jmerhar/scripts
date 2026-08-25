@@ -535,3 +535,16 @@ JSON
   [ "$status" -eq 1 ]
   [[ "$output" == *"Expected at most one path argument, got 2."* ]]
 }
+
+# log_debug writes to standard output, which for a function whose output is its return value means the
+# diagnostic lands inside the value. A run with --debug therefore has to produce the same verdict as one
+# without it.
+@test "--debug does not corrupt the metadata it is reporting on" {
+  film movie.mkv
+  mediainfo_says_dv
+  dovi_reports probe.bin 0 0 210 210
+  run_script "$SCRIPT" --debug "$LIB"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"movie.mkv: dvhe.08, active area 0 0 210 210"* ]]
+  [[ "$output" == *"Sampling 10s"* ]]
+}

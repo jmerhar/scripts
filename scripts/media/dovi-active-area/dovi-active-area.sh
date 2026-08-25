@@ -337,7 +337,9 @@ active_area() {
   local rpu="${_scratch}/probe.bin"
   rm -f "${rpu}"
 
-  log_debug "Sampling ${_sample_seconds}s of '${file}' for its RPU."
+  # To stderr: this function's standard output is the offsets its caller captures, so a diagnostic
+  # written there would be read as one of them.
+  log_debug "Sampling ${_sample_seconds}s of '${file}' for its RPU." >&2
   ffmpeg -ss 0 -to "00:00:${_sample_seconds}" -i "${file}" -c:v copy -f hevc - 2>/dev/null | "${_dovi_tool}" extract-rpu -i - -o "${rpu}" &>/dev/null || true
   [[ -s "${rpu}" ]] || return 0
 

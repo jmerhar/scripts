@@ -321,3 +321,86 @@ probe_audio() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"does not exist"* ]]
 }
+
+# --- Paths the earlier tests did not reach -------------------------------------------------------
+
+@test "a single file may be named instead of a directory" {
+  film movie.mkv
+  probe_audio movie.mkv eac3:6
+  run_script "$SCRIPT" --dry-run "$LIB/movie.mkv"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"1 file(s) examined"* ]]
+}
+
+@test "a file that is not Matroska is refused" {
+  printf 'x' > "$BATS_TEST_TMPDIR/movie.mp4"
+  run_script "$SCRIPT" "$BATS_TEST_TMPDIR/movie.mp4"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"is not a Matroska file"* ]]
+}
+
+@test "a file with no audio at all is passed over" {
+  film silent.mkv
+  printf '%s\n' '{"streams":[]}' > "$STUB_FIXTURES/ffprobe.silent.mkv.stdout"
+  run_script "$SCRIPT" "$LIB"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"1 file(s) examined; 0 carry audio"* ]]
+}
+
+@test "answering yes converts just that file" {
+  film a.mkv
+  film b.mkv
+  probe_audio a.mkv eac3:6
+  probe_audio b.mkv eac3:6
+  probe_audio "a.AC3.CC.mkv.partial" ac3:6
+  printf 'yn' > "$BATS_TEST_TMPDIR/answers"
+  run_script "$SCRIPT" "$LIB" < "$BATS_TEST_TMPDIR/answers"
+  [ "$status" -eq 0 ]
+  [ -f "$LIB/a.AC3.CC.mkv" ]
+  [ ! -e "$LIB/b.AC3.CC.mkv" ]
+}
+
+# With nothing on standard input there is no answer to read, and treating that as "no" for every file
+# would look like a run that considered each one and declined.
+@test "end of input stops the run rather than declining everything" {
+  film a.mkv
+  film b.mkv
+  probe_audio a.mkv eac3:6
+  probe_audio b.mkv eac3:6
+  run_script "$SCRIPT" "$LIB" < /dev/null
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Stopping here."* ]]
+}
+
+# ffmpeg exiting 0 having written nothing is not a converted file, whatever the exit status says.
+@test "an empty result is refused and cleaned up" {
+  film movie.mkv
+  probe_audio movie.mkv eac3:6
+  : > "$STUB_FIXTURES/ffmpeg.artifact"
+  run_snippet "$SCRIPT" "_format=ac3; _marker=AC3.CC; transcode_file '$LIB/movie.mkv' \"\$(printf 'eac3\t6')\""
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"produced nothing"* ]]
+  [ ! -e "$LIB/movie.AC3.CC.mkv" ]
+  [ ! -e "$LIB/movie.AC3.CC.mkv.partial" ]
+  [ -f "$LIB/movie.mkv" ]
+}
+
+@test "--debug names the ffmpeg command it ran" {
+  film movie.mkv
+  probe_audio movie.mkv eac3:6
+  probe_audio "movie.AC3.CC.mkv.partial" ac3:6
+  run_script "$SCRIPT" --debug --yes "$LIB"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Running: ffmpeg -nostdin"* ]]
+}
+
+@test "a directory whose name looks like an option is usable after --" {
+  run_snippet "$SCRIPT" "parse_options -- --odd; printf '%s' \"\$_target\""
+  [ "$output" = "--odd" ]
+}
+
+@test "more than one path argument is refused" {
+  run_script "$SCRIPT" "$LIB" "$LIB"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Expected at most one path argument, got 2."* ]]
+}
