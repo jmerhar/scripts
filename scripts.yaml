@@ -73,14 +73,14 @@ scripts:
       debian: [libxml2-utils, unzip]
 
   subtitle-report:
-    path: scripts/utility/subtitle-report/subtitle-report.sh
+    path: scripts/media/subtitle-report/subtitle-report.sh
     description: "Reports on subtitle coverage for a media library, detecting embedded tracks and sidecar files and breaking down counts by language and source."
     min_bash: "4.0"        # ${var,,}, declare -A
     dependencies:
       common: [ffmpeg]
 
   subtitle-sync:
-    path: scripts/utility/subtitle-sync/subtitle-sync.sh
+    path: scripts/media/subtitle-sync/subtitle-sync.sh
     description: "Resynchronizes drifting subtitles to a video's speech using a Whisper transcript as reference and alass for segment-aware alignment (handles ad-break, global-offset, and speed drift). Requires the external tools 'alass' and 'whisper-ctranslate2' on PATH."
     min_bash: "4.3"        # local -n
     dependencies:

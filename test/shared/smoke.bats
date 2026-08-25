@@ -71,13 +71,13 @@ teardown() {
 }
 
 @test "smoke: subtitle-report shows usage for --help" {
-  run_script "$REPO_ROOT/scripts/utility/subtitle-report/subtitle-report.sh" --help
+  run_script "$REPO_ROOT/scripts/media/subtitle-report/subtitle-report.sh" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: subtitle-report"* ]]
 }
 
 @test "smoke: subtitle-sync shows usage for --help" {
-  run_script "$REPO_ROOT/scripts/utility/subtitle-sync/subtitle-sync.sh" --help
+  run_script "$REPO_ROOT/scripts/media/subtitle-sync/subtitle-sync.sh" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: subtitle-sync"* ]]
 }

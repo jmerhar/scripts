@@ -61,13 +61,13 @@ A script to find and delete "sidecar" files when a corresponding RAW photo file 
 
 `bash 4.0+`
 
-### [`subtitle-report`](scripts/utility/subtitle-report/)
+### [`subtitle-report`](scripts/media/subtitle-report/)
 
 Reports on subtitle coverage for a media library, detecting embedded tracks and sidecar files and breaking down counts by language and source.
 
 `bash 4.0+` · deps: `ffmpeg`
 
-### [`subtitle-sync`](scripts/utility/subtitle-sync/)
+### [`subtitle-sync`](scripts/media/subtitle-sync/)
 
 Resynchronizes drifting subtitles to a video's speech using a Whisper transcript as reference and alass for segment-aware alignment (handles ad-break, global-offset, and speed drift). Requires the external tools 'alass' and 'whisper-ctranslate2' on PATH.
 
@@ -94,6 +94,7 @@ scripts.yaml      Central manifest — all publishable scripts and their metadat
 scripts/          User-facing scripts, organized by topic
   system/           System administration tools; config files live here too
   utility/          General-purpose utilities
+  media/            TV and film library maintenance
   photography/      Photography workflow automation
   lib/              Shared library (sourced at dev time, inlined at build time)
 bin/              Internal CI/CD tooling (not published as packages)

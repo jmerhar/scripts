@@ -13,8 +13,8 @@ load ../test_helper
 setup() {
   setup_common
   TOOL=$(lib_at opt/tools lang-user lang.sh)
-  REPORT="$REPO_ROOT/scripts/utility/subtitle-report/subtitle-report.sh"
-  SYNC="$REPO_ROOT/scripts/utility/subtitle-sync/subtitle-sync.sh"
+  REPORT="$REPO_ROOT/scripts/media/subtitle-report/subtitle-report.sh"
+  SYNC="$REPO_ROOT/scripts/media/subtitle-sync/subtitle-sync.sh"
 }
 
 # --- Canonicalisation --------------------------------------------------------------------------

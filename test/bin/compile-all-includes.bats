@@ -227,6 +227,6 @@ compile_run() {
   compile_run
   # Counted as "more than none" rather than exactly one: a script includes as many libraries as it uses,
   # and the property here is that the walk left them alone.
-  run grep -c '# @include ' "$REPO_ROOT/scripts/utility/subtitle-sync/subtitle-sync.sh"
+  run grep -c '# @include ' "$REPO_ROOT/scripts/media/subtitle-sync/subtitle-sync.sh"
   [ "$output" -gt 0 ]
 }

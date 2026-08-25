@@ -17,18 +17,6 @@ Aggregates a folder of DMARC RUA reports (.xml.gz/.zip) into one overall report,
 
 `bash 4.0+` · deps: `curl`, `jq` (+`libxml2` macOS, `libxml2-utils`, `unzip` Linux)
 
-### [`subtitle-report`](subtitle-report/)
-
-Reports on subtitle coverage for a media library, detecting embedded tracks and sidecar files and breaking down counts by language and source.
-
-`bash 4.0+` · deps: `ffmpeg`
-
-### [`subtitle-sync`](subtitle-sync/)
-
-Resynchronizes drifting subtitles to a video's speech using a Whisper transcript as reference and alass for segment-aware alignment (handles ad-break, global-offset, and speed drift). Requires the external tools 'alass' and 'whisper-ctranslate2' on PATH.
-
-`bash 4.3+` · deps: `ffmpeg`
-
 ### [`unlock-pdf`](unlock-pdf/)
 
 Decrypts a password-protected PDF file using the 'qpdf' command-line tool.

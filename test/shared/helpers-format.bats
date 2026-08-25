@@ -15,8 +15,8 @@ setup() {
   PRUNE="$REPO_ROOT/scripts/system/prune-orphaned-torrents/prune-orphaned-torrents.sh"
   SIDECARS="$REPO_ROOT/scripts/photography/remove-sidecars/remove-sidecars.sh"
   MDCHECK="$REPO_ROOT/scripts/system/mdcheck-progress/mdcheck-progress.sh"
-  SUBSYNC="$REPO_ROOT/scripts/utility/subtitle-sync/subtitle-sync.sh"
-  SUBREPORT="$REPO_ROOT/scripts/utility/subtitle-report/subtitle-report.sh"
+  SUBSYNC="$REPO_ROOT/scripts/media/subtitle-sync/subtitle-sync.sh"
+  SUBREPORT="$REPO_ROOT/scripts/media/subtitle-report/subtitle-report.sh"
   DMARC="$REPO_ROOT/scripts/utility/dmarc-report/dmarc-report.sh"
 }
 

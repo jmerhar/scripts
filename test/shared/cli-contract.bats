@@ -22,8 +22,8 @@ setup() {
   NOPASSWD="$REPO_ROOT/scripts/system/nopasswd-sudo/nopasswd-sudo.sh"
   PRUNE="$REPO_ROOT/scripts/system/prune-orphaned-torrents/prune-orphaned-torrents.sh"
   DMARC="$REPO_ROOT/scripts/utility/dmarc-report/dmarc-report.sh"
-  SUBREPORT="$REPO_ROOT/scripts/utility/subtitle-report/subtitle-report.sh"
-  SUBSYNC="$REPO_ROOT/scripts/utility/subtitle-sync/subtitle-sync.sh"
+  SUBREPORT="$REPO_ROOT/scripts/media/subtitle-report/subtitle-report.sh"
+  SUBSYNC="$REPO_ROOT/scripts/media/subtitle-sync/subtitle-sync.sh"
   UNLOCK="$REPO_ROOT/scripts/utility/unlock-pdf/unlock-pdf.sh"
 
   # Two real directories, for the scripts that insist their arguments exist.

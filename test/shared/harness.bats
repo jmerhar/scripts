@@ -90,14 +90,14 @@ EOF
 
 @test "a sourced call resolves the shared library the way the scripts do" {
   # The property the directory matters for: every script includes the shared library relative to $0.
-  run_snippet "$REPO_ROOT/scripts/utility/subtitle-report/subtitle-report.sh" \
+  run_snippet "$REPO_ROOT/scripts/media/subtitle-report/subtitle-report.sh" \
     'declare -F log_info >/dev/null && printf "library loaded"'
   [ "$status" -eq 0 ]
   [ "$output" = "library loaded" ]
 }
 
 @test "a sourced script keeps its own name, not the harness's" {
-  run_snippet "$REPO_ROOT/scripts/utility/subtitle-report/subtitle-report.sh" 'printf "%s" "$SCRIPT_NAME"'
+  run_snippet "$REPO_ROOT/scripts/media/subtitle-report/subtitle-report.sh" 'printf "%s" "$SCRIPT_NAME"'
   [ "$output" = "subtitle-report" ]
 }
 

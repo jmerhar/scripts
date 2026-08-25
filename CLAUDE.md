@@ -19,6 +19,7 @@ artefact is a single file named after the script, so the repetition is invisible
 - `scripts/` — User-facing scripts, one directory per script, grouped by topic:
   - `scripts/system/` — System administration tools (e.g., backups)
   - `scripts/utility/` — General-purpose utilities
+  - `scripts/media/` — TV and film library maintenance (subtitles, linking downloads in)
   - `scripts/photography/` — Photography workflow automation
   - `scripts/lib/` — Shared libraries, sourced by the scripts and inlined when published
 
