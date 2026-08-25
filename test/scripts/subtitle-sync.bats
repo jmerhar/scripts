@@ -214,6 +214,22 @@ with_workdir() {
   [[ "$output" == *"Synced: $TREE/movie.en.srt"* ]]
 }
 
+# Torrents carry subtitle files too, so a synced sidecar can be a hard link to one still being seeded.
+# The corrected file therefore has to land on a new inode: writing through the shared one would alter
+# what the tracker checksums. See the "Replacing a file someone else is seeding" section of CLAUDE.md.
+@test "the copy a torrent is seeding is left byte-for-byte alone" {
+  touch_file movie.mkv
+  touch_file movie.en.srt 00:00:10,000
+  ln "$TREE/movie.en.srt" "$BATS_TEST_TMPDIR/seeding.en.srt"
+  alass_returns 00:00:30,000
+  sync_run --no-anchor "$TREE"
+  [ "$status" -eq 0 ]
+  grep -q "00:00:10,000" "$BATS_TEST_TMPDIR/seeding.en.srt"
+  run grep -c "00:00:30,000" "$BATS_TEST_TMPDIR/seeding.en.srt"
+  [ "$output" = "0" ]
+  [ ! "$TREE/movie.en.srt" -ef "$BATS_TEST_TMPDIR/seeding.en.srt" ]
+}
+
 @test "the backup holds the original timings and the subtitle holds the corrected ones" {
   touch_file movie.mkv
   touch_file movie.en.srt 00:00:10,000

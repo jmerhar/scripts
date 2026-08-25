@@ -33,9 +33,21 @@ if stat -c '%s' / &> /dev/null; then
   #   path: File to inspect.
   ########################################
   stat_mtime() { stat -c '%Y' "$1"; }
+
+  ########################################
+  # Prints how many names a file has, which is 1 for an ordinary file.
+  #
+  # A caller about to rewrite a file needs this: replacing it puts the new content on a new inode, so
+  # every other name for the old one keeps the old content — which is how a media library that hard-links
+  # its downloads ends up with a repaired copy and a seeded copy that differ.
+  # Arguments:
+  #   path: File to inspect.
+  ########################################
+  stat_links() { stat -c '%h' "$1"; }
 else
   stat_size() { stat -f '%z' "$1"; }
   stat_mtime() { stat -f '%m' "$1"; }
+  stat_links() { stat -f '%l' "$1"; }
 fi
 
 ########################################

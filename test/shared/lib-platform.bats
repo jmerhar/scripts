@@ -29,6 +29,37 @@ setup() {
   [[ "$output" != *"0"* ]] || [[ "$output" == "failed as expected" ]]
 }
 
+# --- stat_links -------------------------------------------------------------------------------
+
+# A caller about to replace a file needs this: nearly every video file in the library these scripts serve
+# is a hard link to a torrent still being seeded, so a rewrite has to know when it is about to cost a
+# second copy — and the flag that reports it is one of the ones that differ between the two platforms.
+@test "stat_links reports one name for an ordinary file" {
+  run_snippet "$TOOL" "stat_links '$FILE'"
+  [ "$output" = "1" ]
+}
+
+@test "stat_links counts every name a file has" {
+  ln "$FILE" "$BATS_TEST_TMPDIR/second-name"
+  run_snippet "$TOOL" "stat_links '$FILE'"
+  [ "$output" = "2" ]
+  ln "$FILE" "$BATS_TEST_TMPDIR/third-name"
+  run_snippet "$TOOL" "stat_links '$FILE'"
+  [ "$output" = "3" ]
+}
+
+@test "stat_links drops back to one when the other names go" {
+  ln "$FILE" "$BATS_TEST_TMPDIR/second-name"
+  rm "$BATS_TEST_TMPDIR/second-name"
+  run_snippet "$TOOL" "stat_links '$FILE'"
+  [ "$output" = "1" ]
+}
+
+@test "stat_links on a file that does not exist fails rather than printing a number" {
+  run_snippet "$TOOL" "stat_links '$BATS_TEST_TMPDIR/absent' 2>/dev/null || echo 'failed as expected'"
+  [ "$output" = "failed as expected" ]
+}
+
 # --- stat_mtime --------------------------------------------------------------------------------
 
 @test "stat_mtime reports seconds since the epoch" {

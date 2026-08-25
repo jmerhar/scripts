@@ -337,7 +337,37 @@ real system. The full set:
 | `memory-pressure-alert` | `SWAPUSAGE_CMD`, `MEMSIZE_CMD`, `VMSTAT_CMD`, `TOP_CMD`, `NOTIFY_CMD`, `LAUNCHCTL_CMD`, `LAUNCH_AGENTS_DIR`, `AGENT_LOG_DIR` | Every reading is live kernel state; the notifier would post to the developer's desktop and `--install` would load a real launchd agent |
 | `run-coverage` | `KCOV_BIN`, `BATS_BIN`, `DOCKER_BIN` | None can be stubbed on PATH under its real name: a `kcov` or `bats` there is picked up by the harness tracing the test, and a `docker` is handed to `ufw-docker-expose`'s suite |
 | `in-container` | `SRC`, `TMP`, `PREFIX`, `BATS_BIN` | Its defaults are a container's own filesystem, so the real steps install into the developer's `/usr/local` and extract into their `/tmp` — one run of an early version of its suite did exactly that |
+| `dovi-active-area` | `DOVI_TOOL_BIN` (via config), `WORK_DIR` | dovi_tool is often installed under a path of its own, and the rewrite must write its multi-gigabyte intermediates somewhere a test is not |
+| `build-ffmpeg-nonfree` | `DOCKER_BIN`, `GIT_BIN`, `OS_RELEASE`, `BUILD_DIR`, `DEST` (via config) | Otherwise a test reaches the network, runs a 30-minute container, and installs binaries onto the developer's PATH |
+| `remove-old-kernels` | `RUNNING_KERNEL`, `DPKG_QUERY_BIN`, `APT_GET_BIN` | The whole decision is about the machine's own kernels; a test has to describe a machine rather than read one |
+| `smart-check` | `SMARTCTL_BIN`, `SUDO_BIN` | smartctl needs root, and the stub for sudo records without executing — so the escalation is a seam too, or the double's output never comes back |
 | `ufw-docker-expose` | `DOCKER_BIN` | The double cannot simply be called `docker`: `bin/coverage/run-coverage.sh` and the bash-3.2 guard test run the real CLI for pinned images, and a stub of that name on `PATH` would be handed to them |
+
+### Replacing a file someone else is seeding
+
+**A script that rewrites a media file must put the new content on a new inode — always `mv` into place,
+never `cp` over the target and never an in-place editor.** Nearly every video file in the library this
+repository serves is a hard link to a torrent still being seeded, so writing through the inode does not
+just alter the library copy: it corrupts what the tracker is checksumming, and the torrent fails its hash
+check.
+
+The distinction is not intuitive, so it is worth stating what was measured rather than assumed:
+
+| Operation | Effect on a hard-linked destination |
+|---|---|
+| `mv new old` (same filesystem) | Safe — renames over the name; the other link keeps the old inode and content |
+| `mv new old` (across filesystems) | Safe — coreutils unlinks the destination before copying |
+| `cp new old` | **Corrupts** — opens the existing inode and truncates it, so every link sees the new bytes |
+| `rsync --inplace` | **Corrupts**, for the same reason; plain rsync writes a temp file and renames |
+| `rm old` | Safe — removes one name, leaving the others |
+
+So the shape every rewriting script here follows is: build the replacement somewhere else, verify it, then
+one `mv`. `cp` is fine into a working directory and nowhere else. `dovi-active-area`, `transcode-audio` and
+`subtitle-sync` each have a test that hard-links a fixture, runs the rewrite, and asserts the other link
+still holds the original bytes — that assertion is what keeps the property from being refactored away.
+
+A rewrite therefore costs disk: the library gains a new copy while the seeded one stays. That is the
+intended trade, and `dovi-active-area` says so when it sees a link count above one.
 
 ### Coverage
 
