@@ -419,3 +419,16 @@ probe_audio() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"Expected at most one path argument, got 2."* ]]
 }
+
+# A preview is only worth having if it predicts the run. A folder that already holds earlier conversions
+# is the common case where the two could disagree.
+@test "--dry-run predicts a refusal rather than promising a write" {
+  film movie.mkv
+  printf 'existing' > "$LIB/movie.AC3.CC.mkv"
+  probe_audio movie.mkv eac3:6
+  run_script "$SCRIPT" --dry-run "$LIB"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"already exists; a run would leave 'movie.mkv' alone"* ]]
+  [[ "$output" != *"would write"* ]]
+  [[ "$output" == *"1 failed"* ]]
+}

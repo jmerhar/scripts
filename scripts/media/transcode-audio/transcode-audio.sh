@@ -479,7 +479,16 @@ process_file() {
   printf '%s\n' "${_C_YELLOW}${name}: ${summary}${_C_RESET}"
 
   if [[ "${_dry_run}" == true ]]; then
-    printf '%s\n' "${_C_CYAN}  would write $(basename "$(converted_name "${file}")")${_C_RESET}"
+    # The destination is checked here as well as in the encode, so that a preview of a folder holding
+    # earlier conversions predicts what a run would actually do rather than promising a write it refuses.
+    local wanted
+    wanted="$(converted_name "${file}")"
+    if [[ -e "${wanted}" ]]; then
+      log_warn "'$(basename "${wanted}")' already exists; a run would leave '${name}' alone."
+      _failed=$(( _failed + 1 ))
+      return 0
+    fi
+    printf '%s\n' "${_C_CYAN}  would write $(basename "${wanted}")${_C_RESET}"
     _converted=$(( _converted + 1 ))
     return 0
   fi
