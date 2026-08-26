@@ -32,6 +32,13 @@ scripts:
     dependencies:
       debian: [sudo]
 
+  mam-session:
+    path: scripts/system/mam-session/mam-session.sh
+    description: "Points a MyAnonamouse dynamic-seedbox session at the machine's current address when it changes, calling the tracker sparingly, keeping the session out of the process list, and turning each refusal into the tracker setting that has to change."
+    min_bash: "4.0"       # ${var,,}
+    dependencies:
+      common: [curl, jq]
+
   mdcheck-progress:
     path: scripts/system/mdcheck-progress/mdcheck-progress.sh
     description: "Reports the progress of an MD RAID check (Debian's monthly mdcheck scrub), including while it is paused between nightly windows, with a schedule-aware estimate of when it will finish."

@@ -40,6 +40,12 @@ teardown() {
   [[ "$output" == *"Usage: local-backup"* ]]
 }
 
+@test "smoke: mam-session shows usage for --help" {
+  run_script "$REPO_ROOT/scripts/system/mam-session/mam-session.sh" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Usage: mam-session"* ]]
+}
+
 @test "smoke: mdcheck-progress shows usage for --help" {
   run_script "$REPO_ROOT/scripts/system/mdcheck-progress/mdcheck-progress.sh" --help
   [ "$status" -eq 0 ]

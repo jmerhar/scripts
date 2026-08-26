@@ -17,6 +17,12 @@ A generic script to create and automatically prune rsync-based system backups.
 
 `bash 4.0+` · deps: `rsync`
 
+### [`mam-session`](mam-session/)
+
+Points a MyAnonamouse dynamic-seedbox session at the machine's current address when it changes, calling the tracker sparingly, keeping the session out of the process list, and turning each refusal into the tracker setting that has to change.
+
+`bash 4.0+` · deps: `curl`, `jq`
+
 ### [`mdcheck-progress`](mdcheck-progress/)
 
 Reports the progress of an MD RAID check (Debian's monthly mdcheck scrub), including while it is paused between nightly windows, with a schedule-aware estimate of when it will finish.

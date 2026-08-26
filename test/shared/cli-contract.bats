@@ -23,6 +23,7 @@ setup() {
   PRUNE="$REPO_ROOT/scripts/system/prune-orphaned-torrents/prune-orphaned-torrents.sh"
   DMARC="$REPO_ROOT/scripts/utility/dmarc-report/dmarc-report.sh"
   BUILDFF="$REPO_ROOT/scripts/system/build-ffmpeg-nonfree/build-ffmpeg-nonfree.sh"
+  MAM="$REPO_ROOT/scripts/system/mam-session/mam-session.sh"
   KERNELS="$REPO_ROOT/scripts/system/remove-old-kernels/remove-old-kernels.sh"
   SMART="$REPO_ROOT/scripts/system/smart-check/smart-check.sh"
   NORMALIZE="$REPO_ROOT/scripts/media/normalize-release-names/normalize-release-names.sh"
@@ -283,6 +284,23 @@ require_non_root() {
   run_script "$DMARC" --nonsense
   [ "$status" -eq 1 ]
   [[ "$output" == *"Unknown option '--nonsense'."* ]]
+}
+
+@test "mam-session help lists every documented option" {
+  run_script "$MAM" --help
+  [ "$status" -eq 0 ]
+  for opt in --force --status --dry-run --quiet --no-color --debug --help; do
+    [[ "$output" == *"$opt"* ]] || { echo "missing $opt from usage" >&2; return 1; }
+  done
+}
+
+# The endpoint accepts only a purpose-made session, and a password would be the wrong secret to hold in
+# any case — a session can be revoked in one click, an account cannot. So neither the script nor its
+# template has anywhere to put one.
+@test "mam-session has nowhere to put an account password" {
+  local dir="$REPO_ROOT/scripts/system/mam-session"
+  run bash -c "cat '$dir/mam-session.sh' '$dir/mam-session.conf' | grep -icE '^[[:space:]]*[A-Z_]*PASS(WORD)?=' || true"
+  [ "$output" = "0" ]
 }
 
 @test "build-ffmpeg-nonfree rejects an unknown option" {

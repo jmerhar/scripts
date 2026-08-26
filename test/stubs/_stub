@@ -163,6 +163,41 @@ case "${command_name}" in
     ;;
 
   curl)
+    # A plain GET is answered from curl.<host>.stdout when the suite filed one, so a run that talks to two
+    # different hosts — an address service and a tracker, say — can be told a different thing by each.
+    # The status line a caller asks for with -w is written by the suite into the same file.
+    for arg in "$@"; do
+      case "${arg}" in
+        http://*|https://*)
+          host="${arg#*://}"
+          host="${host%%/*}"
+          reply="${fixtures}/curl.${host}.stdout"
+          if [[ -f "${reply}" ]]; then
+            out=""
+            prev=""
+            for a in "$@"; do
+              if [[ "${prev}" == "-o" ]]; then out="${a}"; fi
+              prev="${a}"
+            done
+            if [[ -n "${out}" ]] && may_write "${out}"; then
+              cat "${reply}" > "${out}"
+              # With -o the body goes to the file and only what -w asks for reaches stdout; the suite
+              # supplies that as curl.<host>.status.
+              if [[ -f "${fixtures}/curl.${host}.status" ]]; then
+                cat "${fixtures}/curl.${host}.status"
+              fi
+            else
+              cat "${reply}"
+            fi
+            if [[ -f "${fixtures}/curl.${host}.fail" ]]; then
+              exit "$(cat "${fixtures}/curl.${host}.fail")"
+            fi
+            exit 0
+          fi
+          ;;
+      esac
+    done
+
     # A JSON-RPC caller sends its request body on stdin (`--data @-`) and needs a different reply per
     # method: one run authenticates, checks the connection, lists torrents and removes one. The method is
     # therefore read out of the body and answered from curl.<method>.stdout, with curl.<method>.fail for
