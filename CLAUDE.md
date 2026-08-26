@@ -77,6 +77,7 @@ scripts:
     description: "Longer description, used as package metadata and shown in the README index."
     min_bash: "4.3"              # Optional; omit when only baseline features are used
     platforms: [debian]          # Optional; omit to publish to both (see below)
+    secret_config: true          # Optional; the config holds a credential (see below)
     dependencies:
       common: [dep1, dep2]       # All platforms
       homebrew: [macos-only-dep] # Homebrew only
@@ -84,6 +85,14 @@ scripts:
 ```
 
 The optional `platforms:` list restricts which package targets are built; valid values are `homebrew` and `debian`. Omit it to publish to both (the default). Set `[debian]` for a Linux-only tool (skips the Homebrew formula) or `[homebrew]` for a macOS-only one (skips the `.deb`).
+
+`secret_config: true` says the script's `.conf` holds a credential, and makes every channel install it
+mode `0600` instead of `0644` — the `.deb` payload, the tarball, and an explicit `chmod` in the formula
+so it does not depend on what mode survived the tarball. Set it for any config carrying a password,
+token or session. Without it such a file arrives world-readable and stays that way until someone reads
+the README and remembers, which is how a Deluge password and a tracker session came to sit in mode 644
+files on a live machine. The packaged file is root-owned, so the operator still has to `chown` it to
+whichever account runs the script — the flag's guarantee is that nobody else can read it, not who can.
 
 ### Minimum bash version (`min_bash`)
 

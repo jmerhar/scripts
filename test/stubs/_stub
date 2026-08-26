@@ -142,6 +142,12 @@ case "${command_name}" in
           cp "${arg}/DEBIAN/conffiles" "${fixtures}/dpkg-deb.conffiles"
         fi
         ( cd "${arg}" && find . -type f | sort ) > "${fixtures}/dpkg-deb.contents"
+        # Modes too, since whether a config arrives readable by other users is part of what the package
+        # does. Both stat flavours, because this stub runs on either platform.
+        ( cd "${arg}" && find . -type f | sort | while IFS= read -r staged; do
+            mode=$(stat -c '%a' "${staged}" 2>/dev/null || stat -f '%Lp' "${staged}" 2>/dev/null)
+            printf '%s %s\n' "${mode}" "${staged}"
+          done ) > "${fixtures}/dpkg-deb.modes"
         break
       fi
     done

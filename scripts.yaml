@@ -22,6 +22,7 @@ scripts:
     path: scripts/system/prune-orphaned-torrents/prune-orphaned-torrents.sh
     description: "Finds orphaned media files left by *arr hard-linking and interactively removes the corresponding torrents from Deluge."
     min_bash: "4.0"        # ${var,,}, mapfile
+    secret_config: true    # holds the Deluge password
     dependencies:
       common: [curl, jq]
 
@@ -36,6 +37,7 @@ scripts:
     path: scripts/system/mam-session/mam-session.sh
     description: "Points a MyAnonamouse dynamic-seedbox session at the machine's current address when it changes, calling the tracker sparingly, keeping the session out of the process list, and turning each refusal into the tracker setting that has to change."
     min_bash: "4.0"       # ${var,,}
+    secret_config: true   # holds a tracker session; the script refuses to read it if others can
     dependencies:
       common: [curl, jq]
 

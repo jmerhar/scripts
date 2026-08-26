@@ -113,6 +113,67 @@ EOF
   [[ "$output" == *"my-tool.conf"* ]]
 }
 
+# --- A config that holds a credential ----------------------------------------------------------
+
+# Without this the file arrives world-readable and stays that way until someone reads the README and
+# remembers — which is how a Deluge password and a tracker session came to sit in mode 644 files.
+@test "a config declared to hold a credential ships private in the tarball" {
+  default_manifest '    secret_config: true'
+  printf 'MAM_ID="secret"\n' > "$FAKE_REPO/scripts/utility/my-tool.conf"
+  run_script "$TOOL" my-tool v1.0.0
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"declared to hold a credential"* ]]
+  run tar -tvzf "$FAKE_REPO/dist/tarballs/scripts-my-tool-v1.0.0.tar.gz"
+  [[ "$output" == *"-rw-------"*"my-tool.conf"* ]]
+  # The script itself stays executable by everyone; it is the config that is private.
+  [[ "$output" == *"-rwxr-xr-x"*"my-tool.sh"* ]]
+}
+
+@test "a config that holds no credential ships readable, as before" {
+  default_manifest
+  printf 'SETTING=value\n' > "$FAKE_REPO/scripts/utility/my-tool.conf"
+  run_script "$TOOL" my-tool v1.0.0
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"declared to hold a credential"* ]]
+  run tar -tvzf "$FAKE_REPO/dist/tarballs/scripts-my-tool-v1.0.0.tar.gz"
+  [[ "$output" == *"-rw-r--r--"*"my-tool.conf"* ]]
+}
+
+@test "the deb stages such a config private too" {
+  default_manifest '    secret_config: true'
+  printf 'MAM_ID="secret"\n' > "$FAKE_REPO/scripts/utility/my-tool.conf"
+  run_script "$TOOL" my-tool v1.0.0
+  run cat "$STUB_FIXTURES/dpkg-deb.modes"
+  [[ "$output" == *"600 ./usr/local/etc/my-tool.conf"* ]]
+  [[ "$output" == *"755 ./usr/local/bin/my-tool"* ]]
+}
+
+@test "the deb stages an ordinary config readable" {
+  default_manifest
+  printf 'SETTING=value\n' > "$FAKE_REPO/scripts/utility/my-tool.conf"
+  run_script "$TOOL" my-tool v1.0.0
+  run cat "$STUB_FIXTURES/dpkg-deb.modes"
+  [[ "$output" == *"644 ./usr/local/etc/my-tool.conf"* ]]
+}
+
+# Homebrew installs from the tarball, but the mode is restated in the formula rather than trusted to
+# survive the round trip.
+@test "the formula sets the mode itself for a config holding a credential" {
+  default_manifest '    secret_config: true'
+  printf 'MAM_ID="secret"\n' > "$FAKE_REPO/scripts/utility/my-tool.conf"
+  run_script "$TOOL" my-tool v1.0.0
+  run cat "$FAKE_REPO/dist/homebrew/my-tool.rb"
+  [[ "$output" == *'(etc/"my-tool.conf").chmod 0600'* ]]
+}
+
+@test "the formula says nothing about modes for an ordinary config" {
+  default_manifest
+  printf 'SETTING=value\n' > "$FAKE_REPO/scripts/utility/my-tool.conf"
+  run_script "$TOOL" my-tool v1.0.0
+  run cat "$FAKE_REPO/dist/homebrew/my-tool.rb"
+  [[ "$output" != *"chmod"* ]]
+}
+
 @test "omits a config file named after something other than the script" {
   default_manifest
   printf 'SETTING=value\n' > "$FAKE_REPO/scripts/utility/unrelated.conf"

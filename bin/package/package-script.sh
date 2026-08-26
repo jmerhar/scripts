@@ -194,6 +194,7 @@ prepare_script() {
 #   version     - Version string (e.g., "v1.3.0").
 #   script_path - Path to the script file.
 #   config_path - Path to the config file (empty if none).
+#   config_mode - Mode for the config file, e.g. 0644 or 0600 when it holds a credential.
 # Outputs:
 #   Prints the tarball path to stdout.
 #######################################
@@ -202,6 +203,7 @@ create_tarball() {
   local version="$2"
   local script_path="$3"
   local config_path="$4"
+  local config_mode="${5:-0644}"
 
   local tarball_name="scripts-${name}-${version}"
   local staging_dir
@@ -214,7 +216,7 @@ create_tarball() {
 
   if [[ -n "${config_path}" ]]; then
     cp "${config_path}" "${staging_path}/"
-    chmod 0644 "${staging_path}/$(basename "${config_path}")"
+    chmod "${config_mode}" "${staging_path}/$(basename "${config_path}")"
   fi
 
   mkdir -p "${TARBALL_DIR}"
@@ -256,6 +258,9 @@ build_tarball_url() {
 #   config_path  - Path to the config file (empty if none).
 #   deps_common  - Space-separated common dependencies.
 #   deps_homebrew - Space-separated Homebrew-only dependencies.
+#   license      - SPDX licence identifier.
+#   min_bash     - Minimum bash version, or empty.
+#   config_mode  - Mode for the config file, e.g. 0644 or 0600 when it holds a credential.
 # Outputs:
 #   Writes formula file to HOMEBREW_DIR.
 #######################################
@@ -272,6 +277,7 @@ generate_homebrew_formula() {
   local deps_homebrew="${10}"
   local license="${11}"
   local min_bash="${12}"
+  local config_mode="${13:-0644}"
 
   # Strip v prefix for the version field
   local clean_version="${version#v}"
@@ -293,6 +299,11 @@ generate_homebrew_formula() {
     local config_filename
     config_filename=$(basename "${config_path}")
     install_lines+=$'\n'"    etc.install \"${config_filename}\" => \"${config_filename}\""
+    # Stated in the formula rather than left to whatever mode survived the tarball, because this file
+    # holds a credential and the difference between 0644 and 0600 is who else on the machine can read it.
+    if [[ "${config_mode}" == "0600" ]]; then
+      install_lines+=$'\n'"    (etc/\"${config_filename}\").chmod 0600 if (etc/\"${config_filename}\").exist?"
+    fi
   fi
 
   # Point the shebang at the dependency rather than leaving `env bash` to search PATH. macOS ships
@@ -384,6 +395,8 @@ emit_deb_control() {
 #   config_path  - Path to the config file (empty if none).
 #   deps_common  - Space-separated common dependencies.
 #   deps_debian  - Space-separated Debian-only dependencies.
+#   min_bash     - Minimum bash version, or empty.
+#   config_mode  - Mode for the config file, e.g. 0644 or 0600 when it holds a credential.
 # Returns:
 #   0 on success, 1 on failure.
 #######################################
@@ -399,6 +412,7 @@ generate_deb_package() {
   local deps_common="$9"
   local deps_debian="${10}"
   local min_bash="${11}"
+  local config_mode="${12:-0644}"
 
   if ! command -v dpkg-deb &> /dev/null; then
     log_info "'dpkg-deb' not found. Skipping .deb package generation."
@@ -457,7 +471,7 @@ generate_deb_package() {
     config_filename=$(basename "${config_path}")
     mkdir -p "${etc_dir}"
     cp "${config_path}" "${etc_dir}/${config_filename}"
-    chmod 0644 "${etc_dir}/${config_filename}"
+    chmod "${config_mode}" "${etc_dir}/${config_filename}"
   fi
 
   log_info "Building .deb package..."
@@ -563,8 +577,19 @@ main() {
   local config_path
   config_path=$(find_config_file "${script_dir}" "${name}")
 
+  # A config holding a credential ships private. Otherwise it arrives world-readable and stays that way
+  # until someone reads the README and remembers, which is how a Deluge password and a tracker session
+  # came to sit in mode 644 files on a live machine.
+  local config_mode="0644"
+  if [[ "$(read_manifest "(.scripts.\"${name}\".secret_config // false)")" == "true" ]]; then
+    config_mode="0600"
+  fi
+
   if [[ -n "${config_path}" ]]; then
     log_info "Found config file: ${config_path}"
+    if [[ "${config_mode}" == "0600" ]]; then
+      log_info "It is declared to hold a credential, so it installs as mode ${config_mode}; chown it to whichever account runs the script."
+    fi
   fi
 
   log_info "Packaging ${name} ${version}..."
@@ -582,7 +607,7 @@ main() {
 
   # Create tarball
   local tarball_path
-  tarball_path=$(create_tarball "${name}" "${version}" "${published_script}" "${config_path}")
+  tarball_path=$(create_tarball "${name}" "${version}" "${published_script}" "${config_path}" "${config_mode}")
   log_info "Tarball created: ${tarball_path}"
 
   # Compute SHA256
@@ -602,7 +627,7 @@ main() {
   if [[ " ${platforms} " == *" homebrew "* ]]; then
     local -a formula_args=("${name}" "${version}" "${description}" "${homepage}")
     formula_args+=("${tarball_url}" "${sha256}" "${published_script}" "${config_path}")
-    formula_args+=("${deps_common}" "${deps_homebrew}" "${license}" "${min_bash}")
+    formula_args+=("${deps_common}" "${deps_homebrew}" "${license}" "${min_bash}" "${config_mode}")
     generate_homebrew_formula "${formula_args[@]}"
   else
     log_info "Skipping Homebrew formula (platforms: ${platforms})."
@@ -612,7 +637,7 @@ main() {
   if [[ " ${platforms} " == *" debian "* ]]; then
     local -a deb_args=("${name}" "${version}" "${description}" "${author}" "${homepage}")
     deb_args+=("${license}" "${published_script}" "${config_path}")
-    deb_args+=("${deps_common}" "${deps_debian}" "${min_bash}")
+    deb_args+=("${deps_common}" "${deps_debian}" "${min_bash}" "${config_mode}")
     generate_deb_package "${deb_args[@]}"
   else
     log_info "Skipping Debian package (platforms: ${platforms})."
