@@ -67,6 +67,7 @@ _timeout=20
 _jar=""
 _last_ip_file=""
 _last_call_file=""
+_last_result_file=""
 
 # --- Color Variables (set by setup_colors "${_no_color}") ---
 
@@ -202,6 +203,7 @@ apply_config() {
   _jar="${_state_dir}/session.cookies"
   _last_ip_file="${_state_dir}/last-address"
   _last_call_file="${_state_dir}/last-call"
+  _last_result_file="${_state_dir}/last-result"
 }
 
 ########################################
@@ -352,6 +354,10 @@ explain_refusal() {
   local message="$1" asn="${2:-}"
   local lower="${message,,}"
 
+  if [[ "${lower}" == *"session type"* || "${lower}" == *"not allowed this function"* ]]; then
+    log_error "This session is not allowed to set a dynamic seedbox, which is the only thing it is used for here. In the tracker's security settings, open the session and enable 'allow session to set dynamic seedbox' — or create a session with that enabled and put it in MAM_ID."
+    return 0
+  fi
   if [[ "${lower}" == *"asn"* ]]; then
     log_error "The tracker will not accept this session from network ${asn:-this one}. In its security settings, open the session and add this network under 'add additional ASN via IP address'."
     return 0
@@ -370,13 +376,14 @@ explain_refusal() {
 ########################################
 # Prints what is stored, for working out why a run is not doing what was expected.
 # Globals:
-#   State paths and color globals.
+#   State paths, NOW and color globals.
 # Arguments:
 #   None
 ########################################
 print_status() {
-  local last_ip="unknown" last_call="never" session="none"
+  local last_ip="unknown" last_call="never" session="none" last_result="nothing yet"
   [[ -s "${_last_ip_file}" ]] && last_ip="$(cat "${_last_ip_file}")"
+  [[ -s "${_last_result_file}" ]] && last_result="$(cat "${_last_result_file}")"
   if [[ -s "${_last_call_file}" ]]; then
     local when
     when="$(cat "${_last_call_file}")"
@@ -390,6 +397,7 @@ print_status() {
   printf '  %s\n' "session         : ${session}"
   printf '  %s\n' "last address    : ${last_ip}"
   printf '  %s\n' "last call       : ${last_call}"
+  printf '  %s\n' "last result     : ${last_result}"
   printf '  %s\n' "address service : ${_ip_service:-none, the tracker is asked directly}"
 }
 
@@ -513,16 +521,19 @@ main() {
   if [[ "${success}" != "true" ]]; then
     explain_refusal "${message}" "${asn:+ASN ${asn}${as_name:+ (${as_name})}}"
     # Recorded even on refusal: the next run must not retry immediately, since a refusal that needs a
-    # settings change will refuse just as fast the second time.
+    # settings change will refuse just as fast the second time. The message is kept too, so --status can
+    # answer why a run from a timer has been quiet.
     now_seconds > "${_last_call_file}"
+    printf 'refused: %s' "${message}" > "${_last_result_file}"
     exit 1
   fi
 
   now_seconds > "${_last_call_file}"
+  printf 'accepted: %s' "${message:-done}" > "${_last_result_file}"
   if [[ -n "${reported_ip}" ]]; then
     printf '%s' "${reported_ip}" > "${_last_ip_file}"
   fi
-  chmod 600 "${_jar}" "${_last_call_file}" "${_last_ip_file}" 2>/dev/null || true
+  chmod 600 "${_jar}" "${_last_call_file}" "${_last_ip_file}" "${_last_result_file}" 2>/dev/null || true
 
   local where="${reported_ip:-this machine}"
   [[ -n "${asn}" ]] && where+=" on ASN ${asn}${as_name:+ (${as_name})}"

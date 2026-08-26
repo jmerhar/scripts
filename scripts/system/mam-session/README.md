@@ -16,8 +16,8 @@ It needs a **session** created in the tracker's security settings with *allow se
 * **No Address Service Needed** — The endpoint reports the address and network it sees, and that is what gets remembered. The optional address lookup exists only to avoid calling the tracker at all; set `IP_SERVICE=""` to drop it.
 * **Refuses A Readable Config** — The session in the config file is enough to act as the account, so the script stops if the file is readable by anyone else rather than warning and carrying on.
 * **Keeps The Cookie Out Of The Process List** — The session is passed in a cookie file, not as an argument, where any other user could read it with `ps`. Whatever the tracker rotates it to is kept in the same file.
-* **Explains A Refusal** — Each reason the endpoint gives has a different fix, and only a person with the tracker's settings open can apply it. An ASN mismatch names the network to add; an unrecognised session says it may have been revoked or created without dynamic seedbox allowed.
-* **`--status`** — Shows the stored address, the age of the last call and whether a session is held, without calling anything.
+* **Explains A Refusal** — Each reason the endpoint gives has a different fix, and only a person with the tracker's settings open can apply it. An incorrect session type names the permission to enable; an ASN mismatch names the network to add; an unrecognised session says it may have been revoked.
+* **`--status`** — Shows the stored address, whether a session is held, the age of the last call and what the tracker last said — which is where the reason for a quiet run from a timer is findable.
 
 ### Requirements
 
@@ -66,7 +66,16 @@ $ mam-session
 [INFO]: Nothing to do: the address is still 31.20.91.239.
 
 $ mam-session --force
-[ERROR]: The tracker will not accept this session from network ASN 50266 (Odido Netherlands B.V.). In its security settings, open the session and add this network under 'add additional ASN via IP address'.
+[ERROR]: This session is not allowed to set a dynamic seedbox, which is the only thing it is used for here. In the tracker's security settings, open the session and enable 'allow session to set dynamic seedbox' — or create a session with that enabled and put it in MAM_ID.
+
+$ mam-session --status
+mam-session state
+  state directory : /home/you/.local/state/mam-session
+  session         : stored
+  last address    : 31.20.91.239
+  last call       : 43s ago
+  last result     : accepted: Completed
+  address service : https://api.ipify.org
 ```
 
 ### Exit Codes

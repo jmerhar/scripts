@@ -224,6 +224,17 @@ tracker_accepts() {
 
 # --- Turning a refusal into the setting that has to change ----------------------------------------
 
+# The likeliest answer to a first run: a session created without the dynamic-seedbox permission. The
+# tracker calls it an incorrect session type, and the fix is one checkbox.
+@test "a session-type refusal names the permission to enable" {
+  tracker_answers 403 '{"Success":false,"msg":"Incorrect session type - not allowed this function","ip":"198.51.100.7","ASN":64500,"AS":"Example Networks"}'
+  address_is 198.51.100.7
+  run_script "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"allow session to set dynamic seedbox"* ]]
+  [[ "$output" != *"The tracker refused:"* ]]
+}
+
 @test "an ASN refusal names the network to add" {
   tracker_answers 403 '{"Success":false,"msg":"Incorrect ASN for this session","ip":"198.51.100.7","ASN":64500,"AS":"Example Networks"}'
   address_is 198.51.100.7
@@ -303,6 +314,26 @@ tracker_accepts() {
   [[ "$output" == *"last call       : 0s ago"* ]]
   run stub_calls curl
   [ "$output" = "0" ]
+}
+
+# A run from a timer says nothing; --status is where the reason has to be findable afterwards.
+@test "--status reports what the tracker last said, refusal included" {
+  tracker_answers 403 '{"Success":false,"msg":"Incorrect session type - not allowed this function","ip":"198.51.100.7"}'
+  address_is 198.51.100.7
+  run_script "$SCRIPT" --quiet
+  [ "$status" -eq 1 ]
+
+  run_script "$SCRIPT" --status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"last result     : refused: Incorrect session type - not allowed this function"* ]]
+}
+
+@test "--status reports an acceptance too" {
+  address_is 198.51.100.7
+  tracker_accepts
+  run_script "$SCRIPT"
+  run_script "$SCRIPT" --status
+  [[ "$output" == *"last result     : accepted: Completed"* ]]
 }
 
 @test "--quiet says nothing when there is nothing to do" {
