@@ -33,6 +33,10 @@ film() {
 
 ########################################
 # Makes ffprobe report audio streams for one file.
+#
+# Shaped as the real document is, empty "programs" and "stream_groups" wrappers included. Which fields
+# ffprobe emits depends on what -show_entries asked for, so a fixture shaped to suit the filter rather
+# than to match ffprobe can pass while the real interface does not answer at all.
 # Arguments:
 #   name: Basename the answer applies to.
 #   Remaining arguments are "codec:channels" pairs, in stream order.
@@ -40,7 +44,7 @@ film() {
 probe_audio() {
   local name="$1"
   shift
-  local json='{"streams":[' first=true pair codec channels
+  local json='{"programs":[],"stream_groups":[],"streams":[' first=true pair codec channels
   for pair in "$@"; do
     codec="${pair%%:*}"
     channels="${pair##*:}"
@@ -61,6 +65,17 @@ probe_audio() {
   [ "$status" -eq 0 ]
   [ "${lines[0]}" = "$(printf 'eac3\t6')" ]
   [ "${lines[1]}" = "$(printf 'eac3\t2')" ]
+}
+
+# The field list is part of the contract: naming any field in -show_entries makes ffprobe emit only those,
+# so a filter that selects on a field nobody asked for sees no streams at all and every file reads as
+# already converted.
+@test "ffprobe is asked for every field the filter reads" {
+  film movie.mkv
+  probe_audio movie.mkv eac3:6
+  run_func "$SCRIPT" audio_streams "$LIB/movie.mkv"
+  [ "$status" -eq 0 ]
+  stub_called 'ffprobe .*-show_entries stream=codec_type,codec_name,channels'
 }
 
 @test "a stream with no channel count reported falls back to stereo" {

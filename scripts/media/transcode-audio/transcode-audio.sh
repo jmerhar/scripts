@@ -259,8 +259,12 @@ EOF
 audio_streams() {
   local prog
   prog=$(load_program audio-streams.jq)  # @embed audio-streams.jq
+  # codec_type is requested even though -select_streams has already narrowed this to audio: naming any
+  # field in -show_entries makes ffprobe emit only the named ones, and the program below selects on
+  # codec_type, so a document without it holds no stream the program can see and every file reads as
+  # carrying nothing to convert.
   local -a probe=(-v error -select_streams a)
-  probe+=(-show_entries "stream=codec_name,channels" -of json)
+  probe+=(-show_entries "stream=codec_type,codec_name,channels" -of json)
   probe+=(-- "$1")
   ffprobe "${probe[@]}" 2>/dev/null | jq -r "${prog}" 2>/dev/null
 }
