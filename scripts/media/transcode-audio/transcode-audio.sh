@@ -63,6 +63,7 @@ _marker=""
 # Outcome counters, reported by print_summary and reflected in the exit status.
 _seen=0
 _needing=0
+_already=0
 _converted=0
 _failed=0
 
@@ -476,18 +477,21 @@ process_file() {
   fi
 
   _needing=$(( _needing + 1 ))
+
+  # A file whose converted counterpart is already there is done, not failed: this is how a library looks
+  # once the tool has run over it, since the original keeps its own name and its own codec. The marker
+  # check during the walk sees the converted file; this sees the original standing beside it.
+  local wanted
+  wanted="$(converted_name "${file}")"
+  if [[ -e "${wanted}" ]]; then
+    printf '%s\n' "${_C_DIM}${name}: already converted as $(basename "${wanted}")${_C_RESET}"
+    _already=$(( _already + 1 ))
+    return 0
+  fi
+
   printf '%s\n' "${_C_YELLOW}${name}: ${summary}${_C_RESET}"
 
   if [[ "${_dry_run}" == true ]]; then
-    # The destination is checked here as well as in the encode, so that a preview of a folder holding
-    # earlier conversions predicts what a run would actually do rather than promising a write it refuses.
-    local wanted
-    wanted="$(converted_name "${file}")"
-    if [[ -e "${wanted}" ]]; then
-      log_warn "'$(basename "${wanted}")' already exists; a run would leave '${name}' alone."
-      _failed=$(( _failed + 1 ))
-      return 0
-    fi
     printf '%s\n' "${_C_CYAN}  would write $(basename "${wanted}")${_C_RESET}"
     _converted=$(( _converted + 1 ))
     return 0
@@ -557,6 +561,7 @@ scan_target() {
 ########################################
 print_summary() {
   printf '\n%s\n' "${_C_BOLD}${_C_BRIGHT_GREEN}${_seen} file(s) examined; ${_needing} carry audio that is not ${_format}.${_C_RESET}"
+  (( _already > 0 )) && printf '%s\n' "${_C_DIM}${_already} of those already have a converted file beside them.${_C_RESET}"
 
   local verb="Converted"
   [[ "${_dry_run}" == true ]] && verb="Would convert"

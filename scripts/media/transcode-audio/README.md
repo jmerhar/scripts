@@ -9,7 +9,7 @@ So the whole job is one `ffmpeg` pass that copies every stream and re-encodes on
 * **Keeps Everything Else** — Video, subtitles, chapters and attachments are copied, not re-encoded, and every track's language, title and default/forced flags come across untouched.
 * **Every Audio Track** — Commentary and second-language tracks are converted too, rather than dropped. Each keeps its place in the track order.
 * **Per-Track Bitrate** — Chosen from the channel count, since one figure cannot suit both a 5.1 feature track and a stereo commentary (defaults: 640k surround, 256k stereo).
-* **Skips What Is Done** — A file whose audio is already entirely in the target codec is passed over, as is one this script has already converted.
+* **Skips What Is Done** — Three ways a file needs nothing: its audio is already entirely in the target codec, it carries the marker this script adds, or its converted counterpart already sits beside it. None of the three is reported as work, or as a failure.
 * **Verified** — The result is probed before it takes its name: ffmpeg can exit `0` having copied the audio through when asked for an encoder it does not have, and a library of files labelled as converted but still unplayable is worse than a failure.
 * **Seed-Safe** — Nothing is ever written through an existing file. The converted file is a new file, and `--replace` merely removes the original's name — so a torrent still seeding the original keeps it intact.
 * **Asks Per File** — `(y)es / (N)o / (a)ll / (q)uit`, with `--yes` for a whole tree and `--dry-run` to preview.
@@ -78,5 +78,5 @@ Would convert 1 file(s).
 
 | Code | Meaning |
 | --- | --- |
-| `0` | The scan completed; anything asked for was converted. |
+| `0` | The scan completed; anything asked for was converted, and anything already done was left alone. |
 | `1` | An encode failed, a required tool is missing, or the path or settings were unusable. |

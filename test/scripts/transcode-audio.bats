@@ -420,15 +420,28 @@ probe_audio() {
   [[ "$output" == *"Expected at most one path argument, got 2."* ]]
 }
 
-# A preview is only worth having if it predicts the run. A folder that already holds earlier conversions
-# is the common case where the two could disagree.
-@test "--dry-run predicts a refusal rather than promising a write" {
+# This is how a library looks once the tool has run over it: the original keeps its name and its codec,
+# with the converted file beside it. That is done, not failed, and not work to offer again.
+@test "an original whose conversion already exists is reported as done" {
   film movie.mkv
   printf 'existing' > "$LIB/movie.AC3.CC.mkv"
   probe_audio movie.mkv eac3:6
   run_script "$SCRIPT" --dry-run "$LIB"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"already exists; a run would leave 'movie.mkv' alone"* ]]
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already converted as movie.AC3.CC.mkv"* ]]
   [[ "$output" != *"would write"* ]]
-  [[ "$output" == *"1 failed"* ]]
+  [[ "$output" == *"1 of those already have a converted file beside them."* ]]
+  [[ "$output" == *"Would convert 0 file(s)."* ]]
+}
+
+@test "an original whose conversion already exists is not encoded again" {
+  film movie.mkv
+  printf 'existing' > "$LIB/movie.AC3.CC.mkv"
+  probe_audio movie.mkv eac3:6
+  run_script "$SCRIPT" --yes "$LIB"
+  [ "$status" -eq 0 ]
+  run stub_calls ffmpeg
+  [ "$output" = "0" ]
+  run cat "$LIB/movie.AC3.CC.mkv"
+  [ "$output" = "existing" ]
 }
