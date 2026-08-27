@@ -7,8 +7,15 @@
 # the subtitles fall progressively further behind in steps. This script corrects
 # that by transcribing the video's audio with Whisper to build a speech-accurate
 # reference, then aligning the drifted subtitle to that reference with alass
-# (which can apply a different offset to each segment). A final "anchor" step
-# cancels Whisper's small word-onset bias.
+# (which can apply a different offset to each segment).
+#
+# Segmented alignment is the wrong tool for a subtitle whose only fault is a
+# constant offset: allowed to split such a file, an aligner can place an early
+# stretch of it on the wrong side of a pause and leave those minutes further out
+# than it found them. So each subtitle is aligned twice, once as a single global
+# offset and once segmented, and the two results are scored against the speech
+# reference — the segmented one is kept only when it measurably matches better.
+# That is what --ad-breaks overrides.
 #
 # The same pipeline also handles the simpler cases (a constant global offset, or
 # a linear speed/framerate error) — see --help.
@@ -45,11 +52,12 @@ _embedded=false        # also sync embedded subtitle tracks
 _remux=false           # embedded output: mux into a container copy (else sidecar)
 _lang="en"             # target subtitle language
 _model="base.en"       # Whisper model
-_split_penalty=5       # alass split penalty
+_split_penalty=7       # alass split penalty
 _max_words=8           # reference cue granularity (words per line)
 _threads=""            # Whisper/alass threads (default: detected CPU count)
-_anchor=true           # apply onset-bias anchor
-_anchor_max="1.0"      # max opening shift (s) treated as bias before standing down
+_ad_breaks="auto"      # segmented alignment: auto (score both), yes (force), no (single offset)
+_ad_breaks_set=false   # whether a mode was asked for by name, rather than defaulted
+_min_shift="0.5"       # smallest shift (s) worth rewriting a file for
 _fps_guess=false       # re-enable alass FPS guessing (true speed/framerate drift)
 _backup_suffix=".bak"  # suffix for backed-up originals
 _force=false           # reprocess already-synced files
@@ -80,6 +88,7 @@ _sidecar_flags=(forced sdh cc hi default foreign full)
 
 # Run counters for the summary.
 _n_synced=0
+_n_insync=0            # already within --min-shift of the speech, so left untouched
 _n_skipped=0
 _n_failed=0
 _n_videos_worked=0     # videos that actually transcribed/aligned (for averages)
@@ -94,6 +103,23 @@ _ref_cached=false      # whether the current video's reference came from cache
 # Scratch directory for transient files (audio, intermediate SRTs); cleaned up
 # on exit.
 _workdir=""
+
+# How much better a segmented alignment must score than a single global offset to
+# be believed, in parts per thousand. Measured across libraries of both kinds:
+# subtitles with a constant offset score within a couple of parts per thousand
+# either way, while real ad-break drift gains fourteen and upwards, so the
+# threshold sits in a wide empty gap rather than on a judgement call.
+readonly _split_margin_permille=1005
+
+# The chosen alignment and its profile, published by align_subtitle.
+_align_file=""
+_align_score=0
+_align_cues=-1
+_align_runs=-1
+_align_max_abs=-1
+_align_lo=0
+_align_hi=0
+_min_shift_ms=0        # --min-shift in milliseconds; derived in setup_runtime
 
 ########################################
 # Prints the script's usage instructions to stdout.
@@ -123,16 +149,22 @@ Options:
   -g, --lang LANG        Target subtitle language (default: ${_lang}). Use with
                          --model for non-English (e.g. --lang de --model base).
   -m, --model NAME       Whisper model (default: ${_model}).
+      --ad-breaks MODE   Whether to align in segments: 'auto' aligns both ways
+                         and keeps whichever matches the speech better, 'yes'
+                         forces segments, 'no' forces one global offset
+                         (default: ${_ad_breaks}).
   -p, --split-penalty N  alass split penalty; lower splits more aggressively
-                         (default: ${_split_penalty}).
+                         (default: ${_split_penalty}). Not consulted by
+                         --ad-breaks no.
       --max-words N      Reference cue granularity, words per line (default: ${_max_words}).
   -t, --threads N        CPU threads for Whisper/alass (default: detected).
-      --no-anchor        Disable the onset-bias anchor.
-      --anchor-max S     Max opening shift in seconds treated as Whisper bias;
-                         a larger opening shift is kept as a real offset
-                         (default: ${_anchor_max}).
+      --min-shift S      Smallest shift in seconds worth rewriting a file for;
+                         below it the subtitle is reported as already in sync and
+                         left untouched (default: ${_min_shift}). 0 rewrites for
+                         any shift, which readmits Whisper's own ~0.3s lead.
       --fps-guess        Re-enable alass framerate guessing (for true speed /
-                         framerate drift; disabled by default).
+                         framerate drift; disabled by default). Implies
+                         --ad-breaks no unless one is given.
       --backup-suffix S  Suffix for the backed-up original (default: ${_backup_suffix}).
   -f, --force            Reprocess even if already synced.
       --video FILE       The video to sync against (when PATH is a subtitle).
@@ -143,9 +175,9 @@ Options:
 
 Drift types:
   - Segmented / ad-break drift  -> handled by default (the main use case).
-  - Constant global offset      -> handled by default (the anchor stands down
-                                   when the opening shift is large).
-  - Wrong speed / framerate      -> add --fps-guess (usually with --no-anchor).
+  - Constant global offset      -> handled by default; add --ad-breaks no if a
+                                   file is wrongly split into segments.
+  - Wrong speed / framerate     -> add --fps-guess.
 
 Requirements (external; not installed by the package):
   - ffmpeg / ffprobe
@@ -174,8 +206,8 @@ parse_options() {
       -p|--split-penalty) require_option_value "$@"; _split_penalty="$2"; shift 2 ;;
       --max-words) require_option_value "$@"; _max_words="$2"; shift 2 ;;
       -t|--threads) require_option_value "$@"; _threads="$2"; shift 2 ;;
-      --no-anchor) _anchor=false; shift ;;
-      --anchor-max) require_option_value "$@"; _anchor_max="$2"; shift 2 ;;
+      --ad-breaks) require_option_value "$@"; _ad_breaks="$2"; _ad_breaks_set=true; shift 2 ;;
+      --min-shift) require_option_value "$@"; _min_shift="$2"; shift 2 ;;
       --fps-guess) _fps_guess=true; shift ;;
       --backup-suffix) require_option_value "$@"; _backup_suffix="$2"; shift 2 ;;
       -f|--force) _force=true; shift ;;
@@ -212,8 +244,23 @@ parse_options() {
     log_error "--threads must be a positive integer, got '${_threads}'."
     exit 1
   fi
-  if [[ ! "${_anchor_max}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
-    log_error "--anchor-max must be a non-negative number, got '${_anchor_max}'."
+  validate_settings
+}
+
+########################################
+# Rejects invalid values for the settings a config file can also supply, so a
+# typo in the config is refused rather than silently taking a branch nobody
+# asked for. Called once the flags and the config have been merged.
+# Globals:
+#   _ad_breaks, _min_shift
+########################################
+validate_settings() {
+  case "${_ad_breaks}" in
+    auto|yes|no) ;;
+    *) log_error "--ad-breaks must be auto, yes or no, got '${_ad_breaks}'."; exit 1 ;;
+  esac
+  if [[ ! "${_min_shift}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+    log_error "--min-shift must be a non-negative number, got '${_min_shift}'."
     exit 1
   fi
 }
@@ -257,17 +304,28 @@ apply_config() {
 # a config value (when present) is adopted. This keeps the precedence
 # command-line > config > built-in default.
 # Globals:
-#   Reads WHISPER_MODEL, SPLIT_PENALTY, MAX_WORDS_PER_LINE, THREADS, ANCHOR_MAX,
-#   BACKUP_SUFFIX, LANG_DEFAULT; writes the matching _-prefixed globals.
+#   Reads WHISPER_MODEL, SPLIT_PENALTY, MAX_WORDS_PER_LINE, THREADS, MIN_SHIFT,
+#   AD_BREAKS, BACKUP_SUFFIX, LANG_DEFAULT; writes the matching _-prefixed
+#   globals.
 ########################################
 apply_config_flag_defaults() {
   [[ "${_model}" == "base.en" && -n "${WHISPER_MODEL:-}" ]] && _model="${WHISPER_MODEL}"
   [[ "${_lang}" == "en" && -n "${LANG_DEFAULT:-}" ]] && _lang="${LANG_DEFAULT}"
-  [[ "${_split_penalty}" == "5" && -n "${SPLIT_PENALTY:-}" ]] && _split_penalty="${SPLIT_PENALTY}"
+  [[ "${_split_penalty}" == "7" && -n "${SPLIT_PENALTY:-}" ]] && _split_penalty="${SPLIT_PENALTY}"
   [[ "${_max_words}" == "8" && -n "${MAX_WORDS_PER_LINE:-}" ]] && _max_words="${MAX_WORDS_PER_LINE}"
-  [[ "${_anchor_max}" == "1.0" && -n "${ANCHOR_MAX:-}" ]] && _anchor_max="${ANCHOR_MAX}"
+  [[ "${_min_shift}" == "0.5" && -n "${MIN_SHIFT:-}" ]] && _min_shift="${MIN_SHIFT}"
   [[ "${_backup_suffix}" == ".bak" && -n "${BACKUP_SUFFIX:-}" ]] && _backup_suffix="${BACKUP_SUFFIX}"
   [[ -z "${_threads}" && -n "${THREADS:-}" ]] && _threads="${THREADS}"
+  if [[ "${_ad_breaks_set}" == false && -n "${AD_BREAKS:-}" ]]; then
+    _ad_breaks="${AD_BREAKS}"
+    _ad_breaks_set=true
+  fi
+  # Framerate correction rescales the whole subtitle, and alass can pick a different scale for the
+  # segmented run than for the single-offset one. The two candidates then cover different amounts of
+  # time, and the score below rewards the more stretched one for reasons that have nothing to do with
+  # matching the speech — so the comparison is not run unless it was asked for by name.
+  [[ "${_fps_guess}" == true && "${_ad_breaks_set}" == false ]] && _ad_breaks="no"
+  validate_settings
   return 0
 }
 
@@ -291,6 +349,10 @@ setup_runtime() {
   if [[ -z "${_cache_dir}" ]]; then
     _cache_dir="${XDG_CACHE_HOME:-${HOME}/.cache}/subtitle-sync"
   fi
+
+  # Rounded rather than truncated: a threshold of 0.29 is held as 290ms, where truncating the binary
+  # approximation of 290.0 would hold it as 289.
+  _min_shift_ms="$(awk -v s="${_min_shift}" 'BEGIN{printf "%.0f", s*1000}')"
 
   if [[ "${_no_color}" == true ]]; then
     disable_log_colors
@@ -517,93 +579,180 @@ build_reference() {
 }
 
 ########################################
-# Runs alass to align a drifted subtitle to a reference.
+# Runs alass to align a drifted subtitle to a reference, in one of two modes.
 # Globals:
-#   _alass_bin, _fps_guess, _split_penalty
+#   _alass_bin, _fps_guess, _split_penalty, _workdir, _t_align_total
 # Arguments:
-#   ref: The reference subtitle (from Whisper).
-#   sub: The drifted subtitle to correct.
-#   out: Destination for the corrected subtitle.
+#   mode: 'split' to allow a different offset per segment, 'nosplit' for one
+#         global offset.
+#   ref:  The reference subtitle (from Whisper).
+#   sub:  The drifted subtitle to correct.
+#   out:  Destination for the corrected subtitle.
 # Returns:
 #   0 on success, non-zero on alass failure.
 ########################################
 run_alass() {
-  local ref="$1" sub="$2" out="$3" t0
-  local -a args=(--split-penalty "${_split_penalty}")
+  local mode="$1" ref="$2" sub="$3" out="$4" t0
+  local log="${_workdir}/alass-${mode}.log"
+  local -a args=()
+  if [[ "${mode}" == "nosplit" ]]; then
+    args+=(--no-split)
+  else
+    args+=(--split-penalty "${_split_penalty}")
+  fi
   [[ "${_fps_guess}" == true ]] || args+=(-g)
   t0=$(_now)
   args+=("${ref}" "${sub}" "${out}")
-  if ! "${_alass_bin}" "${args[@]}" >"${_workdir}/alass.log" 2>&1; then
-    log_error "alass failed: $(tail -n 3 "${_workdir}/alass.log" | tr '\n' ' ')"
+  # A log per mode, because both modes run for one subtitle and a shared path would leave a failure
+  # quoting whichever run finished last.
+  if ! "${_alass_bin}" "${args[@]}" >"${log}" 2>&1; then
+    log_error "alass failed: $(tail -n 3 "${log}" | tr '\n' ' ')"
     return 1
   fi
   _t_align_total=$(( _t_align_total + $(_now) - t0 ))
 }
 
 ########################################
-# Reads the start time (in milliseconds) of the first cue in an SRT file.
+# Scores one candidate alignment against the speech reference and profiles the
+# shift it applied.
 # Arguments:
-#   srt: The SRT file path.
+#   ref:  The reference subtitle (from Whisper).
+#   orig: The pre-sync subtitle the candidate was produced from.
+#   cand: The candidate alignment.
 # Outputs:
-#   Integer milliseconds on stdout, or empty if no cue was found.
+#   'score cues runs max_abs_shift min_shift max_shift' on stdout; see
+#   alignment-stats.awk for what each means.
 ########################################
-first_cue_ms() {
-  awk '/ --> /{split($1,a,"[:,]"); print ((a[1]*60+a[2])*60+a[3])*1000+a[4]; exit}' "$1"
+alignment_stats() {
+  local ref="$1" orig="$2" cand="$3" prog
+  prog=$(load_program alignment-stats.awk)  # @embed alignment-stats.awk
+  awk -v ref="${ref}" -v orig="${orig}" "${prog}" "${ref}" "${orig}" "${cand}"
 }
 
 ########################################
-# Shifts every timestamp in an SRT file by a (signed) millisecond delta,
-# clamping negatives to zero. SRT-only (relies on the "HH:MM:SS,mmm" cue format).
-# Arguments:
-#   in_srt:   Source SRT.
-#   out_srt:  Destination SRT.
-#   delta_ms: Signed milliseconds to add.
-########################################
-shift_srt() {
-  local in_srt="$1" out_srt="$2" delta_ms="$3" prog
-  prog=$(load_program shift-timestamps.awk)  # @embed shift-timestamps.awk
-  awk -v off="${delta_ms}" "${prog}" "${in_srt}" >"${out_srt}"
-}
-
-########################################
-# Applies the onset-bias anchor: makes the first cue return to its original time
-# by shifting the whole corrected file, but only when that opening shift is small
-# enough to be Whisper word-onset bias (<= --anchor-max). A larger opening shift
-# is treated as a genuine global offset and left intact. SRT-only; non-SRT files
-# are passed through unchanged.
+# Aligns one subtitle and picks between a single global offset and a segmented
+# alignment, per --ad-breaks. In 'auto' both are produced and scored against the
+# speech reference, and the segmented one is kept only when it matches better by
+# more than _split_margin_permille — a subtitle whose only fault is a constant
+# offset scores the same either way, and letting it be split anyway is what
+# leaves an opening stretch further out than it started.
 # Globals:
-#   _anchor_max
+#   _ad_breaks, _workdir, _split_margin_permille; writes _align_*
 # Arguments:
-#   corrected: alass output.
-#   original:  The pre-sync subtitle (timing reference for the opening).
-#   out:       Destination for the anchored result.
+#   ref: The reference subtitle (from Whisper).
+#   sub: The pristine subtitle to align.
+#   ext: Extension for the candidate files; alass picks its parser from it.
+# Returns:
+#   0 with _align_file naming the chosen candidate, non-zero if alignment failed.
 ########################################
-anchor_correct() {
-  local corrected="$1" original="$2" out="$3"
+align_subtitle() {
+  local ref="$1" sub="$2" ext="$3"
+  local nosplit="${_workdir}/nosplit.${ext}" split="${_workdir}/split.${ext}"
+  local n_stats="" s_stats=""
 
-  if [[ "${corrected##*.}" != "srt" ]]; then
-    log_debug "Anchor skipped (non-SRT format)."
-    cp "${corrected}" "${out}"; return 0
+  if [[ "${_ad_breaks}" != "yes" ]]; then
+    run_alass nosplit "${ref}" "${sub}" "${nosplit}" || return 1
+    n_stats="$(alignment_stats "${ref}" "${sub}" "${nosplit}")"
   fi
-
-  local o c delta abs max_ms
-  o="$(first_cue_ms "${original}")"
-  c="$(first_cue_ms "${corrected}")"
-  if [[ -z "${o}" || -z "${c}" ]]; then
-    cp "${corrected}" "${out}"; return 0
+  if [[ "${_ad_breaks}" != "no" ]]; then
+    if run_alass split "${ref}" "${sub}" "${split}"; then
+      s_stats="$(alignment_stats "${ref}" "${sub}" "${split}")"
+    elif [[ "${_ad_breaks}" == "yes" ]]; then
+      return 1
+    else
+      log_warn "Segmented alignment failed; keeping the single-offset alignment."
+    fi
   fi
+  adopt_alignment "${nosplit}" "${n_stats}" "${split}" "${s_stats}"
+}
 
-  delta=$(( o - c ))
-  abs="${delta#-}"
-  max_ms="$(awk -v s="${_anchor_max}" 'BEGIN{printf "%d", s*1000}')"
+########################################
+# Chooses between the two candidate alignments and publishes the winner's
+# profile. A candidate whose stats are empty was never produced.
+# Globals:
+#   _split_margin_permille; writes _align_file, _align_score, _align_cues,
+#   _align_runs, _align_max_abs, _align_lo, _align_hi
+# Arguments:
+#   nosplit: Path of the single-offset candidate.
+#   n_stats: Its stats line, or empty.
+#   split:   Path of the segmented candidate.
+#   s_stats: Its stats line, or empty.
+########################################
+adopt_alignment() {
+  local nosplit="$1" n_stats="$2" split="$3" s_stats="$4"
+  local chosen stats n_score=0 s_score=0
+  [[ -n "${n_stats}" ]] && n_score="${n_stats%% *}"
+  [[ -n "${s_stats}" ]] && s_score="${s_stats%% *}"
 
-  if (( abs <= max_ms )); then
-    log_debug "Anchor: shifting by ${delta}ms (opening treated as bias)."
-    shift_srt "${corrected}" "${out}" "${delta}"
+  if [[ -z "${n_stats}" ]]; then
+    chosen="${split}"; stats="${s_stats}"
+  elif [[ -z "${s_stats}" ]]; then
+    chosen="${nosplit}"; stats="${n_stats}"
+  elif (( n_score <= 0 )); then
+    # Nothing matched at all, so the comparison says nothing; the unsplit alignment is the one that
+    # cannot have invented a break.
+    log_debug "Alignment matched no speech; keeping the single-offset alignment."
+    chosen="${nosplit}"; stats="${n_stats}"
+  elif (( s_score * 1000 > n_score * _split_margin_permille )); then
+    log_debug "Segmented alignment matches the speech better (${s_score} vs ${n_score}); ad breaks detected."
+    chosen="${split}"; stats="${s_stats}"
   else
-    log_debug "Anchor stood down: opening shift ${delta}ms > ${max_ms}ms (treated as real offset)."
-    cp "${corrected}" "${out}"
+    log_debug "Segmented alignment is no better (${s_score} vs ${n_score}); no ad breaks detected."
+    chosen="${nosplit}"; stats="${n_stats}"
   fi
+
+  _align_file="${chosen}"
+  read -r _align_score _align_cues _align_runs _align_max_abs _align_lo _align_hi <<<"${stats}"
+}
+
+########################################
+# Formats a signed millisecond shift for a log line.
+# Arguments:
+#   ms: Signed milliseconds.
+# Outputs:
+#   The shift in seconds with its sign, e.g. '+4.1s'.
+########################################
+fmt_shift() {
+  awk -v ms="$1" 'BEGIN{printf "%+.1fs", ms/1000}'
+}
+
+########################################
+# Describes the shift the chosen alignment applied, for the success line, so a
+# wrongly split file is visible rather than silent.
+# Globals:
+#   _align_cues, _align_runs, _align_lo, _align_hi
+# Outputs:
+#   A short phrase on stdout.
+########################################
+alignment_summary() {
+  if (( _align_cues < 0 )); then
+    printf 'shift unknown'
+  elif (( _align_runs <= 1 )); then
+    printf 'single offset %s' "$(fmt_shift "${_align_lo}")"
+  elif (( _align_runs > 8 && _align_runs * 4 > _align_cues )); then
+    # Enough distinct shifts to be a rescale rather than a handful of breaks; judged against the cue
+    # count, since a fixed number of runs means different things in a 10-cue file and a 900-cue one.
+    printf 'variable shift, %s to %s' "$(fmt_shift "${_align_lo}")" "$(fmt_shift "${_align_hi}")"
+  else
+    printf '%d segments, %s to %s' "${_align_runs}" "$(fmt_shift "${_align_lo}")" "$(fmt_shift "${_align_hi}")"
+  fi
+}
+
+########################################
+# Reports whether the chosen alignment moved every cue by less than --min-shift,
+# which means the subtitle already matches the speech as closely as this pipeline
+# can tell. Whisper's cue starts carry a lead of a few tenths of a second, so a
+# shift that small is indistinguishable from that lead and rewriting the file
+# would trade one small error for another.
+# Globals:
+#   _align_cues, _align_max_abs, _min_shift_ms
+# Returns:
+#   0 when the file should be left alone, 1 when the alignment is worth writing.
+########################################
+alignment_is_negligible() {
+  (( _align_cues >= 0 )) || return 1
+  (( _min_shift_ms > 0 )) || return 1
+  (( _align_max_abs < _min_shift_ms ))
 }
 
 ########################################
@@ -611,7 +760,7 @@ anchor_correct() {
 # --force (re-sync), --dry-run, and the idempotency skip (a present backup means
 # it was already synced).
 # Globals:
-#   _force, _dry_run, _backup_suffix, _anchor, _workdir, _n_*
+#   _force, _dry_run, _backup_suffix, _workdir, _align_*, _n_*
 # Arguments:
 #   video: The video file path.
 #   sub:   The sidecar subtitle path.
@@ -626,7 +775,7 @@ sync_sidecar() {
     _n_skipped=$(( _n_skipped + 1 )); return 0
   fi
   if [[ "${_dry_run}" == true ]]; then
-    log_info "[dry-run] Would sync: ${sub} (backup -> ${backup})"
+    log_info "[dry-run] Would sync if needed: ${sub} (backup -> ${backup})"
     _n_skipped=$(( _n_skipped + 1 )); return 0
   fi
 
@@ -641,20 +790,23 @@ sync_sidecar() {
   local src_for_alass="${_workdir}/source.${sub##*.}"
   cp "${source}" "${src_for_alass}"
 
-  local corrected="${_workdir}/corrected.${sub##*.}"
-  local final="${_workdir}/final.${sub##*.}"
-  if ! run_alass "${ref}" "${src_for_alass}" "${corrected}"; then
+  if ! align_subtitle "${ref}" "${src_for_alass}" "${sub##*.}"; then
     _n_failed=$(( _n_failed + 1 )); return 0
   fi
-  if [[ "${_anchor}" == true ]]; then
-    anchor_correct "${corrected}" "${src_for_alass}" "${final}"
-  else
-    cp "${corrected}" "${final}"
+
+  # Decided before the backup is taken, because the backup is also the marker that says this subtitle
+  # has been dealt with: writing one and then declining to rewrite the file would leave it skipped by
+  # every later run, having never been corrected.
+  if alignment_is_negligible; then
+    log_info "Already in sync (within ${_min_shift}s): ${sub}"
+    _n_insync=$(( _n_insync + 1 )); return 0
   fi
 
   [[ -e "${backup}" ]] || cp -p "${sub}" "${backup}"
-  mv "${final}" "${sub}"
-  log_info "Synced: ${sub}"
+  # Moved rather than copied over: a library file is frequently a hard link to a torrent still being
+  # seeded, and writing through the inode would corrupt what the tracker is checksumming.
+  mv "${_align_file}" "${sub}"
+  log_info "Synced ($(alignment_summary)): ${sub}"
   _n_synced=$(( _n_synced + 1 ))
 }
 
@@ -664,7 +816,7 @@ sync_sidecar() {
 # (default) or muxed into a container copy (--remux). Only the first matching
 # track is processed.
 # Globals:
-#   _lang, _remux, _force, _dry_run, _anchor, _workdir, _n_*
+#   _lang, _remux, _force, _dry_run, _workdir, _align_*, _n_*
 # Arguments:
 #   video: The video file path.
 #   ref:   A prepared reference SRT.
@@ -719,15 +871,13 @@ sync_embedded() {
     _n_failed=$(( _n_failed + 1 )); return 0
   fi
 
-  local corrected="${_workdir}/emb_corrected.srt" final="${_workdir}/emb_final.srt"
-  if ! run_alass "${ref}" "${extracted}" "${corrected}"; then
+  # No --min-shift check here, unlike a sidecar: the output does not exist yet, and its existence is
+  # what marks this track as dealt with. Declining to write a small correction would leave the
+  # operator with no subtitle at all and every later run repeating the extraction.
+  if ! align_subtitle "${ref}" "${extracted}" srt; then
     _n_failed=$(( _n_failed + 1 )); return 0
   fi
-  if [[ "${_anchor}" == true ]]; then
-    anchor_correct "${corrected}" "${extracted}" "${final}"
-  else
-    cp "${corrected}" "${final}"
-  fi
+  local final="${_align_file}"
 
   if [[ "${_remux}" == true ]]; then
     local out="${dir}/${base}.subsync.${video##*.}"
@@ -747,10 +897,10 @@ sync_embedded() {
       log_error "Remux failed for: ${video}"
       _n_failed=$(( _n_failed + 1 )); return 0
     fi
-    log_info "Synced (remux): ${out}"
+    log_info "Synced (remux, $(alignment_summary)): ${out}"
   else
     mv "${final}" "${sidecar}"
-    log_info "Synced (embedded -> sidecar): ${sidecar}"
+    log_info "Synced (embedded -> sidecar, $(alignment_summary)): ${sidecar}"
   fi
   _n_synced=$(( _n_synced + 1 ))
 }
@@ -807,20 +957,34 @@ matching_sidecars() {
 }
 
 ########################################
-# Logs the per-episode timing line (total wall time + step breakdown), but only
-# outside dry-run and only when the video actually did work (synced or failed).
+# Counts the subtitles this run has reached a verdict on, whichever verdict.
+# A subtitle found to be already in sync cost the same transcription as one that
+# was rewritten, so it counts as work: leaving it out would drop its episode from
+# the timing line and from the per-episode average.
 # Globals:
-#   _dry_run, _n_synced, _n_failed, _ref_cached, _t_extract, _t_transcribe,
+#   _n_synced, _n_insync, _n_failed
+# Outputs:
+#   The count on stdout.
+########################################
+work_done() {
+  printf '%d' $(( _n_synced + _n_insync + _n_failed ))
+}
+
+########################################
+# Logs the per-episode timing line (total wall time + step breakdown), but only
+# outside dry-run and only when the video actually did work.
+# Globals:
+#   _dry_run, _n_synced, _n_insync, _n_failed, _ref_cached, _t_extract, _t_transcribe,
 #   _t_align_total, _n_videos_worked
 # Arguments:
 #   video:  The video file path.
 #   start:  Epoch seconds captured when processing began.
-#   before: _n_synced + _n_failed captured before processing.
+#   before: The work counters captured before processing, from work_done.
 ########################################
 log_episode_timing() {
   local video="$1" start="$2" before="$3"
   [[ "${_dry_run}" == true ]] && return 0
-  (( _n_synced + _n_failed > before )) || return 0
+  (( $(work_done) > before )) || return 0
 
   local total ref_part
   total=$(( $(_now) - start ))
@@ -848,7 +1012,7 @@ process_video() {
   local v_start before
   v_start=$(_now)
   _t_align_total=0; _t_extract=0; _t_transcribe=0; _ref_cached=false
-  before=$(( _n_synced + _n_failed ))
+  before=$(work_done)
 
   local -a sidecars=()
   local s
@@ -915,7 +1079,7 @@ process_lone_subtitle() {
   local v_start before
   v_start=$(_now)
   _t_align_total=0; _t_extract=0; _t_transcribe=0; _ref_cached=false
-  before=$(( _n_synced + _n_failed ))
+  before=$(work_done)
 
   if [[ -z "${video}" ]]; then
     local dir base stem entry
@@ -936,7 +1100,7 @@ process_lone_subtitle() {
   log_info "Video: ${video}"
 
   if [[ "${_dry_run}" == true ]]; then
-    log_info "[dry-run] Would sync: ${sub} (against ${video})"
+    log_info "[dry-run] Would sync if needed: ${sub} (against ${video})"
     _n_skipped=$(( _n_skipped + 1 )); return 0
   fi
 
@@ -954,7 +1118,7 @@ process_lone_subtitle() {
 ########################################
 # Prints the end-of-run summary.
 # Globals:
-#   _n_synced, _n_skipped, _n_failed, _dry_run
+#   _n_synced, _n_insync, _n_skipped, _n_failed, _dry_run
 ########################################
 print_summary() {
   if [[ "${_dry_run}" == true ]]; then
@@ -965,7 +1129,7 @@ print_summary() {
     if (( _n_videos_worked > 0 )); then
       extra=" · avg $(_fmt_dur $(( batch / _n_videos_worked )))/episode over ${_n_videos_worked}"
     fi
-    log_info "Done: ${_n_synced} synced, ${_n_skipped} skipped, ${_n_failed} failed in $(_fmt_dur "${batch}").${extra}"
+    log_info "Done: ${_n_synced} synced, ${_n_insync} already in sync, ${_n_skipped} skipped, ${_n_failed} failed in $(_fmt_dur "${batch}").${extra}"
   fi
   (( _n_failed > 0 )) && return 1 || return 0
 }

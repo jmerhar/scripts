@@ -58,11 +58,47 @@ embedded_streams() {
 
 ########################################
 # Makes the alass stub return a fixed corrected subtitle rather than echoing its input.
+#
+# One cue where touch_file wrote two, so the cue counts disagree and the script cannot profile the
+# shift -- which is the path a test wanting an unprofilable alignment asks for.
 # Arguments:
 #   first_cue_at: "HH:MM:SS,mmm" start for the corrected file's first cue.
 ########################################
 alass_returns() {
   printf '1\n%s --> 00:00:13,000\nhello\n' "$1" > "$STUB_FIXTURES/alass.artifact"
+}
+
+########################################
+# Makes the alass stub return touch_file's two cues moved by a given offset, so the script sees a
+# profilable shift of a known size.
+# Arguments:
+#   ms:      Signed milliseconds to move the cues by.
+#   variant: Optional alignment mode to answer only ('nosplit' or 'split').
+########################################
+alass_shifts_by() {
+  local ms="$1" variant="${2:-}" name="alass.artifact"
+  [[ -n "$variant" ]] && name="alass.$variant.artifact"
+  awk -v off="$ms" 'function f(t,  h,m,s,ms2){t+=off; if(t<0)t=0; ms2=t%1000; t=int(t/1000); s=t%60; t=int(t/60); m=t%60; h=int(t/60); return sprintf("%02d:%02d:%02d,%03d",h,m,s,ms2)} BEGIN{printf "1\n%s --> %s\nhello\n\n2\n%s --> %s\nworld\n", f(10000), f(12000), f(20000), f(22000)}' > "$STUB_FIXTURES/$name"
+}
+
+########################################
+# Makes the alass stub answer one alignment mode with cues read from stdin, so a test can give the two
+# modes results of measurably different quality.
+# Arguments:
+#   variant: 'nosplit' or 'split'.
+########################################
+alass_variant_artifact() {
+  cat > "$STUB_FIXTURES/alass.$1.artifact"
+}
+
+########################################
+# Makes the transcriber stub return a given reference transcript, which is what the alignment is scored
+# against.
+# Arguments:
+#   Cue text on stdin.
+########################################
+reference_is() {
+  cat > "$STUB_FIXTURES/whisper-ctranslate2.artifact"
 }
 
 ########################################
@@ -131,13 +167,25 @@ with_workdir() {
   [[ "$output" == *"--threads must be a positive integer"* ]]
 }
 
-@test "--anchor-max accepts a decimal and rejects a word" {
+@test "--min-shift accepts a decimal and rejects a word" {
   touch_file movie.mkv
-  sync_run --anchor-max 0.75 --dry-run "$TREE"
+  sync_run --min-shift 0.75 --dry-run "$TREE"
   [ "$status" -eq 0 ]
-  sync_run --anchor-max soon "$TREE"
+  sync_run --min-shift soon "$TREE"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"non-negative number"* ]]
+  [[ "$output" == *"--min-shift must be a non-negative number"* ]]
+}
+
+@test "--ad-breaks accepts its three modes and rejects anything else" {
+  touch_file movie.mkv
+  local mode
+  for mode in auto yes no; do
+    sync_run --ad-breaks "$mode" --dry-run "$TREE"
+    [ "$status" -eq 0 ]
+  done
+  sync_run --ad-breaks sometimes "$TREE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"--ad-breaks must be auto, yes or no"* ]]
 }
 
 @test "a path that is neither a file nor a directory is refused" {
@@ -208,10 +256,11 @@ with_workdir() {
 @test "a matching sidecar is synced and the original backed up" {
   touch_file movie.mkv
   touch_file movie.en.srt
+  alass_shifts_by 4000
   sync_run "$TREE"
   [ "$status" -eq 0 ]
   [ -f "$TREE/movie.en.srt.bak" ]
-  [[ "$output" == *"Synced: $TREE/movie.en.srt"* ]]
+  [[ "$output" == *"Synced (single offset +4.0s): $TREE/movie.en.srt"* ]]
 }
 
 # Torrents carry subtitle files too, so a synced sidecar can be a hard link to one still being seeded.
@@ -222,7 +271,7 @@ with_workdir() {
   touch_file movie.en.srt 00:00:10,000
   ln "$TREE/movie.en.srt" "$BATS_TEST_TMPDIR/seeding.en.srt"
   alass_returns 00:00:30,000
-  sync_run --no-anchor "$TREE"
+  sync_run "$TREE"
   [ "$status" -eq 0 ]
   grep -q "00:00:10,000" "$BATS_TEST_TMPDIR/seeding.en.srt"
   run grep -c "00:00:30,000" "$BATS_TEST_TMPDIR/seeding.en.srt"
@@ -234,7 +283,7 @@ with_workdir() {
   touch_file movie.mkv
   touch_file movie.en.srt 00:00:10,000
   alass_returns 00:00:30,000
-  sync_run --no-anchor "$TREE"
+  sync_run "$TREE"
   grep -q "00:00:10,000" "$TREE/movie.en.srt.bak"
   grep -q "00:00:30,000" "$TREE/movie.en.srt"
 }
@@ -271,7 +320,7 @@ with_workdir() {
 @test "--lang selects which sidecar is synced" {
   touch_file movie.mkv
   touch_file movie.de.srt
-  sync_run --lang de "$TREE"
+  sync_run --lang de --min-shift 0 "$TREE"
   [ -f "$TREE/movie.de.srt.bak" ]
 }
 
@@ -279,14 +328,14 @@ with_workdir() {
 @test "an untagged sidecar is treated as the target language" {
   touch_file movie.mkv
   touch_file movie.srt
-  sync_run "$TREE"
+  sync_run --min-shift 0 "$TREE"
   [ -f "$TREE/movie.srt.bak" ]
 }
 
 @test "a role token after the language does not hide the sidecar" {
   touch_file movie.mkv
   touch_file movie.en.forced.srt
-  sync_run "$TREE"
+  sync_run --min-shift 0 "$TREE"
   [ -f "$TREE/movie.en.forced.srt.bak" ]
 }
 
@@ -301,17 +350,17 @@ with_workdir() {
   touch_file movie.mkv
   touch_file movie.en.srt
   touch_file movie.eng.srt
-  sync_run "$TREE"
+  sync_run --min-shift 0 "$TREE"
   [ -f "$TREE/movie.en.srt.bak" ]
   [ -f "$TREE/movie.eng.srt.bak" ]
   [ "$(stub_calls whisper-ctranslate2)" -eq 1 ]
-  [ "$(stub_calls alass)" -eq 2 ]
+  [ "$(stub_calls alass)" -eq 4 ]
 }
 
 @test "subtitle formats other than srt are synced too" {
   touch_file movie.mkv
   touch_file movie.en.ass
-  sync_run "$TREE"
+  sync_run --min-shift 0 "$TREE"
   [ -f "$TREE/movie.en.ass.bak" ]
 }
 
@@ -321,6 +370,307 @@ with_workdir() {
   touch_file movie.en.ass
   sync_run "$TREE"
   stub_called 'alass .*source\.ass'
+}
+
+# --- Choosing between one offset and segments ---------------------------------------------------
+
+# Segmented alignment can invent a break in a subtitle whose only fault is a constant offset, leaving an
+# opening stretch further out than it started. Both alignments are therefore produced and scored, and
+# the segmented one is kept only when it matches the speech measurably better.
+
+@test "the split penalty defaults to alass's own default" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  sync_run --min-shift 0 "$TREE"
+  stub_called 'alass .*--split-penalty 7'
+}
+
+@test "auto aligns each subtitle both ways, one of them without splitting" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  sync_run --min-shift 0 "$TREE"
+  [ "$(stub_calls alass)" -eq 2 ]
+  stub_called 'alass --no-split'
+  stub_called 'alass --split-penalty'
+}
+
+@test "the segmented alignment is kept when it matches the speech better" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  reference_is <<< "1
+00:00:00,000 --> 00:01:40,000
+speech"
+  alass_variant_artifact nosplit <<< "1
+00:00:00,000 --> 00:00:50,000
+kept-nosplit"
+  alass_variant_artifact split <<< "1
+00:00:00,000 --> 00:00:51,000
+kept-split"
+  sync_run "$TREE"
+  grep -q "kept-split" "$TREE/movie.en.srt"
+}
+
+@test "the segmented alignment is discarded when it matches no better" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  reference_is <<< "1
+00:00:00,000 --> 00:01:40,000
+speech"
+  alass_variant_artifact nosplit <<< "1
+00:00:00,000 --> 00:00:50,000
+kept-nosplit"
+  alass_variant_artifact split <<< "1
+00:00:00,000 --> 00:00:40,000
+kept-split"
+  sync_run "$TREE"
+  grep -q "kept-nosplit" "$TREE/movie.en.srt"
+}
+
+# The margin is the whole point of the gate: a segmented alignment that matches a fraction better is
+# noise, and believing it is what splits a file that only ever needed one shift. 50.2s of the reference
+# against 50.0s is a gain of four parts per thousand, under the threshold; 51.0s is twenty, over it.
+@test "a segmented alignment winning by less than half a percent is discarded" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  reference_is <<< "1
+00:00:00,000 --> 00:01:40,000
+speech"
+  alass_variant_artifact nosplit <<< "1
+00:00:00,000 --> 00:00:50,000
+kept-nosplit"
+  alass_variant_artifact split <<< "1
+00:00:00,000 --> 00:00:50,200
+kept-split"
+  sync_run "$TREE"
+  grep -q "kept-nosplit" "$TREE/movie.en.srt"
+}
+
+@test "--ad-breaks no aligns once, without splitting" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  sync_run --ad-breaks no --min-shift 0 "$TREE"
+  [ "$(stub_calls alass)" -eq 1 ]
+  stub_called 'alass --no-split'
+}
+
+@test "--ad-breaks yes aligns once, with the split penalty" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  sync_run --ad-breaks yes --min-shift 0 "$TREE"
+  [ "$(stub_calls alass)" -eq 1 ]
+  stub_called 'alass --split-penalty 7'
+}
+
+# A forced mode must not be overruled by the score, or it is not an override.
+@test "--ad-breaks yes keeps the segmented alignment even when it matches worse" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  reference_is <<< "1
+00:00:00,000 --> 00:01:40,000
+speech"
+  alass_variant_artifact split <<< "1
+00:00:00,000 --> 00:00:10,000
+kept-split"
+  sync_run --ad-breaks yes "$TREE"
+  grep -q "kept-split" "$TREE/movie.en.srt"
+}
+
+# With framerate guessing the two alignments can be rescaled by different factors, so they cover
+# different amounts of time and the score rewards the more stretched one for no good reason.
+@test "--fps-guess drops back to a single global offset" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  sync_run --fps-guess --min-shift 0 "$TREE"
+  [ "$(stub_calls alass)" -eq 1 ]
+  stub_called 'alass --no-split'
+}
+
+@test "--fps-guess still honours an explicit --ad-breaks" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  sync_run --fps-guess --ad-breaks auto --min-shift 0 "$TREE"
+  [ "$(stub_calls alass)" -eq 2 ]
+}
+
+########################################
+# Points the script at an aligner that fails for one of the two modes and copies its input through for
+# the other, which is the only way to exercise one failed run out of the pair.
+# Arguments:
+#   failing: 'nosplit' or 'split'.
+########################################
+alass_fails_only() {
+  local failing="$1" fake="$BATS_TEST_TMPDIR/fake-alass"
+  cat > "$fake" <<FAKE
+#!/usr/bin/env bash
+mode=split
+for arg in "\$@"; do [[ "\$arg" == "--no-split" ]] && mode=nosplit; done
+[[ "\$mode" == "$failing" ]] && exit 1
+cp "\${@: -2:1}" "\${@: -1:1}"
+FAKE
+  chmod +x "$fake"
+  printf 'CACHE_DIR="%s"\nALASS_BIN="%s"\n' "$CACHE" "$fake" > "$CONF"
+}
+
+# A segmented run that fails leaves a perfectly good single-offset alignment in hand, so the subtitle is
+# still corrected -- but silently preferring it would hide that half the comparison never happened.
+@test "a failed segmented alignment keeps the single-offset one and says so" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  alass_fails_only split
+  sync_run --min-shift 0 "$TREE"
+  [ "$status" -eq 0 ]
+  [ -f "$TREE/movie.en.srt.bak" ]
+  [[ "$output" == *"Segmented alignment failed"* ]]
+  [[ "$output" == *"Synced"* ]]
+}
+
+# With no single-offset alignment to fall back to there is nothing to write, so this one has to count as
+# a failure rather than quietly leaving the file as it was.
+@test "a failed single-offset alignment is a failure" {
+  touch_file movie.mkv
+  touch_file movie.en.srt 00:00:10,000
+  alass_fails_only nosplit
+  sync_run "$TREE"
+  [ "$status" -ne 0 ]
+  grep -q "00:00:10,000" "$TREE/movie.en.srt"
+  [ ! -f "$TREE/movie.en.srt.bak" ]
+  [[ "$output" == *"Done: 0 synced, 0 already in sync, 0 skipped, 1 failed"* ]]
+}
+
+# A forced mode has only one run, so its failure is the whole alignment failing.
+@test "--ad-breaks yes fails when the segmented run fails" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  alass_fails_only split
+  sync_run --ad-breaks yes "$TREE"
+  [ "$status" -ne 0 ]
+  [ ! -f "$TREE/movie.en.srt.bak" ]
+}
+
+# --- The min-shift deadband ---------------------------------------------------------------------
+
+# alass moves an already-correct subtitle by a few tenths of a second towards Whisper's cue starts,
+# which run slightly late. A correction that small cannot be told apart from that lead, so the file is
+# left exactly as it was rather than traded from one small error to another.
+
+@test "a subtitle already matching the speech is left byte-identical and unbacked-up" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  cp "$TREE/movie.en.srt" "$BATS_TEST_TMPDIR/before.srt"
+  alass_shifts_by 100
+  sync_run "$TREE"
+  [ "$status" -eq 0 ]
+  cmp "$TREE/movie.en.srt" "$BATS_TEST_TMPDIR/before.srt"
+  [ ! -f "$TREE/movie.en.srt.bak" ]
+  [[ "$output" == *"Already in sync (within 0.5s): $TREE/movie.en.srt"* ]]
+}
+
+@test "a shift under --min-shift is left alone and one over it is applied" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  alass_shifts_by 400
+  sync_run "$TREE"
+  [ ! -f "$TREE/movie.en.srt.bak" ]
+  alass_shifts_by 600
+  sync_run "$TREE"
+  [ -f "$TREE/movie.en.srt.bak" ]
+  grep -q "00:00:10,600" "$TREE/movie.en.srt"
+}
+
+# The threshold is converted to milliseconds, where truncating instead of rounding loses one: 2.01
+# seconds scales to 2009.999... in binary arithmetic, so a truncating conversion holds it as 2009ms and
+# rewrites a file it was asked to leave alone. Verified to differ on both BSD awk and GNU awk.
+@test "--min-shift is read to the millisecond" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  alass_shifts_by 2009
+  sync_run --min-shift 2.01 "$TREE"
+  [ ! -f "$TREE/movie.en.srt.bak" ]
+  [[ "$output" == *"Already in sync (within 2.01s)"* ]]
+}
+
+@test "--min-shift 0 rewrites for any shift at all" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  alass_shifts_by 100
+  sync_run --min-shift 0 "$TREE"
+  [ -f "$TREE/movie.en.srt.bak" ]
+  grep -q "00:00:10,100" "$TREE/movie.en.srt"
+}
+
+# An aligner shifts a subtitle rather than rewriting its cue list, so disagreeing cue counts mean the
+# shift cannot be measured. That must fall towards writing the file: reporting it as already in sync
+# would discard a correction of unknown size.
+@test "an alignment whose cue count does not match is written, not reported in sync" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  alass_returns 00:00:30,000
+  sync_run "$TREE"
+  [ -f "$TREE/movie.en.srt.bak" ]
+  grep -q "00:00:30,000" "$TREE/movie.en.srt"
+  [[ "$output" == *"Synced (shift unknown)"* ]]
+}
+
+# The deadband guards a rewrite, never a creation: an embedded track has no sidecar yet, and declining
+# to write one would leave the operator with no subtitle and every later run repeating the extraction.
+@test "an embedded track that is already in sync still produces its sidecar" {
+  touch_file movie.mkv
+  embedded_streams "2,subrip,eng"
+  # The extracted track is the stub's default two cues; this moves them by a tenth of a second, which
+  # for a sidecar would be small enough to leave the file alone.
+  printf '1\n00:00:01,100 --> 00:00:03,100\nfirst line\n\n2\n00:00:05,100 --> 00:00:07,100\nsecond line\n' > "$STUB_FIXTURES/alass.artifact"
+  sync_run --embedded "$TREE"
+  [ -f "$TREE/movie.en.srt" ]
+  [[ "$output" == *"Synced (embedded -> sidecar"* ]]
+  grep -q "00:00:01,100" "$TREE/movie.en.srt"
+}
+
+# A subtitle found to be in sync cost the same transcription as one that was rewritten, so its episode
+# belongs in the timing line and in the per-episode average.
+@test "an episode whose subtitle was already in sync still reports its timing" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  alass_shifts_by 100
+  sync_run "$TREE"
+  [[ "$output" == *"movie.mkv took"* ]]
+  [[ "$output" == *"/episode over 1"* ]]
+}
+
+# --- What the success line says ------------------------------------------------------------------
+
+# The line is how a wrong verdict becomes visible: segments on a file that needed one shift, or a single
+# offset on a broadcast rip, is the sign to re-run with --ad-breaks.
+
+@test "a constant correction is reported as a single offset" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  alass_shifts_by 4000
+  sync_run "$TREE"
+  [[ "$output" == *"Synced (single offset +4.0s)"* ]]
+}
+
+@test "a segmented correction names the segments and their range" {
+  touch_file movie.mkv
+  touch_file movie.en.srt
+  alass_variant_artifact nosplit <<< "1
+00:00:11,000 --> 00:00:13,000
+hello
+
+2
+00:00:25,000 --> 00:00:27,000
+world"
+  sync_run --ad-breaks no "$TREE"
+  [[ "$output" == *"Synced (2 segments, +1.0s to +5.0s)"* ]]
+}
+
+# Framerate correction rescales every cue by a different amount, which is a different thing from a
+# handful of breaks and is judged against the cue count rather than a fixed number of segments.
+@test "a rescaled correction is reported as a variable shift" {
+  touch_file movie.mkv
+  awk 'BEGIN{for(i=1;i<=12;i++) printf "%d\n00:00:%02d,000 --> 00:00:%02d,200\nline\n\n", i, i, i}' > "$TREE/movie.en.srt"
+  awk 'function f(t,  h,m,s,ms){ms=t%1000; t=int(t/1000); s=t%60; t=int(t/60); m=t%60; h=int(t/60); return sprintf("%02d:%02d:%02d,%03d",h,m,s,ms)} BEGIN{for(i=1;i<=12;i++){o=i*1000+i*100; printf "%d\n%s --> %s\nline\n\n", i, f(o), f(o+200)}}' > "$STUB_FIXTURES/alass.artifact"
+  sync_run --ad-breaks no "$TREE"
+  [[ "$output" == *"Synced (variable shift, +0.1s to +1.2s)"* ]]
 }
 
 # --- Idempotency and --force -------------------------------------------------------------------
@@ -338,9 +688,10 @@ with_workdir() {
   touch_file movie.mkv
   touch_file movie.en.srt
   cp "$TREE/movie.en.srt" "$TREE/movie.en.srt.bak"
+  alass_shifts_by 4000
   sync_run --force "$TREE"
-  [ "$(stub_calls alass)" -eq 1 ]
-  [[ "$output" == *"Synced:"* ]]
+  [ "$(stub_calls alass)" -eq 2 ]
+  [[ "$output" == *"Synced (single offset +4.0s)"* ]]
 }
 
 # The backup is the only pristine copy, so a forced re-run must align it rather than the file it
@@ -349,7 +700,7 @@ with_workdir() {
   touch_file movie.mkv
   touch_file movie.en.srt 00:00:10,000
   printf '1\n00:00:01,000 --> 00:00:02,000\npristine\n' > "$TREE/movie.en.srt.bak"
-  sync_run --force --no-anchor "$TREE"
+  sync_run --force --min-shift 0 "$TREE"
   grep -q "pristine" "$TREE/movie.en.srt.bak"
   grep -q "pristine" "$TREE/movie.en.srt"
 }
@@ -357,7 +708,7 @@ with_workdir() {
 @test "--backup-suffix changes where the original is kept" {
   touch_file movie.mkv
   touch_file movie.en.srt
-  sync_run --backup-suffix .orig "$TREE"
+  sync_run --backup-suffix .orig --min-shift 0 "$TREE"
   [ -f "$TREE/movie.en.srt.orig" ]
   [ ! -f "$TREE/movie.en.srt.bak" ]
 }
@@ -375,7 +726,7 @@ with_workdir() {
   grep -q "00:00:10,000" "$TREE/movie.en.srt"
   [ ! -f "$TREE/movie.en.srt.bak" ]
   [[ "$output" == *"alass failed"* ]]
-  [[ "$output" == *"Done: 0 synced, 0 skipped, 1 failed"* ]]
+  [[ "$output" == *"Done: 0 synced, 0 already in sync, 0 skipped, 1 failed"* ]]
 }
 
 @test "a failed transcription is reported and counted as a failure" {
@@ -427,7 +778,9 @@ with_workdir() {
   grep -q "00:00:10,000" "$TREE/movie.en.srt"
   [ "$(stub_calls whisper-ctranslate2)" -eq 0 ]
   [ "$(stub_calls alass)" -eq 0 ]
-  [[ "$output" == *"[dry-run] Would sync"* ]]
+  # Whether a subtitle needs correcting cannot be known without the transcript, which is the step
+  # dry-run skips, so the report says it would sync if needed rather than promising a rewrite.
+  [[ "$output" == *"[dry-run] Would sync if needed"* ]]
 }
 
 @test "--dry-run reports the planned embedded work without probing for output" {
@@ -531,7 +884,7 @@ with_workdir() {
   sync_run --embedded "$TREE"
   [ -f "$TREE/movie.en.srt" ]
   stub_called 'ffmpeg .*-map 0:2'
-  [[ "$output" == *"Synced (embedded -> sidecar)"* ]]
+  [[ "$output" == *"Synced (embedded -> sidecar,"* ]]
 }
 
 @test "the first matching track wins" {
@@ -584,7 +937,7 @@ with_workdir() {
   sync_run --embedded --remux "$TREE"
   [ -f "$TREE/movie.subsync.mkv" ]
   [ ! -f "$TREE/movie.en.srt" ]
-  [[ "$output" == *"Synced (remux)"* ]]
+  [[ "$output" == *"Synced (remux,"* ]]
 }
 
 # The corrected track is appended, so the stream index used for tagging has to count the streams that
@@ -619,7 +972,7 @@ with_workdir() {
 @test "a lone subtitle is matched to its sibling video" {
   touch_file movie.mkv
   touch_file movie.en.srt
-  sync_run "$TREE/movie.en.srt"
+  sync_run --min-shift 0 "$TREE/movie.en.srt"
   [ "$status" -eq 0 ]
   [[ "$output" == *"Video: $TREE/movie.mkv"* ]]
   [ -f "$TREE/movie.en.srt.bak" ]
@@ -628,7 +981,7 @@ with_workdir() {
 @test "--video names the video explicitly" {
   touch_file "other name.mkv"
   touch_file subs.en.srt
-  sync_run --video "$TREE/other name.mkv" "$TREE/subs.en.srt"
+  sync_run --video "$TREE/other name.mkv" --min-shift 0 "$TREE/subs.en.srt"
   [ "$status" -eq 0 ]
   [ -f "$TREE/subs.en.srt.bak" ]
 }
@@ -655,7 +1008,7 @@ with_workdir() {
   touch_file movie.en.srt
   sync_run --dry-run "$TREE/movie.en.srt"
   [ ! -f "$TREE/movie.en.srt.bak" ]
-  [[ "$output" == *"[dry-run] Would sync"* ]]
+  [[ "$output" == *"[dry-run] Would sync if needed"* ]]
 }
 
 # --- Traversal ---------------------------------------------------------------------------------
@@ -665,7 +1018,7 @@ with_workdir() {
   touch_file "season 1/ep1.en.srt"
   touch_file "season 2/ep2.mkv"
   touch_file "season 2/ep2.en.srt"
-  sync_run "$TREE"
+  sync_run --min-shift 0 "$TREE"
   [ -f "$TREE/season 1/ep1.en.srt.bak" ]
   [ -f "$TREE/season 2/ep2.en.srt.bak" ]
 }
@@ -673,7 +1026,7 @@ with_workdir() {
 @test "a single video file can be given directly" {
   touch_file movie.mkv
   touch_file movie.en.srt
-  sync_run "$TREE/movie.mkv"
+  sync_run --min-shift 0 "$TREE/movie.mkv"
   [ -f "$TREE/movie.en.srt.bak" ]
 }
 
@@ -687,7 +1040,7 @@ with_workdir() {
 @test "a filename with spaces survives the pipeline" {
   touch_file "The Show S01E01 (2024).mkv"
   touch_file "The Show S01E01 (2024).en.srt"
-  sync_run "$TREE"
+  sync_run --min-shift 0 "$TREE"
   [ -f "$TREE/The Show S01E01 (2024).en.srt.bak" ]
   stub_called 'The Show S01E01 (2024)\.mkv'
 }
@@ -698,14 +1051,14 @@ with_workdir() {
   cp "$TREE/movie.en.srt" "$TREE/movie.en.srt.bak"
   sync_run --force "$TREE"
   [ ! -f "$TREE/movie.en.srt.bak.bak" ]
-  [ "$(stub_calls alass)" -eq 1 ]
+  [ "$(stub_calls alass)" -eq 2 ]
 }
 
 @test "the media extension list can be replaced from a config file" {
   touch_file movie.xyz
   touch_file movie.en.srt
   printf 'CACHE_DIR="%s"\nMEDIA_EXTS=(xyz)\n' "$CACHE" > "$CONF"
-  sync_run "$TREE"
+  sync_run --min-shift 0 "$TREE"
   [ -f "$TREE/movie.en.srt.bak" ]
 }
 
@@ -716,126 +1069,163 @@ with_workdir() {
   [[ "$output" == *"CONFIG_FILE is set to"* ]]
 }
 
-# --- The anchor ------------------------------------------------------------------------------
+# --- Alignment statistics ------------------------------------------------------------------------
 
-# Whisper marks a cue at the word's onset, a fraction of a second after a human subtitler would, so
-# alass inherits a small constant lead. The anchor cancels it by returning the opening cue to where it
-# was.
-@test "a small opening shift is treated as bias and cancelled" {
-  touch_file movie.mkv
-  touch_file movie.en.srt 00:00:10,000
-  alass_returns 00:00:09,500
-  sync_run "$TREE"
-  grep -q "00:00:10,000" "$TREE/movie.en.srt"
+# alignment-stats.awk is the whole basis of the choice above: the score decides whether a segmented
+# alignment is believed, and the shift profile decides whether the file is rewritten at all.
+
+########################################
+# Writes the three files the statistics are computed from and reports the result.
+# Arguments:
+#   reference: Reference cues.
+#   original:  Pre-sync cues.
+#   candidate: Aligned cues.
+########################################
+stats_for() {
+  printf '%s\n' "$1" > "$BATS_TEST_TMPDIR/ref.srt"
+  printf '%s\n' "$2" > "$BATS_TEST_TMPDIR/orig.srt"
+  printf '%s\n' "$3" > "$BATS_TEST_TMPDIR/cand.srt"
+  run_snippet "$SCRIPT" "alignment_stats '$BATS_TEST_TMPDIR/ref.srt' '$BATS_TEST_TMPDIR/orig.srt' '$BATS_TEST_TMPDIR/cand.srt'"
 }
 
-# A large opening shift is the correction the user asked for, not bias, so cancelling it would undo
-# the whole point of the run.
-@test "a large opening shift is kept as a real offset" {
-  touch_file movie.mkv
-  touch_file movie.en.srt 00:00:10,000
-  alass_returns 00:00:04,000
-  sync_run "$TREE"
-  grep -q "00:00:04,000" "$TREE/movie.en.srt"
+@test "the score counts only the milliseconds the candidate and the reference share" {
+  stats_for "1
+00:00:00,000 --> 00:00:10,000
+r" "1
+00:00:00,000 --> 00:00:04,000
+o" "1
+00:00:06,000 --> 00:00:14,000
+c"
+  [ "${output%% *}" = "4000" ]
 }
 
-@test "--anchor-max moves the line between bias and offset" {
-  touch_file movie.mkv
-  touch_file movie.en.srt 00:00:10,000
-  alass_returns 00:00:07,000
-  sync_run --anchor-max 5 "$TREE"
-  grep -q "00:00:10,000" "$TREE/movie.en.srt"
+@test "the score is zero when the two never overlap" {
+  stats_for "1
+00:00:00,000 --> 00:00:05,000
+r" "1
+00:00:00,000 --> 00:00:05,000
+o" "1
+00:00:10,000 --> 00:00:15,000
+c"
+  [ "${output%% *}" = "0" ]
 }
 
-@test "--no-anchor leaves the alignment exactly as alass produced it" {
-  touch_file movie.mkv
-  touch_file movie.en.srt 00:00:10,000
-  alass_returns 00:00:09,500
-  sync_run --no-anchor "$TREE"
-  grep -q "00:00:09,500" "$TREE/movie.en.srt"
+# Two cues covering the same moment must not let one millisecond be counted twice, or the score stops
+# measuring coverage and starts rewarding whichever file repeats itself most. ASS subtitles overlap
+# routinely and Whisper's word-timestamped cues can too.
+@test "overlapping reference cues are counted once, not twice" {
+  stats_for "1
+00:00:00,000 --> 00:00:05,000
+r
+
+2
+00:00:02,000 --> 00:00:07,000
+r" "1
+00:00:00,000 --> 00:00:07,000
+o" "1
+00:00:00,000 --> 00:00:07,000
+c"
+  [ "${output%% *}" = "7000" ]
 }
 
-# WebVTT uses the same " --> " separator as SRT but a dot before the milliseconds, so the SRT shifter
-# would happily parse and then rewrite its timestamps into a format VTT does not use. The guard is what
-# keeps a non-SRT file out of it, and a fixture with real cues is what proves the guard fires.
-@test "anchor_correct passes a non-SRT format through untouched" {
-  printf 'WEBVTT\n\n00:00:10.500 --> 00:00:12.000\nhello\n' > "$BATS_TEST_TMPDIR/c.vtt"
-  printf 'WEBVTT\n\n00:00:10.000 --> 00:00:11.500\nhello\n' > "$BATS_TEST_TMPDIR/o.vtt"
-  with_workdir "anchor_correct '$BATS_TEST_TMPDIR/c.vtt' '$BATS_TEST_TMPDIR/o.vtt' '$BATS_TEST_TMPDIR/out.vtt'"
-  run diff "$BATS_TEST_TMPDIR/c.vtt" "$BATS_TEST_TMPDIR/out.vtt"
-  [ "$status" -eq 0 ]
+@test "WebVTT timestamps are read with their dots and without their hours" {
+  stats_for "1
+00:00:00,000 --> 00:00:10,000
+r" "1
+00:00:00,000 --> 00:00:10,000
+o" "WEBVTT
+
+00:02.000 --> 00:06.000
+c"
+  [ "${output%% *}" = "4000" ]
 }
 
-@test "anchor_correct passes through when the corrected file has no cue" {
-  printf 'no cues here\n' > "$BATS_TEST_TMPDIR/c.srt"
-  printf '1\n00:00:01,000 --> 00:00:02,000\nx\n' > "$BATS_TEST_TMPDIR/o.srt"
-  with_workdir "anchor_correct '$BATS_TEST_TMPDIR/c.srt' '$BATS_TEST_TMPDIR/o.srt' '$BATS_TEST_TMPDIR/out.srt'"
-  [ "$(cat "$BATS_TEST_TMPDIR/out.srt")" = "no cues here" ]
+# An ASS Format line declares which column holds Start and which holds End, and files do vary; reading
+# them by position instead would score such a file as matching nothing.
+@test "ASS dialogue times are read from the columns the Format line declares" {
+  stats_for "1
+00:00:00,000 --> 00:00:10,000
+r" "1
+00:00:00,000 --> 00:00:10,000
+o" "[Events]
+Format: Layer, End, Start, Style, Text
+Dialogue: 0,0:00:06.00,0:00:02.00,D,c"
+  [ "${output%% *}" = "4000" ]
 }
 
-# Without the guard an unreadable opening time is taken as zero, which turns into a shift by the whole
-# of the corrected file's own opening -- so the cue moves rather than being left alone. The corrected
-# opening is kept under --anchor-max, or the shift would stand down and hide the difference.
-@test "anchor_correct passes through when the original has no cue" {
-  printf '1\n00:00:00,500 --> 00:00:02,000\nx\n' > "$BATS_TEST_TMPDIR/c.srt"
-  printf 'no cues here\n' > "$BATS_TEST_TMPDIR/o.srt"
-  with_workdir "anchor_correct '$BATS_TEST_TMPDIR/c.srt' '$BATS_TEST_TMPDIR/o.srt' '$BATS_TEST_TMPDIR/out.srt'"
-  run cat "$BATS_TEST_TMPDIR/out.srt"
-  [[ "$output" == *"00:00:00,500 --> 00:00:02,000"* ]]
+# The three inputs are told apart by name rather than by which record came first, so a reference with no
+# cues scores zero instead of the candidate being compared against itself.
+@test "an empty reference scores zero rather than scoring the candidate against itself" {
+  : > "$BATS_TEST_TMPDIR/ref.srt"
+  printf '1\n00:00:00,000 --> 00:00:05,000\no\n' > "$BATS_TEST_TMPDIR/orig.srt"
+  printf '1\n00:00:00,000 --> 00:00:05,000\nc\n' > "$BATS_TEST_TMPDIR/cand.srt"
+  run_snippet "$SCRIPT" "alignment_stats '$BATS_TEST_TMPDIR/ref.srt' '$BATS_TEST_TMPDIR/orig.srt' '$BATS_TEST_TMPDIR/cand.srt'"
+  [ "${output%% *}" = "0" ]
+  [ "$(echo "$output" | cut -d' ' -f2)" = "1" ]
 }
 
-# --- SRT arithmetic --------------------------------------------------------------------------
+@test "a constant shift is one run, and its size is reported both signed and absolute" {
+  stats_for "1
+00:00:00,000 --> 00:00:10,000
+r" "1
+00:00:10,000 --> 00:00:12,000
+o
 
-@test "first_cue_ms reads the opening timestamp in milliseconds" {
-  printf '1\n01:02:03,456 --> 01:02:04,000\nx\n' > "$BATS_TEST_TMPDIR/a.srt"
-  run_snippet "$SCRIPT" "first_cue_ms '$BATS_TEST_TMPDIR/a.srt'"
-  [ "$output" = "3723456" ]
+2
+00:00:20,000 --> 00:00:22,000
+o" "1
+00:00:07,000 --> 00:00:09,000
+c
+
+2
+00:00:17,000 --> 00:00:19,000
+c"
+  [ "$output" = "2000 2 1 3000 -3000 -3000" ]
 }
 
-@test "first_cue_ms reads the first cue only" {
-  printf '1\n00:00:05,000 --> 00:00:06,000\nx\n\n2\n00:00:09,000 --> 00:00:10,000\ny\n' \
-    > "$BATS_TEST_TMPDIR/a.srt"
-  run_snippet "$SCRIPT" "first_cue_ms '$BATS_TEST_TMPDIR/a.srt'"
-  [ "$output" = "5000" ]
+@test "two different shifts are two runs, with the range between them" {
+  stats_for "1
+00:00:00,000 --> 00:01:00,000
+r" "1
+00:00:10,000 --> 00:00:12,000
+o
+
+2
+00:00:20,000 --> 00:00:22,000
+o" "1
+00:00:11,000 --> 00:00:13,000
+c
+
+2
+00:00:25,000 --> 00:00:27,000
+c"
+  [ "$output" = "4000 2 2 5000 1000 5000" ]
 }
 
-@test "first_cue_ms is empty for a file with no cues" {
-  printf 'nothing\n' > "$BATS_TEST_TMPDIR/a.srt"
-  run_snippet "$SCRIPT" "first_cue_ms '$BATS_TEST_TMPDIR/a.srt'; echo '[end]'"
-  [ "$output" = "[end]" ]
+# ASS and SSA timestamps carry only centiseconds, so a single global offset written back into one lands
+# as shifts a few milliseconds apart. Counted raw, every ASS file would look segmented.
+@test "centisecond rounding in an ASS file is still one run" {
+  printf '1\n00:00:00,000 --> 00:01:00,000\nr\n' > "$BATS_TEST_TMPDIR/ref.srt"
+  printf '1\n00:00:10,004 --> 00:00:12,000\no\n\n2\n00:00:20,006 --> 00:00:22,000\no\n' > "$BATS_TEST_TMPDIR/orig.srt"
+  printf '[Events]\nFormat: Layer, Start, End, Style, Text\nDialogue: 0,0:00:10.34,0:00:12.33,D,c\nDialogue: 0,0:00:20.35,0:00:22.33,D,c\n' > "$BATS_TEST_TMPDIR/cand.ass"
+  run_snippet "$SCRIPT" "alignment_stats '$BATS_TEST_TMPDIR/ref.srt' '$BATS_TEST_TMPDIR/orig.srt' '$BATS_TEST_TMPDIR/cand.ass'"
+  [ "$(echo "$output" | cut -d' ' -f3)" = "1" ]
 }
 
-@test "shift_srt moves both ends of every cue" {
-  printf '1\n00:00:10,000 --> 00:00:12,000\nx\n\n2\n00:00:20,500 --> 00:00:21,000\ny\n' \
-    > "$BATS_TEST_TMPDIR/in.srt"
-  run_snippet "$SCRIPT" "shift_srt '$BATS_TEST_TMPDIR/in.srt' '$BATS_TEST_TMPDIR/out.srt' 1500"
-  run cat "$BATS_TEST_TMPDIR/out.srt"
-  [[ "$output" == *"00:00:11,500 --> 00:00:13,500"* ]]
-  [[ "$output" == *"00:00:22,000 --> 00:00:22,500"* ]]
-}
+@test "disagreeing cue counts are reported as an unmeasurable shift" {
+  stats_for "1
+00:00:00,000 --> 00:00:10,000
+r" "1
+00:00:01,000 --> 00:00:03,000
+o
 
-@test "shift_srt keeps the cue text and numbering" {
-  printf '1\n00:00:10,000 --> 00:00:12,000\nhello there\n' > "$BATS_TEST_TMPDIR/in.srt"
-  run_snippet "$SCRIPT" "shift_srt '$BATS_TEST_TMPDIR/in.srt' '$BATS_TEST_TMPDIR/out.srt' 1000"
-  run cat "$BATS_TEST_TMPDIR/out.srt"
-  [[ "$output" == *"hello there"* ]]
-  [ "${lines[0]}" = "1" ]
-}
-
-# A negative shift larger than the opening timestamp would otherwise produce a negative time, which no
-# player accepts.
-@test "shift_srt clamps a negative result to zero" {
-  printf '1\n00:00:01,000 --> 00:00:02,000\nx\n' > "$BATS_TEST_TMPDIR/in.srt"
-  run_snippet "$SCRIPT" "shift_srt '$BATS_TEST_TMPDIR/in.srt' '$BATS_TEST_TMPDIR/out.srt' -5000"
-  run cat "$BATS_TEST_TMPDIR/out.srt"
-  [[ "$output" == *"00:00:00,000 --> 00:00:00,000"* ]]
-}
-
-@test "shift_srt carries across the minute and hour boundaries" {
-  printf '1\n00:59:59,500 --> 01:00:00,000\nx\n' > "$BATS_TEST_TMPDIR/in.srt"
-  run_snippet "$SCRIPT" "shift_srt '$BATS_TEST_TMPDIR/in.srt' '$BATS_TEST_TMPDIR/out.srt' 1000"
-  run cat "$BATS_TEST_TMPDIR/out.srt"
-  [[ "$output" == *"01:00:00,500 --> 01:00:01,000"* ]]
+2
+00:00:05,000 --> 00:00:07,000
+o" "1
+00:00:01,000 --> 00:00:03,000
+c"
+  [ "$(echo "$output" | cut -d' ' -f2)" = "-1" ]
+  [ "$(echo "$output" | cut -d' ' -f3)" = "-1" ]
 }
 
 # --- Language and extension helpers ------------------------------------------------------------
@@ -875,14 +1265,22 @@ with_workdir() {
   [ "$output" = "42s|5m 20s|1h 03m 12s" ]
 }
 
-@test "the summary reports the three counters" {
+@test "the summary reports each verdict separately" {
   touch_file a.mkv
   touch_file a.en.srt
   touch_file b.mkv
   touch_file b.en.srt
+  touch_file c.mkv
+  touch_file c.en.srt
   : > "$TREE/b.en.srt.bak"
+  alass_shifts_by 4000
+  sync_run "$TREE/a.mkv"
+  [[ "$output" == *"Done: 1 synced, 0 already in sync, 0 skipped, 0 failed"* ]]
+  # The pass above left a.en.srt a backup of its own, so the whole-tree pass now has one subtitle of
+  # each kind: a and b carry backups and are skipped, and c is aligned but moves too little to rewrite.
+  alass_shifts_by 100
   sync_run "$TREE"
-  [[ "$output" == *"Done: 1 synced, 1 skipped, 0 failed"* ]]
+  [[ "$output" == *"Done: 0 synced, 1 already in sync, 2 skipped, 0 failed"* ]]
 }
 
 @test "print_summary fails when anything failed" {

@@ -129,6 +129,17 @@ contents of a `<command>.artifact` fixture when a test supplies one:
 printf '1\n00:00:09,500 --> 00:00:13,000\nx\n' > "$STUB_FIXTURES/alass.artifact"
 ```
 
+A command that its caller runs more than once in one pass, in different modes, cannot be described by
+a single fixture — the caller compares the results, so identical answers exercise neither branch of the
+comparison. `alass` is one: it is run once per subtitle with `--no-split` and once without, and a
+`<command>.<variant>.artifact` fixture answers one of those runs specifically, taking precedence over
+the plain fixture:
+
+```bash
+printf '1\n00:00:10,000 --> 00:00:12,000\nx\n' > "$STUB_FIXTURES/alass.nosplit.artifact"
+printf '1\n00:00:14,000 --> 00:00:16,000\nx\n' > "$STUB_FIXTURES/alass.split.artifact"
+```
+
 The transcriber and `alass` branches match their command name on a *substring*, because `WHISPER_BIN`
 and `ALASS_BIN` are configurable: a test that checks the setting is honoured points the script at a
 double under another name and still needs it to behave like one.

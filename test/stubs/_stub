@@ -18,6 +18,8 @@
 #   <command>.stdout    print this file's contents on stdout
 #   <command>.stderr    print this file's contents on stderr
 #   <command>.artifact  the body to write into the output file, for the commands that produce one
+#   <command>.<v>.artifact  as above but for one variant of a command that runs in more than one mode
+#                       (alass.nosplit.artifact, alass.split.artifact); preferred over the plain one
 #
 # A command that needs to fabricate output files (qpdf, dpkg-deb, the media tools) is special-cased at
 # the bottom; anything else simply records the call and succeeds, which is what the scripts expect
@@ -89,15 +91,24 @@ may_write() {
 # tools hand back to a script that then parses it is one; the callers that ask for a WAV or a container
 # never look inside.
 #
+# A variant name selects <command>.<variant>.artifact ahead of the plain one, which is how a suite
+# gives one command different answers within a single run — a caller that invokes a tool twice in two
+# modes and compares the results cannot be tested with one fixture.
+#
 # Does nothing when the destination is outside the test temp directory; see may_write.
 # Globals:
 #   fixtures, command_name
 # Arguments:
-#   path: Where to write.
+#   path:    Where to write.
+#   variant: Optional fixture variant to prefer.
 #######################################
 write_artifact() {
-  local path="$1"
+  local path="$1" variant="${2:-}"
   may_write "${path}" || return 0
+  if [[ -n "${variant}" && -f "${fixtures}/${command_name}.${variant}.artifact" ]]; then
+    cat "${fixtures}/${command_name}.${variant}.artifact" > "${path}"
+    return 0
+  fi
   if [[ -f "${fixtures}/${command_name}.artifact" ]]; then
     cat "${fixtures}/${command_name}.artifact" > "${path}"
     return 0
@@ -358,18 +369,24 @@ case "${command_name}" in
     # Substring-matched for the same reason as the transcriber above: ALASS_BIN is configurable.
     #
     # `alass [options] <reference> <incorrect> <output>` — the corrected file is last, and the caller
-    # parses it. Absent a fixture the input subtitle is echoed through, which leaves the timings alone
-    # so a suite that is not testing the anchor sees no shift from it.
+    # parses it. The caller aligns each subtitle twice and compares the results, so the two runs are
+    # told apart by --no-split and answered from alass.nosplit.artifact and alass.split.artifact when
+    # the suite supplies them. Absent any fixture the input subtitle is echoed through, which leaves
+    # the timings alone, so a suite that is not testing the alignment itself sees no shift from it.
     if (( $# >= 3 )); then
       out=$(last_arg "$@")
       alass_args=("$@")
       in_sub="${alass_args[$#-2]}"
-      if [[ -f "${fixtures}/alass.artifact" ]]; then
-        write_artifact "${out}"
+      variant="split"
+      for arg in "$@"; do
+        [[ "${arg}" == "--no-split" || "${arg}" == "-l" ]] && variant="nosplit"
+      done
+      if [[ -f "${fixtures}/alass.${variant}.artifact" || -f "${fixtures}/alass.artifact" ]]; then
+        write_artifact "${out}" "${variant}"
       elif [[ -f "${in_sub}" ]]; then
         cat "${in_sub}" > "${out}"
       else
-        write_artifact "${out}"
+        write_artifact "${out}" "${variant}"
       fi
     fi
     ;;
