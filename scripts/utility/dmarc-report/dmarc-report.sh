@@ -928,7 +928,9 @@ print_failing_countries() {
 print_failing_sources() {
   local grouped
   grouped=$(group_failing_subnets)
-  [[ -n "${grouped}" ]] || return 0
+  # Tested by length rather than with [[ -n ]]: the coverage run traces conditionals by expanding
+  # them, so a multi-line list named in one is printed in full among the report's own output.
+  (( ${#grouped} > 0 )) || return 0
   if [[ "${_by_country}" == true ]]; then
     print_failing_countries "${grouped}"
     return 0
