@@ -100,6 +100,15 @@ with_tsv() {
 }
 
 ########################################
+# Prints the "messages ranges" cells of a country row from the last run.
+# Arguments:
+#   country: The country name, which must be a single word for this to find it.
+########################################
+country_row() {
+  printf '%s\n' "$output" | awk -v c="$1" '$3 == c {print $1, $2}'
+}
+
+########################################
 # Runs the script over the fixture directory.
 ########################################
 report() {
@@ -560,6 +569,7 @@ XML
   with_tsv 'print_flags || true'
   [[ "$output" == *"198.51.100.0/24"* ]]
   [[ "$output" == *"Ruritania"* ]]
+  [[ "$output" != *"Country lookup unavailable"* ]]
 }
 
 @test "an unavailable lookup says so rather than inventing a country" {
@@ -579,6 +589,96 @@ XML
   with_tsv 'geolocate_ips; echo done'
   [ "$output" = "done" ]
   [ "$(stub_calls curl)" -eq 0 ]
+}
+
+@test "no failing mail means no failing-source section at all" {
+  record_row example.com 1700000000 google.com 198.51.100.1 10 none pass pass example.com "" "" 1 1
+  with_tsv 'print_flags || true'
+  [[ "$output" != *"Failing source"* ]]
+}
+
+@test "--by-country totals the ranges of each country into one row" {
+  record_row example.com 1700000000 google.com 198.51.1.9 40 reject fail fail example.com "" "" 0 0
+  record_row example.com 1700000000 google.com 198.51.2.9 30 reject fail fail example.com "" "" 0 0
+  record_row example.com 1700000000 google.com 203.0.113.9 500 reject fail fail example.com "" "" 0 0
+  stub_outputs curl <<'JSON'
+[{"status":"success","country":"Ruritania","query":"198.51.1.9"},
+ {"status":"success","country":"Ruritania","query":"198.51.2.9"},
+ {"status":"success","country":"Freedonia","query":"203.0.113.9"}]
+JSON
+  with_tsv '_by_country=true; print_flags || true'
+  [[ "$output" == *"Failing sources by country"* ]]
+  [ "$(country_row Ruritania)" = "70 2" ]
+  [ "$(country_row Freedonia)" = "500 1" ]
+  [[ "$output" != *"Country lookup unavailable"* ]]
+  # The ranges themselves are what the option replaces, not something it prints as well.
+  [[ "$output" != *"198.51.1.0/24"* ]]
+}
+
+# The whole point of a country total is that it is the country's total. Resolving only the ranges a
+# range listing shows would print a slice of the volume as though it were all of it, so the cut has to
+# fall on countries, and this asserts it falls nowhere earlier.
+@test "--by-country totals every range, including those below the range cut" {
+  local i
+  for i in 1 2 3 4 5; do
+    record_row example.com 1700000000 google.com "198.51.$i.9" "$(( 10 * i ))" reject fail fail \
+      example.com "" "" 0 0
+  done
+  stub_outputs curl <<'JSON'
+[{"status":"success","country":"Ruritania","query":"198.51.1.9"},
+ {"status":"success","country":"Ruritania","query":"198.51.2.9"},
+ {"status":"success","country":"Ruritania","query":"198.51.3.9"},
+ {"status":"success","country":"Ruritania","query":"198.51.4.9"},
+ {"status":"success","country":"Ruritania","query":"198.51.5.9"}]
+JSON
+  with_tsv '_by_country=true; _top_n=2; print_flags || true'
+  [ "$(country_row Ruritania)" = "150 5" ]
+}
+
+@test "the country list is limited to the top N unless --all is given" {
+  record_row example.com 1700000000 google.com 203.0.113.9 500 reject fail fail example.com "" "" 0 0
+  record_row example.com 1700000000 google.com 198.51.1.9 90 reject fail fail example.com "" "" 0 0
+  record_row example.com 1700000000 google.com 192.0.2.9 7 reject fail fail example.com "" "" 0 0
+  stub_outputs curl <<'JSON'
+[{"status":"success","country":"Freedonia","query":"203.0.113.9"},
+ {"status":"success","country":"Ruritania","query":"198.51.1.9"},
+ {"status":"success","country":"Sylvania","query":"192.0.2.9"}]
+JSON
+  with_tsv '_by_country=true; _top_n=2; print_flags || true'
+  [ -n "$(country_row Freedonia)" ]
+  [ -n "$(country_row Ruritania)" ]
+  [ -z "$(country_row Sylvania)" ]
+
+  with_tsv '_by_country=true; _top_n=2; _show_all=true; print_flags || true'
+  [ "$(country_row Sylvania)" = "7 1" ]
+}
+
+@test "--by-country keeps ranges the lookup could not place, under unknown" {
+  record_row example.com 1700000000 google.com 198.51.1.9 40 reject fail fail example.com "" "" 0 0
+  record_row example.com 1700000000 google.com 203.0.113.9 5 reject fail fail example.com "" "" 0 0
+  stub_outputs curl <<'JSON'
+[{"status":"success","country":"Ruritania","query":"198.51.1.9"}]
+JSON
+  with_tsv '_by_country=true; print_flags || true'
+  [ "$(country_row Ruritania)" = "40 1" ]
+  [ "$(country_row unknown)" = "5 1" ]
+}
+
+@test "--by-country says an unavailable lookup rather than inventing countries" {
+  record_row example.com 1700000000 google.com 198.51.1.9 40 reject fail fail example.com "" "" 0 0
+  with_tsv '_by_country=true; print_flags || true'
+  [ "$(country_row unknown)" = "40 1" ]
+  [[ "$output" == *"Country lookup unavailable"* ]]
+}
+
+# Most real country names are one word; the ones that are not must not be read as further columns.
+@test "--by-country keeps a country name that has spaces in one cell" {
+  record_row example.com 1700000000 google.com 198.51.1.9 40 reject fail fail example.com "" "" 0 0
+  stub_outputs curl <<'JSON'
+[{"status":"success","country":"United Ruritanian States","query":"198.51.1.9"}]
+JSON
+  with_tsv '_by_country=true; print_flags || true'
+  [[ "$output" == *"1  United Ruritanian States"* ]]
 }
 
 # --- End to end --------------------------------------------------------------------------------
@@ -608,6 +708,18 @@ XML
   report
   [ "$status" -eq 0 ]
   [[ "$output" == *"[SPOOFING]"* ]]
+}
+
+@test "--by-country replaces the range listing from the command line" {
+  report_xml "$REPORTS/r.xml" strict.example reject google.com 1700000000 \
+    "$(record_xml 203.0.113.9 900 reject fail fail strict.example)"
+  report --by-country
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Failing sources by country"* ]]
+  [[ "$output" != *"Failing source ranges"* ]]
+
+  report -b
+  [[ "$output" == *"Failing sources by country"* ]]
 }
 
 @test "a directory of only unparseable reports is an error" {

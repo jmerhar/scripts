@@ -17,7 +17,8 @@
 #     SPF/DKIM temperror/permerror (DNS/config faults), aligned mail that was
 #     nonetheless quarantined/rejected, and the volume/top sources of outright
 #     spoofing (unauthenticated forgeries the policy is rejecting), grouped into
-#     subnets and annotated with a best-effort country per range.
+#     subnets and annotated with a best-effort country per range, or totalled by
+#     country instead when that is the more useful shape.
 #
 # The distinction the report leans on throughout:
 #   - "aligned pass"  = the receiver's policy_evaluated dkim OR spf is "pass"
@@ -47,6 +48,7 @@ source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/program.sh"
 # --- Global State (option flags) ---
 _no_color=false
 _show_all=false          # List every failing source, not just the top offenders.
+_by_country=false        # Total the failing sources by country rather than listing ranges.
 _target_dir="."
 
 # Fail-rate (percent of messages failing DMARC) at or above which the summary is
@@ -87,7 +89,11 @@ Aggregate a folder of DMARC RUA reports (.xml.gz, .zip, or .xml) into one
 overall report and flag anything potentially problematic.
 
 Options:
-  -a, --all             List every failing source range, not just the top ${_top_n}.
+  -a, --all             List every failing source range, not just the top ${_top_n}
+                        (with --by-country, every country rather than the top ${_top_n}).
+  -b, --by-country      Total the failing source ranges by country, one row per
+                        country with its message and range counts, instead of
+                        listing the ranges individually.
   -w, --warn-rate PCT   Annotate the summary when the DMARC fail rate reaches
                         PCT percent (0-100; default ${_warn_rate}). Informational only.
   -C, --no-color        Disable colored output.
@@ -105,7 +111,7 @@ EOF
 ########################################
 # Parses command-line arguments into global option flags.
 # Globals:
-#   _show_all, _warn_rate, _no_color, _target_dir
+#   _show_all, _by_country, _warn_rate, _no_color, _target_dir
 # Arguments:
 #   Command-line arguments passed to the script.
 ########################################
@@ -116,6 +122,10 @@ parse_options() {
     case "$1" in
       -a|--all)
         _show_all=true
+        shift
+        ;;
+      -b|--by-country)
+        _by_country=true
         shift
         ;;
       -w|--warn-rate)
@@ -714,7 +724,9 @@ analyze_flags() {
 # free ip-api.com batch endpoint. Requires curl and jq; if either is missing, the
 # network is unavailable, or the service errors, it simply returns nothing so the
 # caller can render ranges without a country. Addresses are queried in batches of
-# 100 (the endpoint's per-request limit).
+# 100 (the endpoint's per-request limit); the free tier also caps requests per
+# minute, so resolving a large archive can return only part of what it was asked
+# about, which callers render as an unknown country rather than as an error.
 # Globals:
 #   None
 # Arguments:
@@ -753,10 +765,182 @@ geolocate_ips() {
 }
 
 ########################################
-# Renders the flags section from the accumulated flag lines, grouped by
-# category, and prints the top failing source ranges with their country.
+# Groups the failing records into source subnets, busiest first.
+#
+# Subnets (/24 for IPv4, /64 for IPv6) rather than addresses, so a provider's
+# block reads as one line instead of as a hundred near-identical ones.
 # Globals:
-#   _flags_file, _records_tsv, _show_all, _top_n, colors.
+#   _records_tsv
+# Arguments:
+#   None
+# Outputs:
+#   "messages<TAB>subnet<TAB>representative-ip" lines, busiest first. The
+#   representative is a real address seen in the data, so a country lookup
+#   answers for it instead of failing on a network address nothing is assigned.
+########################################
+group_failing_subnets() {
+  local prog
+  prog=$(load_program failing-subnets.awk)  # @embed failing-subnets.awk
+  awk -F'\t' "${prog}" "${_records_tsv}" | sort -t$'\t' -k1,1nr
+}
+
+########################################
+# Resolves the representative address of each grouped range to a country.
+# Globals:
+#   None
+# Arguments:
+#   grouped: Grouped-subnet lines, as group_failing_subnets prints them.
+# Outputs:
+#   "ip<TAB>country" lines for the representatives the lookup could place, and
+#   nothing at all when it is unavailable.
+########################################
+lookup_range_countries() {
+  local grouped="$1"
+  local -a reps=()
+  local msgs subnet rep
+  while IFS=$'\t' read -r msgs subnet rep; do
+    [[ -n "${rep}" ]] && reps+=("${rep}")
+  done <<<"${grouped}"
+  (( ${#reps[@]} > 0 )) || return 0
+  geolocate_ips "${reps[@]}"
+}
+
+########################################
+# Notes that the country lookup did not answer, so that a column of "unknown"
+# reads as a missing lookup rather than as addresses nothing could place.
+# Globals:
+#   colors.
+# Arguments:
+#   resolved: How many representatives the lookup placed.
+# Outputs:
+#   The note on stdout, or nothing when the lookup answered.
+########################################
+print_lookup_note() {
+  (( $1 == 0 )) || return 0
+  local unavailable="Country lookup unavailable (offline, or curl/jq missing)."
+  printf '  %s%s%s\n' "${_C_DIM}" "${unavailable}" "${_C_RESET}"
+}
+
+########################################
+# Prints the failing source ranges, busiest first, each annotated with a
+# best-effort country.
+#
+# Only the ranges that are actually listed are looked up: the country is a
+# per-row annotation here, so resolving the ranges below the cut would pay a
+# request for something nothing prints.
+# Globals:
+#   _show_all, _top_n, colors.
+# Arguments:
+#   grouped: Grouped-subnet lines, as group_failing_subnets prints them.
+# Outputs:
+#   The heading and table on stdout.
+########################################
+print_failing_ranges() {
+  local grouped="$1"
+  local limit_label="top ${_top_n}"
+  [[ "${_show_all}" == true ]] && limit_label="all"
+  [[ "${_show_all}" == true ]] || grouped=$(head -n "${_top_n}" <<<"${grouped}")
+  heading "Failing source ranges (${limit_label})"
+
+  local -A country=()
+  local ip name
+  while IFS=$'\t' read -r ip name; do
+    [[ -n "${ip}" ]] && country["${ip}"]="${name}"
+  done < <(lookup_range_countries "${grouped}")
+
+  printf '  %s%8s  %-20s %s%s\n' "${_C_DIM}" "messages" "range" "country" "${_C_RESET}"
+  local msgs subnet rep
+  while IFS=$'\t' read -r msgs subnet rep; do
+    [[ -n "${subnet}" ]] || continue
+    local msgs_cell range_cell
+    msgs_cell=$(printf '%8d' "${msgs}")
+    range_cell=$(printf '%-20s %s' "${subnet}" "${country["${rep}"]:-unknown}")
+    printf '  %s%s%s  %s\n' "${_C_YELLOW}" "${msgs_cell}" "${_C_RESET}" "${range_cell}"
+  done <<<"${grouped}"
+
+  print_lookup_note "${#country[@]}"
+}
+
+########################################
+# Prints failing message volume grouped by country, busiest first.
+#
+# Every range is looked up, not just the ones a range listing shows: a country
+# total computed from an arbitrary top slice of ranges is a smaller number
+# presented as a complete one, so the limit applies to the countries printed
+# rather than to the ranges behind them. Ranges the lookup does not place are
+# collected under "unknown", which keeps their volume in the table rather than
+# quietly attributing it to the countries that did resolve.
+# Globals:
+#   _show_all, _top_n, colors.
+# Arguments:
+#   grouped: Grouped-subnet lines, as group_failing_subnets prints them.
+# Outputs:
+#   The heading and table on stdout.
+########################################
+print_failing_countries() {
+  local grouped="$1"
+  local limit_label="top ${_top_n}"
+  [[ "${_show_all}" == true ]] && limit_label="all"
+  heading "Failing sources by country (${limit_label})"
+
+  local -A country=()
+  local ip name
+  while IFS=$'\t' read -r ip name; do
+    [[ -n "${ip}" ]] && country["${ip}"]="${name}"
+  done < <(lookup_range_countries "${grouped}")
+
+  # One "messages<TAB>country" row per range, which is what the totalling program adds up.
+  local attributed=""
+  local msgs subnet rep
+  while IFS=$'\t' read -r msgs subnet rep; do
+    [[ -n "${subnet}" ]] || continue
+    attributed+="${msgs}"$'\t'"${country["${rep}"]:-unknown}"$'\n'
+  done <<<"${grouped}"
+
+  # Equal volumes are ordered by name, since the totals arrive in no order of their own.
+  local prog totals
+  prog=$(load_program country-totals.awk)  # @embed country-totals.awk
+  totals=$(awk -F'\t' "${prog}" <<<"${attributed}" | sort -t$'\t' -k1,1nr -k3,3)
+  [[ "${_show_all}" == true ]] || totals=$(head -n "${_top_n}" <<<"${totals}")
+
+  printf '  %s%8s  %6s  %s%s\n' "${_C_DIM}" "messages" "ranges" "country" "${_C_RESET}"
+  local ranges place
+  while IFS=$'\t' read -r msgs ranges place; do
+    [[ -n "${place}" ]] || continue
+    local msgs_cell
+    msgs_cell=$(printf '%8d' "${msgs}")
+    printf '  %s%s%s  %6d  %s\n' "${_C_YELLOW}" "${msgs_cell}" "${_C_RESET}" "${ranges}" "${place}"
+  done <<<"${totals}"
+
+  print_lookup_note "${#country[@]}"
+}
+
+########################################
+# Prints the failing-source section: the individual ranges, or their volume
+# grouped by country when asked for that instead.
+# Globals:
+#   _by_country
+# Arguments:
+#   None
+# Outputs:
+#   The heading and table on stdout, or nothing when no mail failed.
+########################################
+print_failing_sources() {
+  local grouped
+  grouped=$(group_failing_subnets)
+  [[ -n "${grouped}" ]] || return 0
+  if [[ "${_by_country}" == true ]]; then
+    print_failing_countries "${grouped}"
+    return 0
+  fi
+  print_failing_ranges "${grouped}"
+}
+
+########################################
+# Renders the flags section from the accumulated flag lines, grouped by
+# category, then the failing sources beneath it.
+# Globals:
+#   _flags_file, colors.
 # Arguments:
 #   None
 # Returns:
@@ -788,55 +972,7 @@ print_flags() {
     done
   fi
 
-  # Failing source ranges (spoofing pressure / offenders), grouped into subnets
-  # (/24 for IPv4, /64 for IPv6) so a provider's block reads as one line, each
-  # annotated with a best-effort country for its busiest address.
-  local n_fail
-  n_fail=$(awk -F'\t' '$12 == 0' "${_records_tsv}" | wc -l | tr -d ' ')
-  if (( n_fail > 0 )); then
-    local limit_label="top ${_top_n}"
-    [[ "${_show_all}" == true ]] && limit_label="all"
-    heading "Failing source ranges (${limit_label})"
-
-    # msgs <tab> subnet <tab> representative-ip (the busiest IP in the subnet),
-    # sorted by message volume. The representative is a real, routable address so
-    # geolocation is accurate rather than querying a synthetic network address.
-    local grouped
-    local prog
-    prog=$(load_program failing-subnets.awk)  # @embed failing-subnets.awk
-    grouped=$(awk -F'\t' "${prog}" "${_records_tsv}")
-    grouped=$(sort -t$'\t' -k1,1nr <<<"${grouped}")
-    [[ "${_show_all}" != true ]] && grouped=$(head -n "${_top_n}" <<<"${grouped}")
-
-    # Collect the representative IPs and resolve them to countries in one batch.
-    local -a reps=()
-    local msgs subnet rep
-    while IFS=$'\t' read -r msgs subnet rep; do
-      [[ -n "${rep}" ]] && reps+=("${rep}")
-    done <<<"${grouped}"
-
-    local -A country=()
-    if (( ${#reps[@]} > 0 )); then
-      local ip name
-      while IFS=$'\t' read -r ip name; do
-        [[ -n "${ip}" ]] && country["${ip}"]="${name}"
-      done < <(geolocate_ips "${reps[@]}")
-    fi
-
-    printf '  %s%8s  %-20s %s%s\n' "${_C_DIM}" "messages" "range" "country" "${_C_RESET}"
-    while IFS=$'\t' read -r msgs subnet rep; do
-      [[ -n "${subnet}" ]] || continue
-      local msgs_cell range_cell
-      msgs_cell=$(printf '%8d' "${msgs}")
-      range_cell=$(printf '%-20s %s' "${subnet}" "${country["${rep}"]:-unknown}")
-      printf '  %s%s%s  %s\n' "${_C_YELLOW}" "${msgs_cell}" "${_C_RESET}" "${range_cell}"
-    done <<<"${grouped}"
-
-    if (( ${#reps[@]} > 0 && ${#country[@]} == 0 )); then
-      local unavailable="Country lookup unavailable (offline, or curl/jq missing)."
-      printf '  %s%s%s\n' "${_C_DIM}" "${unavailable}" "${_C_RESET}"
-    fi
-  fi
+  print_failing_sources
 
   # Only actionable categories drive a nonzero exit.
   local prog
