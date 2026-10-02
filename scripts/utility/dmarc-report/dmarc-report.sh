@@ -757,7 +757,11 @@ geolocate_ips() {
     curl_args+=(-d "${request}")
     curl_args+=('http://ip-api.com/batch?fields=status,country,query')
     response=$(curl "${curl_args[@]}" 2>/dev/null || true)
-    [[ -n "${response}" ]] || continue
+    # Tested by length, unlike the request above: a service may answer with JSON across several lines,
+    # and the coverage run traces a command by expanding it, so a multi-line value named in [[ ]] has
+    # its remaining lines printed among this script's own output. The request cannot: jq -c emits one
+    # line. Nothing else here depends on the difference.
+    (( ${#response} > 0 )) || continue
 
     local filter='.[] | select(.status == "success" and .country != "") | "\(.query)\t\(.country)"'
     jq -r "${filter}" <<<"${response}" 2>/dev/null || true
