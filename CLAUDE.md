@@ -431,6 +431,20 @@ either. The one
 shape neither can help is a multi-line quoted argument with no file to move to, which is what
 dmarc-report's two `xmllint --xpath` expressions are.
 
+**No `[[ ]]` test names a value that can contain a newline, and that is a rule too.** kcov measures bash
+by turning on xtrace with a marker `PS4`, reading that stream and passing everything else through — but
+only the first physical line of a trace entry carries the marker. Bash renders an argument to a *simple*
+command with ANSI-C quoting, which keeps it on one line, and renders `[[ ]]` operands raw; so a multi-line
+value inside `[[ ]]` has its second and later lines escape to stderr, where bats' `run` merges them into
+`$output` and they read as output the script produced. Every form of the test leaks — `-n`, `-z`, `==`,
+`!=`, `=~`, a compound test, and a `$(...)` substitution written inside the brackets. `test`, `[ ]` and
+`case` do not, and neither does arithmetic over a length. So an emptiness check on accumulated output is
+written `(( ${#var} == 0 ))`, and a pattern match on one is written with `case`; **do not "simplify"
+either back to `[[ ]]`**, which reintroduces the leak silently and only in the coverage job. Nothing in
+`make lint` catches this — the shape is undecidable statically, since it turns on whether a value happens
+to span lines — so `make coverage` is the only gate, and a green `make check` is not evidence for a change
+that adds such a test. It has already cost one red build, in dmarc-report's `--by-country`.
+
 `--exclude-pattern` keeps `.conf` files and every README out of the measurement entirely, because
 kcov's bash parser reads an ordinary prose line as code. Do not reach for `--exclude-line` or
 `--exclude-region` instead: in this build they also disable `--include-path`, and the figure stops meaning

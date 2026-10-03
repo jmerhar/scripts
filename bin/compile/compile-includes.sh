@@ -125,10 +125,13 @@ embed_program() {
   local program
   program=$(cat "${resolved_path}")
 
-  if [[ "${program}" == *"'"* ]]; then
-    log_error "${resolved_path} contains a single quote, which cannot be embedded in the published script."
-    exit 1
-  fi
+  # case rather than [[ ]]: a multi-line value inside [[ ]] is echoed by the coverage trace.
+  case "${program}" in
+    *"'"*)
+      log_error "${resolved_path} contains a single quote, which cannot be embedded in the published script."
+      exit 1
+      ;;
+  esac
 
   printf "%s='%s'\n" "${assignment_prefix}" "${program}"
 }

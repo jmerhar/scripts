@@ -202,11 +202,15 @@ main() {
   # A message that picked up a stray line would be written as a multi-line value, which $GITHUB_OUTPUT
   # rejects — and the two downstream pushes are skipped when that output is empty, so the failure is a
   # release that packages and then publishes nowhere. Refused here instead, where it names the cause.
-  if [[ "${message}" != "${message%%$'\n'*}" ]]; then
-    log_error "The commit message is not a single line; something wrote to stdout:"
-    printf '%s\n' "${message}" >&2
-    exit 1
-  fi
+  # Matched with case, not [[ ]]: the value this rejects is multi-line by definition, and such a value
+  # inside [[ ]] is echoed by the coverage trace.
+  case "${message}" in
+    *$'\n'*)
+      log_error "The commit message is not a single line; something wrote to stdout:"
+      printf '%s\n' "${message}" >&2
+      exit 1
+      ;;
+  esac
 
   printf '%s\n' "${message}"
   if [[ -n "${GITHUB_OUTPUT:-}" ]]; then

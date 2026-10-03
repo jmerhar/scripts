@@ -271,7 +271,8 @@ deluge_rpc() {
   # can still return 200 with an empty or non-JSON body. Validate before parsing
   # so a misconfiguration produces a clear message instead of a raw jq error
   # (which, under errexit, would otherwise abort the whole script).
-  if [[ -z "${response}" ]] || ! jq -e . >/dev/null 2>&1 <<<"${response}"; then
+  # Length rather than [[ -z ]]: a multi-line value inside [[ ]] is echoed by the coverage trace.
+  if (( ${#response} == 0 )) || ! jq -e . >/dev/null 2>&1 <<<"${response}"; then
     log_error "Deluge returned an empty or non-JSON response (method: ${method}). Is DELUGE_URL the Web UI /json endpoint?"
     return 1
   fi
@@ -744,12 +745,14 @@ main() {
   strays=$(compute_strays "${status}")
   n_strays=$(jq 'length' <<<"${strays}")
 
-  if [[ -z "${candidates}" && "${n_strays}" -eq 0 ]]; then
+  # Length rather than [[ -z ]]: a multi-line value inside [[ ]] is echoed by the coverage trace.
+  if (( ${#candidates} == 0 )) && [[ "${n_strays}" -eq 0 ]]; then
     printf '%s\n' "${_C_BRIGHT_GREEN}Nothing to prune: every orphaned file belongs to a torrent still seeding wanted media.${_C_RESET}"
     exit 0
   fi
 
-  if [[ -n "${candidates}" ]]; then
+  # Length rather than [[ -n ]]: a multi-line value inside [[ ]] is echoed by the coverage trace.
+  if (( ${#candidates} > 0 )); then
     prompt_and_remove "${candidates}"
   fi
 

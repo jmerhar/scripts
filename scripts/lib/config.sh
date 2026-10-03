@@ -156,7 +156,8 @@ validate_config() {
           attributes="${attributes%% *}"
         fi
 
-        if [[ -z "${declaration}" ]]; then
+        # Length rather than [[ -z ]]: a multi-line value inside [[ ]] is echoed by the coverage trace.
+        if (( ${#declaration} == 0 )); then
           log_error "Required setting '${var_name}' is missing or empty."
           has_errors=true
         elif [[ "${attributes}" != *[aA]* ]]; then

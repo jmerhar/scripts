@@ -132,9 +132,12 @@ check_jq() {
   if (( status == 2 || status == 3 )); then
     log_error "${path#"${REPO_ROOT}/"} is not valid jq:"
     printf '%s\n' "${output}" >&2
-    if [[ "${output}" == *"is not defined"* ]]; then
-      log_error "Declare it in a '# lint-args:' header naming the --arg values this filter expects."
-    fi
+    # case rather than [[ ]]: a multi-line value inside [[ ]] is echoed by the coverage trace.
+    case "${output}" in
+      *"is not defined"*)
+        log_error "Declare it in a '# lint-args:' header naming the --arg values this filter expects."
+        ;;
+    esac
     return 1
   fi
 }

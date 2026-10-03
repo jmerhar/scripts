@@ -181,7 +181,8 @@ check_published() {
     return 0
   fi
   published=$("${DOCKER_BIN}" ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep -E ":${port}->" || true)
-  if [[ -z "${published}" ]]; then
+  # Length rather than [[ -z ]]: a multi-line value inside [[ ]] is echoed by the coverage trace.
+  if (( ${#published} == 0 )); then
     log_info "no running container publishes ${port} yet; adding the rule anyway."
     return 0
   fi
@@ -237,7 +238,8 @@ run_ufw() {
 list_rules() {
   local rules
   rules=$(ufw status numbered | grep -E 'ALLOW FWD' || true)
-  if [[ -z "${rules}" ]]; then
+  # Length rather than [[ -z ]]: a multi-line value inside [[ ]] is echoed by the coverage trace.
+  if (( ${#rules} == 0 )); then
     log_info "no forwarded allow rules."
     return 0
   fi

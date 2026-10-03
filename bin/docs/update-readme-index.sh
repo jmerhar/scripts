@@ -267,7 +267,8 @@ build_index() {
   local name block first=true
   while IFS= read -r name; do
     block=$(emit_script "${name}" "${link_mode}" "${topic}" "${platform_note}")
-    [[ -z "${block}" ]] && continue
+    # Length rather than [[ -z ]]: a multi-line value inside [[ ]] is echoed by the coverage trace.
+    (( ${#block} == 0 )) && continue
     if [[ "${first}" == true ]]; then
       first=false
     else

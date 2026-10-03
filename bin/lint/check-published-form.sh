@@ -72,26 +72,28 @@ check_self_contained() {
   local rel="$1"
   local compiled
   compiled="${WORK}/$(basename "${rel}")"
+  # Each `found` below holds grep output, so every test of it goes by length: a multi-line value inside
+  # [[ ]] is echoed by the coverage trace.
   local failed=0 found
 
   # A real directive is an assignment, so a line whose first non-blank character is `#` is documentation
   # and not a leftover — the shared library documents the mechanism it implements.
   found=$(grep -nE '^[[:space:]]*[^#[:space:]][^=]*=\$\(load_program[[:space:]]' "${compiled}" || true)
-  if [[ -n "${found}" ]]; then
+  if (( ${#found} > 0 )); then
     log_error "${rel} still reads a program at run time:"
     printf '%s\n' "${found}" >&2
     failed=1
   fi
 
   found=$(grep -nE '^[[:space:]]*#[[:space:]]*@(include|embed)[[:space:]]' "${compiled}" || true)
-  if [[ -n "${found}" ]]; then
+  if (( ${#found} > 0 )); then
     log_error "${rel} still carries an unprocessed directive:"
     printf '%s\n' "${found}" >&2
     failed=1
   fi
 
   found=$(grep -nE '^[[:space:]]*(source|\.)[[:space:]]+.*lib/common\.sh' "${compiled}" || true)
-  if [[ -n "${found}" ]]; then
+  if (( ${#found} > 0 )); then
     log_error "${rel} still sources the shared library:"
     printf '%s\n' "${found}" >&2
     failed=1
