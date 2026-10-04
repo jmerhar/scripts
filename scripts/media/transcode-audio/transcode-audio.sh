@@ -386,7 +386,10 @@ transcode_file() {
   local -a command=(ffmpeg -nostdin -v error -y -i "${file}")
   command+=(-map 0 -c copy -c:a "${_format}")
   command+=("${rates[@]+"${rates[@]}"}")
-  command+=(-map_chapters 0 "${temp}")
+  # The container is named rather than left to the extension. ffmpeg chooses a muxer from the output
+  # file's suffix, and the file being written ends in .partial so that an interrupted encode cannot
+  # leave a finished name on a half-written file -- a suffix no muxer corresponds to.
+  command+=(-map_chapters 0 -f matroska "${temp}")
   log_debug "Running: ${command[*]}"
 
   if ! "${command[@]}"; then

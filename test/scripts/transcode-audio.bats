@@ -445,3 +445,18 @@ probe_audio() {
   run cat "$LIB/movie.AC3.CC.mkv"
   [ "$output" = "existing" ]
 }
+
+# --- The output container -----------------------------------------------------------------------
+
+# ffmpeg picks its muxer from the output file's suffix, and the file being written ends in .partial so
+# that an interrupted encode cannot leave a finished name on a half-written file. Without the format
+# named, ffmpeg refuses that suffix with "Unable to choose an output format" and every real file fails
+# -- which a stubbed ffmpeg cannot reproduce, so the flag is asserted directly.
+@test "the output container is named rather than left to the temporary file's suffix" {
+  film movie.mkv
+  probe_audio movie.mkv eac3:6
+  probe_audio movie.AC3.CC.mkv.partial ac3:6
+  run_script "$SCRIPT" --yes "$LIB"
+  [ "$status" -eq 0 ]
+  stub_called 'ffmpeg .*-f matroska'
+}
