@@ -61,6 +61,12 @@ Warns while a Mac is filling up — swap growing and memory use climbing — rat
 
 _(macOS only)_
 
+### [`modernize-video`](scripts/photography/modernize-video/)
+
+Converts video from old cameras (MJPEG, Indeo, MPEG-1, H.263 in AVI, MPG, 3GP or MOV) to H.264/AAC MP4, carrying the capture date across into the fields a photo service reads so the result lands in the right place in a timeline rather than at the moment it was uploaded. Decides what each file needs from the codecs it holds: already-modern files are reported and left alone, and streams that are already fine are rewrapped without re-encoding.
+
+`bash 4.0+` · deps: `ffmpeg`, `jq`
+
 ### [`nopasswd-sudo`](scripts/system/nopasswd-sudo/)
 
 Toggles temporary passwordless sudo for a user, with an in-session auto-revoke timer and a boot-time safety net so it never stays enabled by accident.

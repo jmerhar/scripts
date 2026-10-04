@@ -35,6 +35,21 @@ if stat -c '%s' / &> /dev/null; then
   stat_mtime() { stat -c '%Y' "$1"; }
 
   ########################################
+  # Prints a file's modification time as a local wall clock, "YYYY-MM-DDTHH:MM:SS".
+  #
+  # Separate from stat_mtime because a caller writing a capture date into a file needs the broken-down
+  # local time, and turning an epoch into one needs `date -d @N` on GNU against `date -r N` on BSD — a
+  # second split, where stat can answer directly on both.
+  # Arguments:
+  #   path: File to inspect.
+  # Outputs:
+  #   The time, or nothing when the file cannot be read.
+  # Returns:
+  #   Non-zero when stat fails.
+  ########################################
+  stat_mtime_iso() { stat -c '%y' "$1" | cut -c1-19 | tr ' ' 'T'; }
+
+  ########################################
   # Prints how many names a file has, which is 1 for an ordinary file.
   #
   # A caller about to rewrite a file needs this: replacing it puts the new content on a new inode, so
@@ -47,6 +62,7 @@ if stat -c '%s' / &> /dev/null; then
 else
   stat_size() { stat -f '%z' "$1"; }
   stat_mtime() { stat -f '%m' "$1"; }
+  stat_mtime_iso() { stat -f '%Sm' -t '%Y-%m-%dT%H:%M:%S' "$1"; }
   stat_links() { stat -f '%l' "$1"; }
 fi
 

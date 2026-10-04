@@ -136,7 +136,7 @@ and using what it sources. See [`bin/README.md`](bin/README.md).
 | `config.sh` | `load_config`, `load_optional_config`, `validate_config` — needs `core.sh` |
 | `program.sh` | `load_program` — needs `core.sh` |
 | `colors.sh` | the `_C_*` palette and `setup_colors <wanted>` |
-| `platform.sh` | `stat_size`, `stat_mtime`, `file_checksum`, `has_checksum_tool` — the GNU/BSD differences |
+| `platform.sh` | `stat_size`, `stat_mtime`, `stat_mtime_iso`, `stat_links`, `file_checksum`, `has_checksum_tool` — the GNU/BSD differences |
 | `prompt.sh` | `prompt_line` and `prompt_key` — needs `colors.sh` |
 | `lang.sh` | the ISO 639 table, `normalize_lang`, `lang_from_tokens` |
 | `cli.sh` | `die_usage`, `require_option_value`, `reject_positionals` — needs `core.sh` |

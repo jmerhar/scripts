@@ -83,6 +83,13 @@ scripts:
     dependencies:
       common: [rsync]
 
+  modernize-video:
+    path: scripts/photography/modernize-video/modernize-video.sh
+    description: "Converts video from old cameras (MJPEG, Indeo, MPEG-1, H.263 in AVI, MPG, 3GP or MOV) to H.264/AAC MP4, carrying the capture date across into the fields a photo service reads so the result lands in the right place in a timeline rather than at the moment it was uploaded. Decides what each file needs from the codecs it holds: already-modern files are reported and left alone, and streams that are already fine are rewrapped without re-encoding."
+    min_bash: "4.0"       # ${var,,}
+    dependencies:
+      common: [ffmpeg, jq]
+
   remove-sidecars:
     path: scripts/photography/remove-sidecars/remove-sidecars.sh
     description: 'A script to find and delete "sidecar" files when a corresponding RAW photo file exists.'
