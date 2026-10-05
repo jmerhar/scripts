@@ -13,7 +13,7 @@
 # reorganised a name would be a rename nobody could review.
 #
 # Usage:
-#   ./normalize-release-names.sh [OPTIONS] [PATH]
+#   ./normalize-release-names.sh [OPTIONS] PATH
 
 set -o errexit
 set -o nounset
@@ -42,7 +42,8 @@ _assume_yes=false
 _no_color=false
 _recursive=false
 _keep_case=false
-_target="."
+# No default: the directory whose files get renamed is named rather than assumed.
+_target=""
 
 # Extensions considered. Subtitles are included because a sidecar has to keep matching the video it
 # belongs to, and renaming one without the other is what breaks the pairing.
@@ -72,13 +73,13 @@ _rename_all=false
 ########################################
 show_usage() {
   cat <<EOF
-Usage: ${SCRIPT_NAME} [OPTIONS] [PATH]
+Usage: ${SCRIPT_NAME} [OPTIONS] PATH
 
 Bring episode filenames to one spelling: dots for separators, lower case, and the
 season and episode as S01E02.
 
 PATH is a directory, and only its own files are renamed unless --recursive says
-otherwise. If it is omitted, the current directory is used.
+otherwise. It is required; pass "." for the current directory.
 
 Options:
   -r, --recursive   Descend into subdirectories.
@@ -152,9 +153,10 @@ parse_options() {
   if [[ ${#positional[@]} -gt 1 ]]; then
     die_usage "Expected at most one directory argument, got ${#positional[@]}."
   fi
-  if [[ ${#positional[@]} -eq 1 ]]; then
-    _target="${positional[0]}"
+  if [[ ${#positional[@]} -eq 0 ]]; then
+    die_usage "A path is required. Pass '.' to rename in the current directory."
   fi
+  _target="${positional[0]}"
 }
 
 ########################################
@@ -338,11 +340,18 @@ scan_target() {
   [[ "${_recursive}" == true ]] || find_args+=(-maxdepth 1)
   find_args+=(-type f -print0)
 
+  # Announced before the walk, which with --recursive on a large tree takes long enough to look
+  # like a hang.
+  printf '%s\n' "${_C_DIM}Searching $(cd "${_target}" && pwd -P) for files to rename...${_C_RESET}"
+
   local found
   while IFS= read -r -d '' found; do
     [[ -L "${found}" ]] && continue
     files+=("${found}")
   done < <(find "${find_args[@]}" | sort -z)
+
+  # Before the first prompt, because that prompt offers "all" and its size has to be known to answer.
+  printf '%s\n\n' "${_C_BOLD}Found ${#files[@]} file(s) to examine.${_C_RESET}"
 
   local file status
   for file in "${files[@]+"${files[@]}"}"; do

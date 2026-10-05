@@ -19,10 +19,10 @@ A folder of episodes acquired from different places is spelled several ways: spa
 ### Usage
 
 ```bash
-normalize-release-names [OPTIONS] [PATH]
+normalize-release-names [OPTIONS] PATH
 ```
 
-Only the given directory's own files are renamed unless `--recursive` is passed. If no directory is given, the current directory is used.
+Only the given directory's own files are renamed unless `--recursive` is passed. `PATH` is required; pass `.` for the current directory.
 
 ```bash
 # See what it would do:

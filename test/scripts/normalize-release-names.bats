@@ -288,3 +288,30 @@ names() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"Expected at most one directory argument, got 2."* ]]
 }
+
+# --- Naming the target ---------------------------------------------------------------------------
+
+# The directory whose files get renamed is named rather than assumed.
+@test "no path at all is refused, rather than defaulting to the current directory" {
+  run_script "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"A path is required"* ]]
+  [[ "$output" == *"Usage:"* ]]
+}
+
+@test "a path of . is accepted" {
+  cd "$DIR"
+  file "Show.S01E01.mkv"
+  run_script "$SCRIPT" --yes .
+  [ "$status" -eq 0 ]
+}
+
+# The prompt offers "all" on the first file, so the size of "all" has to be known before answering it.
+@test "the directory searched and the file count are reported before any prompt" {
+  file "Show S01E01.mkv"
+  file "Show S01E02.mkv"
+  run_script "$SCRIPT" --yes "$DIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Searching"* ]]
+  [[ "$output" == *"2 file(s) to examine"* ]]
+}
