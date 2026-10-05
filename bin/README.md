@@ -17,6 +17,7 @@ The tools are grouped by concern, one subdirectory each:
 | [`package/`](package/) | Packaging, the release smoke test, the release orchestrator, and the downstream push |
 | [`docs/`](docs/) | The README index generator (one file and every file) |
 | [`coverage/`](coverage/) | The kcov coverage runner, and the script it runs inside the container |
+| [`test/`](test/) | The bats suite runner, which parallelises across cores when GNU parallel is installed |
 | [`_lib/`](_lib/) | Shared path resolution and logging, sourced (not run) by the tools above |
 
 Each group directory has its own README describing the scripts it holds; `_lib/` is

@@ -60,18 +60,15 @@ docs-check: ## Fail if any README index section is out of date
 	@bin/docs/update-all-indexes.sh --check
 
 test: ## Run the bats suite
-	bats --recursive test/
+	bin/test/run-suite.sh
 
 # The suite passing locally is not the same as it passing in CI, and the difference has bitten repeatedly:
 # GITHUB_ACTIONS is set for the whole job, so a test asserting no annotations must clear it; and the
 # runners' git defaults to `master` where a developer's may default to `main`, which changes what a bare
-# fixture repository's HEAD points at. This runs the suite with both, so that class of failure surfaces
-# before a push rather than after.
+# fixture repository's HEAD points at. run-suite.sh --ci applies that environment, so the class of
+# failure surfaces before a push rather than after.
 test-ci: ## Run the suite with the environment CI has
-	GITHUB_ACTIONS=true \
-	GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=init.defaultBranch GIT_CONFIG_VALUE_0=master \
-	JUNIT_DIR=junit \
-	bats --recursive test/
+	bin/test/run-suite.sh --ci
 
 # Measured in the pinned kcov container, even locally: kcov's macOS build ignores the shebang and execs
 # /bin/bash, which is 3.2, and most of these scripts need 4.0 or newer. run-coverage.sh detects that and

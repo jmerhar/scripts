@@ -38,7 +38,7 @@ scripts/system/
     README.md
 ```
 
-- `bin/` — Internal CI/CD tooling, subdivided by concern into `lint/`, `compile/`, `package/`, `docs/`, `coverage/`, with a shared `_lib/` (path resolution and logging) sourced by each tool. Not published as packages. See [`bin/README.md`](bin/README.md).
+- `bin/` — Internal CI/CD tooling, subdivided by concern into `lint/`, `compile/`, `package/`, `docs/`, `coverage/`, `test/`, with a shared `_lib/` (path resolution and logging) sourced by each tool. Not published as packages. See [`bin/README.md`](bin/README.md).
 - `test/` — bats suites, the shared test helper, and the command stubs. Not published as packages.
 - `scripts.yaml` — Central manifest defining all publishable scripts, their metadata, and dependencies.
 
@@ -286,8 +286,8 @@ repository root and the stub directory from the **helper's** location, exported 
 against that rather than `BATS_TEST_DIRNAME`, which is the suite's own directory and a level deeper.
 
 ```bash
-make test      # the suite
-make test-ci   # the suite with the environment the runners have
+make test      # the suite, across every core when GNU parallel is installed
+make test-ci   # the same with the environment the runners have
 make lint      # ShellCheck, the manifest, bash versions, the awk/jq programs, both libraries' use, multi-line commands
 make check     # lint + test-ci + published form; gate a commit on this
 make smoke     # package every manifest entry at v0.0.0, catching manifest/packager drift
@@ -345,6 +345,7 @@ real system. The full set:
 | `subtitle-sync` | `CACHE_DIR` (via config) | Defaults under `$XDG_CACHE_HOME`, so a test would write to the real cache |
 | `memory-pressure-alert` | `SWAPUSAGE_CMD`, `MEMSIZE_CMD`, `VMSTAT_CMD`, `TOP_CMD`, `NOTIFY_CMD`, `LAUNCHCTL_CMD`, `LAUNCH_AGENTS_DIR`, `AGENT_LOG_DIR` | Every reading is live kernel state; the notifier would post to the developer's desktop and `--install` would load a real launchd agent |
 | `run-coverage` | `KCOV_BIN`, `BATS_BIN`, `DOCKER_BIN` | None can be stubbed on PATH under its real name: a `kcov` or `bats` there is picked up by the harness tracing the test, and a `docker` is handed to `ufw-docker-expose`'s suite |
+| `run-suite` | `BATS_BIN`, `PARALLEL_BIN`, `JOBS` | Same reason: a `bats` on PATH is picked up by the suite running this tool's own test, and a `parallel` there changes how that suite runs. `JOBS` pins what the core count would otherwise decide |
 | `in-container` | `SRC`, `TMP`, `PREFIX`, `BATS_BIN` | Its defaults are a container's own filesystem, so the real steps install into the developer's `/usr/local` and extract into their `/tmp` — one run of an early version of its suite did exactly that |
 | `dovi-active-area` | `DOVI_TOOL_BIN` (via config), `WORK_DIR` | dovi_tool is often installed under a path of its own, and the rewrite must write its multi-gigabyte intermediates somewhere a test is not |
 | `build-ffmpeg-nonfree` | `DOCKER_BIN`, `GIT_BIN`, `OS_RELEASE`, `BUILD_DIR`, `DEST` (via config) | Otherwise a test reaches the network, runs a 30-minute container, and installs binaries onto the developer's PATH |
