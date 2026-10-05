@@ -31,10 +31,10 @@ This handles the hard case that simple tools (ffsubsync, Bazarr) cannot: **segme
 ### Usage
 
 ```bash
-subtitle-sync [OPTIONS] [PATH]
+subtitle-sync [OPTIONS] PATH
 ```
 
-`PATH` may be a directory (processed recursively), a video file, or a subtitle file. Defaults to the current directory.
+`PATH` may be a directory (processed recursively), a video file, or a subtitle file. It is required; pass `.` for the current directory.
 
 ### Options
 

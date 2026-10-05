@@ -21,10 +21,10 @@
 # a linear speed/framerate error) — see --help.
 #
 # Usage:
-#   ./subtitle-sync.sh [OPTIONS] [PATH]
+#   ./subtitle-sync.sh [OPTIONS] PATH
 #
 # PATH may be a directory (processed recursively), a single video file, or a
-# single subtitle file. Defaults to the current directory.
+# single subtitle file, and is required.
 
 set -o errexit
 set -o nounset
@@ -65,7 +65,7 @@ _use_cache=true        # use/refresh the reference cache
 _dry_run=false         # report planned actions only
 _no_color=false        # disable colored output
 _video=""              # explicit video for a lone-subtitle invocation
-_target="."            # positional PATH
+_target=""             # positional PATH; no default, since transcription is expensive
 
 # Externally-overridable commands and parameters (see the .conf file).
 _whisper_bin="whisper-ctranslate2"
@@ -128,7 +128,7 @@ _min_shift_ms=0        # --min-shift in milliseconds; derived in setup_runtime
 ########################################
 show_usage() {
   cat <<EOF
-Usage: ${SCRIPT_NAME} [OPTIONS] [PATH]
+Usage: ${SCRIPT_NAME} [OPTIONS] PATH
 
 Resynchronize drifting subtitles to a video's speech using a Whisper transcript
 as reference and alass for segment-aware alignment.
@@ -137,7 +137,7 @@ PATH may be:
   - a directory  (processed recursively; every video is matched to its subtitles)
   - a video file (its matching subtitles are synced)
   - a subtitle   (synced against its sibling video; see --video)
-Defaults to the current directory.
+It is required; pass "." for the current directory.
 
 By default only EXTERNAL sidecar subtitles in the target language are synced,
 edited in place with the original backed up.
@@ -226,7 +226,12 @@ parse_options() {
     log_error "Expected at most one PATH argument, got ${#positional[@]}."
     exit 1
   fi
-  [[ ${#positional[@]} -eq 1 ]] && _target="${positional[0]}"
+  if [[ ${#positional[@]} -eq 0 ]]; then
+    log_error "A path is required. Pass '.' to sync the current directory."
+    show_usage >&2
+    exit 1
+  fi
+  _target="${positional[0]}"
 
   if [[ "${_remux}" == true && "${_embedded}" != true ]]; then
     log_error "--remux only applies with --embedded."
@@ -1060,9 +1065,21 @@ process_video() {
 ########################################
 process_directory() {
   local dir="$1" entry
+  # Announced before the walk, which on a large tree takes long enough to look like a hang.
+  log_info "Searching $(cd "${dir}" && pwd -P) for video to sync..."
+
+  # Collected before any of it is processed, so the count can be reported first: transcribing a
+  # library takes hours, and the number is what tells an operator to stop the run rather than
+  # discover the scale from the clock.
+  local -a videos=()
   while IFS= read -r -d '' entry; do
-    has_ext "${entry}" _media_exts && process_video "${entry}"
+    has_ext "${entry}" _media_exts && videos+=("${entry}")
   done < <(find "${dir}" -type f -print0 | sort -z)
+
+  log_info "Found ${#videos[@]} video file(s) to examine."
+  for entry in "${videos[@]+"${videos[@]}"}"; do
+    process_video "${entry}"
+  done
   return 0
 }
 

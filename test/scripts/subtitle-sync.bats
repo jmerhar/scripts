@@ -1310,3 +1310,40 @@ c"
   [[ "$output" == *"Skip (already synced)"* ]]
   [[ "$output" != *"took"* ]]
 }
+
+# --- Naming the target ---------------------------------------------------------------------------
+
+# Transcription is the most expensive thing this repository does, so the tree it runs over is named
+# rather than assumed.
+@test "no path at all is refused, rather than defaulting to the current directory" {
+  sync_run
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"A path is required"* ]]
+  [[ "$output" == *"Usage:"* ]]
+}
+
+@test "a path of . is accepted" {
+  cd "$TREE"
+  touch_file movie.mkv
+  sync_run --dry-run .
+  [ "$status" -eq 0 ]
+}
+
+# The count comes before any transcription starts, so the scale is visible in time to stop the run.
+@test "the directory searched and the video count are reported before processing" {
+  touch_file "one.mkv"
+  touch_file "two.mkv"
+  sync_run --dry-run "$TREE"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Searching"* ]]
+  [[ "$output" == *"Found 2 video file(s)"* ]]
+}
+
+@test "the count counts video files, not every file in the tree" {
+  touch_file "one.mkv"
+  touch_file "notes.txt"
+  touch_file "one.en.srt"
+  sync_run --dry-run "$TREE"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Found 1 video file(s)"* ]]
+}
