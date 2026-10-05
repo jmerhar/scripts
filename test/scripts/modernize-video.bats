@@ -592,6 +592,77 @@ stage_convertible() {
   [[ "$output" == *"at least one extension"* ]]
 }
 
+# The directory a mass re-encode runs over is named rather than assumed.
+@test "no path at all is refused, rather than defaulting to the current directory" {
+  run_script "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"A path is required"* ]]
+  [[ "$output" == *"Usage:"* ]]
+}
+
+@test "a path of . is accepted, since naming it is the point" {
+  cd "$LIB"
+  stage_convertible movie.avi
+  run_script "$SCRIPT" --yes --no-color .
+  [ "$status" -eq 0 ]
+  [ -f "$LIB/movie.mp4" ]
+}
+
+# Matroska is not a camera format, and only the video and audio survive a conversion here, so a run
+# over a film library would rewrap its files and leave their subtitles behind.
+@test "Matroska and VOB are not searched by default" {
+  clip film.mkv
+  clip disc.vob
+  probe_as film.mkv - 10.0 "$SOURCE_DATE" h264 eac3 6
+  probe_as disc.vob - 10.0 "$SOURCE_DATE" mpeg2video mp2 2
+  run_script "$SCRIPT" --yes --no-color "$LIB"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"0 candidate file(s)"* ]]
+  run bash -c "grep -c '^ffmpeg ' '$STUB_CALLS' || true"
+  [ "$output" = "0" ]
+}
+
+@test "Matroska is still searched when the config asks for it" {
+  printf 'EXTENSIONS="mkv"\n' > "$CONFIG_FILE"
+  clip film.mkv
+  probe_as film.mkv - 10.0 "$SOURCE_DATE" mjpeg pcm_s16le 2
+  probe_result film.mp4 10.0 "${WANTED_DATE}.000000Z" h264 aac 2
+  run_script "$SCRIPT" --yes --no-color "$LIB"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"1 candidate file(s)"* ]]
+}
+
+# The prompt offers "all" on the first file, so the size of "all" has to be known before answering it.
+@test "the directory searched and the number of candidates are reported before any prompt" {
+  stage_convertible one.avi
+  stage_convertible two.avi
+  run_script "$SCRIPT" --yes --no-color "$LIB"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Searching"* ]]
+  [[ "$output" == *"2 candidate file(s)"* ]]
+}
+
+# Ordering is the whole point: a count printed after the prompts would be useless.
+@test "the reported scope precedes the first file's line" {
+  stage_convertible one.avi
+  run_script "$SCRIPT" --yes --no-color "$LIB"
+  [ "$status" -eq 0 ]
+  local scope_line file_line
+  scope_line="$(printf '%s\n' "${lines[@]}" | grep -n 'candidate file' | head -1 | cut -d: -f1)"
+  file_line="$(printf '%s\n' "${lines[@]}" | grep -n 'one\.avi' | head -1 | cut -d: -f1)"
+  [ -n "$scope_line" ]
+  [ -n "$file_line" ]
+  (( scope_line < file_line ))
+}
+
+@test "a named file is converted without a directory search" {
+  stage_convertible movie.avi
+  run_script "$SCRIPT" --yes --no-color "$LIB/movie.avi"
+  [ "$status" -eq 0 ]
+  [ -f "$LIB/movie.mp4" ]
+  [[ "$output" != *Searching* ]]
+}
+
 @test "a missing path is refused" {
   run_script "$SCRIPT" "$BATS_TEST_TMPDIR/nowhere"
   [ "$status" -eq 1 ]

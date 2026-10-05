@@ -64,7 +64,8 @@ _crf_opt=""
 _preset_opt=""
 _bitrate_opt=""
 _date_opt=""
-_target="."
+# No default: the directory a mass re-encode runs over is named rather than assumed.
+_target=""
 
 # Resolved settings, filled in by apply_config from the options and the config file.
 _crf="18"
@@ -73,7 +74,7 @@ _audio_bitrate="192k"
 _video_codec="libx264"
 _color_range="limited"
 _min_year="1990"
-_extensions="avi mpg mpeg mov qt mp4 m4v 3gp 3g2 wmv asf mts m2ts mkv vob dv"
+_extensions="avi mpg mpeg mov qt mp4 m4v 3gp 3g2 wmv asf mts m2ts dv"
 
 # The scale filter, derived from _color_range in apply_config.
 _filter=""
@@ -107,13 +108,13 @@ _convert_all=false
 ########################################
 show_usage() {
   cat <<EOF
-Usage: ${SCRIPT_NAME} [OPTIONS] [PATH]
+Usage: ${SCRIPT_NAME} [OPTIONS] PATH
 
 Convert video from old cameras to H.264/AAC MP4, preserving the capture date so
 the result lands in the right place in a photo timeline.
 
 PATH may be a single video file or a directory, which is searched recursively.
-If it is omitted, the current directory is used.
+It is required; pass "." for the current directory.
 
 Options:
   -q, --crf N           Quality, lower is better (default ${_crf}); 18 is visually transparent.
@@ -140,7 +141,9 @@ modification time otherwise. Which source was used is reported for every file, s
 a date that is quietly wrong is worse than one that is loudly missing.
 
 The converted file is named after the original with an .mp4 extension and takes the
-place of the original only with --replace.
+place of the original only with --replace. Only the video and audio are carried
+over; subtitle tracks and chapters are not, which is why Matroska is not among the
+extensions searched by default.
 EOF
 }
 
@@ -222,9 +225,10 @@ parse_options() {
   if [[ ${#positional[@]} -gt 1 ]]; then
     die_usage "Expected at most one path argument, got ${#positional[@]}."
   fi
-  if [[ ${#positional[@]} -eq 1 ]]; then
-    _target="${positional[0]}"
+  if [[ ${#positional[@]} -eq 0 ]]; then
+    die_usage "A path is required. Pass '.' to convert the current directory."
   fi
+  _target="${positional[0]}"
 }
 
 ########################################
@@ -483,6 +487,19 @@ audio_bitrate_for() {
   local number="${_audio_bitrate%[kKmM]}"
   local suffix="${_audio_bitrate#"${number}"}"
   printf '%s%s' "$(( number / 2 ))" "${suffix}"
+}
+
+########################################
+# Formats a byte count as a human-readable size.
+# Arguments:
+#   size: The size in bytes.
+# Outputs:
+#   A formatted string such as "1.23 GB".
+########################################
+format_size() {
+  local prog
+  prog=$(load_program ../../lib/format-size.awk)  # @embed ../../lib/format-size.awk
+  awk -v s="${1:-0}" "${prog}"
 }
 
 ########################################
@@ -846,6 +863,8 @@ scan_target() {
   if [[ -f "${_target}" ]]; then
     files=("${_target}")
   else
+    # Announced before the walk, which on a large tree takes long enough to look like a hang.
+    printf '%s\n' "${_C_DIM}Searching $(cd "${_target}" && pwd -P) for video to convert...${_C_RESET}"
     local -a extensions=()
     read -r -a extensions <<<"${_extensions}"
     local -a match=()
@@ -861,6 +880,14 @@ scan_target() {
       files+=("${found}")
     done < <(find "${_target}" -type f \( "${match[@]}" \) -print0 | sort -z)
   fi
+
+  # Before the first prompt, because that prompt offers "all" and its size has to be known to answer.
+  local total=0 size=0
+  for file in "${files[@]+"${files[@]}"}"; do
+    size="$(stat_size "${file}" 2>/dev/null || printf '0')"
+    total=$(( total + size ))
+  done
+  printf '%s\n\n' "${_C_BOLD}Found ${#files[@]} candidate file(s), $(format_size "${total}").${_C_RESET}"
 
   local file status
   for file in "${files[@]+"${files[@]}"}"; do

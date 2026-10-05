@@ -26,6 +26,8 @@ reconstructed, so both are treated as the point of the exercise rather than as m
   for a finished one.
 - **Never skips anything silently.** Every file ends in a reported outcome: converted, rewrapped,
   already modern, undated, unreadable or failed, and the counts add up to the number examined.
+- **Reports what it found before asking.** The directory searched and the number of candidates are
+  printed before the first prompt, since that prompt offers `(a)ll`.
 - **Checks the result before keeping it.** ffmpeg exiting zero is not proof: asked for an encoder it
   does not have, it can copy the stream through instead. The converted file's codec, duration and date
   are all read back before it takes its final name.
@@ -39,11 +41,11 @@ reconstructed, so both are treated as the point of the exercise rather than as m
 ### Usage
 
 ```bash
-./modernize-video.sh [OPTIONS] [PATH]
+./modernize-video.sh [OPTIONS] PATH
 ```
 
-`PATH` may be a single video file or a directory, which is searched recursively. If omitted, the
-current directory is used.
+`PATH` may be a single video file or a directory, which is searched recursively. It is required; pass
+`.` for the current directory.
 
 ### Options
 
@@ -122,7 +124,10 @@ stamping them all with the day they were shot:
 - The frame rate is never forced. A stream can misreport it, and MPEG-1 from these cameras reports
   double its real rate, so reading that figure back would stretch the whole recording.
 - The converted file's modification time is set to its capture date, which also repairs the timestamps
-  a sync client flattened.
+  a sync client flattened. Since the output is backdated, `find -newermt` will not list it.
+- Only the video and audio are carried over; subtitle tracks and chapters are not. That is why
+  Matroska and DVD VOB are absent from the default extensions — a run over a film library would rewrap
+  its files and leave their subtitles behind.
 
 ### Exit Codes
 
