@@ -548,3 +548,41 @@ JSON
   [[ "$output" == *"movie.mkv: dvhe.08, active area 0 0 210 210"* ]]
   [[ "$output" == *"Sampling 10s"* ]]
 }
+
+# --- Naming the target ---------------------------------------------------------------------------
+
+# The files a batch of in-place rewrites touches are named rather than assumed. There is no untouched
+# original to fall back on here, which is what makes acting on an unnamed directory worse than usual.
+@test "no path at all is refused, rather than defaulting to the current directory" {
+  run_script "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"A path is required"* ]]
+  [[ "$output" == *"Usage:"* ]]
+}
+
+@test "a path of . is accepted" {
+  cd "$LIB"
+  film movie.mkv
+  mediainfo_says_dv
+  run_script "$SCRIPT" .
+  [ "$status" -eq 0 ]
+}
+
+# The prompt offers "all" on the first file, so the size of "all" has to be known before answering it.
+@test "the directory searched and the file count are reported before any prompt" {
+  film one.mkv
+  film two.mkv
+  mediainfo_says_dv
+  run_script "$SCRIPT" "$LIB"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Searching"* ]]
+  [[ "$output" == *"2 Matroska file(s)"* ]]
+}
+
+@test "a named file is examined without a directory search" {
+  film movie.mkv
+  mediainfo_says_dv
+  run_script "$SCRIPT" "$LIB/movie.mkv"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *Searching* ]]
+}

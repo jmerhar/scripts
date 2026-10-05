@@ -17,7 +17,7 @@
 # exists and the repair has been verified.
 #
 # Usage:
-#   ./dovi-active-area.sh [OPTIONS] [PATH]
+#   ./dovi-active-area.sh [OPTIONS] PATH
 
 set -o errexit
 set -o nounset
@@ -54,7 +54,8 @@ _keep_original=false
 _no_color=false
 _sample_opt=""
 _frame_opt=""
-_target="."
+# No default: the files a batch of in-place rewrites touches are named rather than assumed.
+_target=""
 
 # Resolved settings, filled in by apply_config from the options and the config file.
 _sample_seconds=10
@@ -94,12 +95,12 @@ _fix_all=false
 ########################################
 show_usage() {
   cat <<EOF
-Usage: ${SCRIPT_NAME} [OPTIONS] [PATH]
+Usage: ${SCRIPT_NAME} [OPTIONS] PATH
 
 Report the Dolby Vision L5 active area of Matroska files, and optionally zero it.
 
 PATH may be a single .mkv file or a directory, which is searched recursively.
-If it is omitted, the current directory is used.
+It is required; pass "." for the current directory.
 
 Options:
   -f, --fix             Zero the active area of files that declare one, asking first.
@@ -186,9 +187,10 @@ parse_options() {
   if [[ ${#positional[@]} -gt 1 ]]; then
     die_usage "Expected at most one path argument, got ${#positional[@]}."
   fi
-  if [[ ${#positional[@]} -eq 1 ]]; then
-    _target="${positional[0]}"
+  if [[ ${#positional[@]} -eq 0 ]]; then
+    die_usage "A path is required. Pass '.' to examine the current directory."
   fi
+  _target="${positional[0]}"
 
   if [[ "${_assume_yes}" == true && "${_fix}" != true ]]; then
     die_usage "--yes only means something with --fix."
@@ -617,12 +619,17 @@ scan_target() {
   if [[ -f "${_target}" ]]; then
     files=("${_target}")
   else
+    # Announced before the walk, which on a large tree takes long enough to look like a hang.
+    printf '%s\n' "${_C_DIM}Searching $(cd "${_target}" && pwd -P) for Matroska files...${_C_RESET}"
     local found
     while IFS= read -r -d '' found; do
       [[ -L "${found}" ]] && continue
       files+=("${found}")
     done < <(find "${_target}" -type f -iname '*.mkv' -print0 | sort -z)
   fi
+
+  # Before the first prompt, because that prompt offers "all" and its size has to be known to answer.
+  printf '%s\n\n' "${_C_BOLD}Found ${#files[@]} Matroska file(s) to examine.${_C_RESET}"
 
   local file status
   for file in "${files[@]+"${files[@]}"}"; do

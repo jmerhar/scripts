@@ -23,10 +23,10 @@ Whether a declared active area is wrong is a judgement about a particular file o
 ### Usage
 
 ```bash
-dovi-active-area [OPTIONS] [PATH]
+dovi-active-area [OPTIONS] PATH
 ```
 
-`PATH` may be a single `.mkv` file or a directory, which is searched recursively. If omitted, the current directory is used.
+`PATH` may be a single `.mkv` file or a directory, which is searched recursively. It is required; pass `.` for the current directory.
 
 ```bash
 # What does my film library declare?
