@@ -460,3 +460,51 @@ probe_audio() {
   [ "$status" -eq 0 ]
   stub_called 'ffmpeg .*-f matroska'
 }
+
+# --- Naming the target ---------------------------------------------------------------------------
+
+# The directory a batch of re-encodes runs over is named rather than assumed.
+@test "no path at all is refused, rather than defaulting to the current directory" {
+  run_script "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"A path is required"* ]]
+  [[ "$output" == *"Usage:"* ]]
+}
+
+@test "a path of . is accepted" {
+  cd "$LIB"
+  film movie.mkv
+  probe_audio movie.mkv eac3:6
+  probe_audio movie.AC3.CC.mkv.partial ac3:6
+  run_script "$SCRIPT" --yes .
+  [ "$status" -eq 0 ]
+}
+
+# The prompt offers "all" on the first file, so the size of "all" has to be known before answering it.
+@test "the directory searched and the file count are reported before any prompt" {
+  film one.mkv
+  film two.mkv
+  probe_audio one.mkv eac3:6
+  probe_audio two.mkv eac3:6
+  probe_audio one.AC3.CC.mkv.partial ac3:6
+  probe_audio two.AC3.CC.mkv.partial ac3:6
+  run_script "$SCRIPT" --yes "$LIB"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Searching"* ]]
+  [[ "$output" == *"2 Matroska file(s)"* ]]
+  local scope_line file_line
+  scope_line="$(printf '%s\n' "${lines[@]}" | grep -n 'Matroska file' | head -1 | cut -d: -f1)"
+  file_line="$(printf '%s\n' "${lines[@]}" | grep -n 'one\.mkv' | head -1 | cut -d: -f1)"
+  [ -n "$scope_line" ]
+  [ -n "$file_line" ]
+  (( scope_line < file_line ))
+}
+
+@test "a named file is converted without a directory search" {
+  film movie.mkv
+  probe_audio movie.mkv eac3:6
+  probe_audio movie.AC3.CC.mkv.partial ac3:6
+  run_script "$SCRIPT" --yes "$LIB/movie.mkv"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *Searching* ]]
+}

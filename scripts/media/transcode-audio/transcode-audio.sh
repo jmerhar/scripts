@@ -16,7 +16,7 @@
 # and a file whose audio is already in the target codec is passed over rather than encoded again.
 #
 # Usage:
-#   ./transcode-audio.sh [OPTIONS] [PATH]
+#   ./transcode-audio.sh [OPTIONS] PATH
 
 set -o errexit
 set -o nounset
@@ -50,7 +50,8 @@ _no_color=false
 _format_opt=""
 _surround_opt=""
 _stereo_opt=""
-_target="."
+# No default: the directory a batch of re-encodes runs over is named rather than assumed.
+_target=""
 
 # Resolved settings, filled in by apply_config from the options and the config file.
 _format="ac3"
@@ -86,13 +87,13 @@ _convert_all=false
 ########################################
 show_usage() {
   cat <<EOF
-Usage: ${SCRIPT_NAME} [OPTIONS] [PATH]
+Usage: ${SCRIPT_NAME} [OPTIONS] PATH
 
 Re-encode the audio of Matroska files to a codec the playback chain can decode,
 keeping the video, subtitles, chapters and every track's metadata.
 
 PATH may be a single .mkv file or a directory, which is searched recursively.
-If it is omitted, the current directory is used.
+It is required; pass "." for the current directory.
 
 Options:
   -f, --format CODEC    Target audio codec (default ${_format}); anything ffmpeg can encode.
@@ -180,9 +181,10 @@ parse_options() {
   if [[ ${#positional[@]} -gt 1 ]]; then
     die_usage "Expected at most one path argument, got ${#positional[@]}."
   fi
-  if [[ ${#positional[@]} -eq 1 ]]; then
-    _target="${positional[0]}"
+  if [[ ${#positional[@]} -eq 0 ]]; then
+    die_usage "A path is required. Pass '.' to convert the current directory."
   fi
+  _target="${positional[0]}"
 }
 
 ########################################
@@ -535,6 +537,8 @@ scan_target() {
   if [[ -f "${_target}" ]]; then
     files=("${_target}")
   else
+    # Announced before the walk, which on a large tree takes long enough to look like a hang.
+    printf '%s\n' "${_C_DIM}Searching $(cd "${_target}" && pwd -P) for audio to convert...${_C_RESET}"
     local found
     while IFS= read -r -d '' found; do
       [[ -L "${found}" ]] && continue
@@ -543,6 +547,9 @@ scan_target() {
       files+=("${found}")
     done < <(find "${_target}" -type f -iname '*.mkv' -print0 | sort -z)
   fi
+
+  # Before the first prompt, because that prompt offers "all" and its size has to be known to answer.
+  printf '%s\n\n' "${_C_BOLD}Found ${#files[@]} Matroska file(s) to examine.${_C_RESET}"
 
   local file status
   for file in "${files[@]+"${files[@]}"}"; do

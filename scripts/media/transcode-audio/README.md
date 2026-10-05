@@ -23,10 +23,10 @@ So the whole job is one `ffmpeg` pass that copies every stream and re-encodes on
 ### Usage
 
 ```bash
-transcode-audio [OPTIONS] [PATH]
+transcode-audio [OPTIONS] PATH
 ```
 
-`PATH` may be a single `.mkv` file or a directory, which is searched recursively. If omitted, the current directory is used.
+`PATH` may be a single `.mkv` file or a directory, which is searched recursively. It is required; pass `.` for the current directory.
 
 ```bash
 # What in this season needs converting?
