@@ -430,12 +430,26 @@ with_exts() {
   [ -f "$TREE/shot.nef" ]
 }
 
-@test "the default target directory is the working directory" {
+@test "a directory of . is the working directory" {
   fixture a.DNG
   fixture a.JPG
   local input; input=$(answers "" "" d)
   cd "$TREE"
-  run_script "$SCRIPT" -C < "$input"
+  run_script "$SCRIPT" -C . < "$input"
   [ "$status" -eq 0 ]
   [ ! -e "$TREE/a.JPG" ]
+}
+
+# --- Naming the target ---------------------------------------------------------------------------
+
+# The tree whose sidecars get deleted is named rather than assumed.
+# Run from an empty directory with stdin closed, so the assertion is about the exit status and nothing
+# else: a regression that fell back to the working directory would otherwise scan whatever bats was
+# invoked from and block on the extension prompt rather than returning a status.
+@test "no directory at all is refused, rather than defaulting to the current directory" {
+  cd "$BATS_TEST_TMPDIR"
+  run_script "$SCRIPT" -C < /dev/null
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"A directory is required"* ]]
+  [[ "$output" == *"Usage:"* ]]
 }

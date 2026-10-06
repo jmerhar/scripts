@@ -151,9 +151,9 @@ setup() {
 }
 
 @test "remove-sidecars records the dry-run and no-color flags" {
-  run_snippet "$SIDECARS" 'parse_options --dry-run --no-color; echo "$_dry_run $_no_color"'
+  run_snippet "$SIDECARS" "parse_options --dry-run --no-color '$LEFT'; echo \"\$_dry_run \$_no_color\""
   [ "$output" = "true true" ]
-  run_snippet "$SIDECARS" 'parse_options -n -C; echo "$_dry_run $_no_color"'
+  run_snippet "$SIDECARS" "parse_options -n -C '$LEFT'; echo \"\$_dry_run \$_no_color\""
   [ "$output" = "true true" ]
 }
 

@@ -10,7 +10,7 @@
 # and then deletes the files upon confirmation.
 #
 # Usage:
-#   ./remove-sidecars.sh [-n|--dry-run] [-C|--no-color] [DIRECTORY]
+#   ./remove-sidecars.sh [-n|--dry-run] [-C|--no-color] DIRECTORY
 
 set -o errexit
 set -o nounset
@@ -39,7 +39,8 @@ source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/program.sh"
 # --- Global State ---
 _dry_run=false
 _no_color=false
-_target_dir="."
+# No default: the tree whose sidecars get deleted is named rather than assumed.
+_target_dir=""
 
 # User-defined file extensions.
 _sidecar_exts=()
@@ -72,7 +73,7 @@ _answer=""
 ########################################
 show_usage() {
   cat <<EOF
-Usage: ${SCRIPT_NAME} [OPTIONS] [DIRECTORY]
+Usage: ${SCRIPT_NAME} [OPTIONS] DIRECTORY
 
 Find and delete sidecar files when a corresponding RAW file exists.
 
@@ -81,7 +82,8 @@ Options:
   -C, --no-color  Disable colored output.
   -h, --help      Show this help message.
 
-If no directory is given, the current directory is used.
+DIRECTORY is required; pass "." for the current directory. It is searched
+recursively.
 EOF
 }
 
@@ -129,12 +131,15 @@ parse_options() {
     exit 1
   fi
 
-  if [[ ${#positional[@]} -eq 1 ]]; then
-    _target_dir="${positional[0]}"
-    if [[ ! -d "${_target_dir}" ]]; then
-      log_error "'${_target_dir}' is not a directory."
-      exit 1
-    fi
+  if [[ ${#positional[@]} -eq 0 ]]; then
+    log_error "A directory is required. Pass '.' to scan the current directory."
+    show_usage >&2
+    exit 1
+  fi
+  _target_dir="${positional[0]}"
+  if [[ ! -d "${_target_dir}" ]]; then
+    log_error "'${_target_dir}' is not a directory."
+    exit 1
   fi
 }
 

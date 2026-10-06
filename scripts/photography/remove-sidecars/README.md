@@ -17,10 +17,10 @@ When shooting in RAW+JPEG mode, you get high-quality RAWs for editing and conven
 ### Usage
 
 ```bash
-remove-sidecars [OPTIONS] [DIRECTORY]
+remove-sidecars [OPTIONS] DIRECTORY
 ```
 
-If no directory is given, the current directory is used.
+`DIRECTORY` is required; pass `.` for the current directory.
 
 ### Options
 
