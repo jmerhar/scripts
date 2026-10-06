@@ -438,7 +438,7 @@ linked_names() {
 }
 
 @test "the long spelling of every option is accepted too" {
-  run_snippet "$SCRIPT" "parse_options --temp-dir /tmp/x --quality 720p --symlink --dry-run --no-color; printf '%s|%s|%s|%s|%s' \"\$_source_opt\" \"\$_quality\" \"\$_link_type_opt\" \"\$_dry_run\" \"\$_no_color\""
+  run_snippet "$SCRIPT" "parse_options --temp-dir /tmp/x --quality 720p --symlink --dry-run --no-color '$LIB/Taskmaster'; printf '%s|%s|%s|%s|%s' \"\$_source_opt\" \"\$_quality\" \"\$_link_type_opt\" \"\$_dry_run\" \"\$_no_color\""
   [ "$output" = "/tmp/x|720p|symlink|true|true" ]
 }
 
@@ -485,4 +485,24 @@ linked_names() {
   run_snippet "$SCRIPT" "_show=Taskmaster; _season=15; _linked=0; _skipped=0; _failed=2; print_summary"
   [[ "$output" != *"No matching releases"* ]]
   [[ "$output" == *"2 failed"* ]]
+}
+
+# --- Naming the target ---------------------------------------------------------------------------
+
+# The show and season are read from the destination directory's own name, so it is named rather than
+# inferred from wherever the caller happens to be standing.
+@test "no directory at all is refused, rather than defaulting to the current directory" {
+  cd "$BATS_TEST_TMPDIR"
+  run_script "$SCRIPT"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"A directory is required"* ]]
+  [[ "$output" == *"Usage:"* ]]
+}
+
+@test "a directory of . is the working directory" {
+  release "Taskmaster.S15E01.720p.mkv"
+  cd "$LIB/Taskmaster/Season 15"
+  run_script "$SCRIPT" --dry-run .
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Taskmaster.S15E01.720p.mkv"* ]]
 }

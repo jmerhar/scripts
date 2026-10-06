@@ -18,7 +18,7 @@
 # a "QI" folder must not collect "QI.XL" releases, and both exist in the same library.
 #
 # Usage:
-#   ./link-series.sh [OPTIONS] [DIRECTORY]
+#   ./link-series.sh [OPTIONS] DIRECTORY
 
 set -o errexit
 set -o nounset
@@ -44,7 +44,9 @@ _no_color=false
 _quality=""
 _link_type_opt=""   # From --symlink; empty means the config's LINK_TYPE, then the default below.
 _source_opt=""      # From --temp-dir; empty means the config's TEMP_DIR.
-_target_dir="."
+# No default: the show and season are read from this directory's own name, so it is named rather
+# than inferred from wherever the caller happens to be standing.
+_target_dir=""
 
 # Resolved settings, filled in by apply_config from the options and the config file.
 _source_dir=""
@@ -81,13 +83,13 @@ _failed=0
 ########################################
 show_usage() {
   cat <<EOF
-Usage: ${SCRIPT_NAME} [OPTIONS] [DIRECTORY]
+Usage: ${SCRIPT_NAME} [OPTIONS] DIRECTORY
 
 Link matching episodes from a download folder into a series' library folder.
 
 The show and season come from DIRECTORY itself: a season folder ("Season 15")
-looks for that season, a show folder for any season of it. If no directory is
-given, the current directory is used.
+looks for that season, a show folder for any season of it. It is required; pass
+"." for the current directory.
 
 Options:
   -t, --temp-dir DIR  Search DIR for episodes instead of the configured TEMP_DIR.
@@ -168,9 +170,10 @@ parse_options() {
     die_usage "Expected at most one directory argument, got ${#positional[@]}."
   fi
 
-  if [[ ${#positional[@]} -eq 1 ]]; then
-    _target_dir="${positional[0]}"
+  if [[ ${#positional[@]} -eq 0 ]]; then
+    die_usage "A directory is required. Pass '.' to link into the current directory."
   fi
+  _target_dir="${positional[0]}"
 }
 
 ########################################

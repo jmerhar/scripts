@@ -2,11 +2,11 @@
 
 The *arr apps hard-link everything they import, so the library and the download folder share one copy of each episode. Anything acquired outside them — a manual download, a season pack no indexer announced, a file dropped in by hand — stays where it landed, and copying it into the library would double the space it takes. This links it instead.
 
-The show and the season come from the destination directory rather than from arguments: run it inside a season folder and it looks for that season, or inside a show folder and it takes any season of that show.
+The show and the season come from the destination directory rather than from arguments: point it at a season folder and it looks for that season, or at a show folder and it takes any season of that show.
 
 ### Features
 
-* **Context-Aware** — Reads the show from the destination folder and the season from its name (`Season 15`, `Season.15`, or `Specials` for season 0), so a run needs no arguments.
+* **Context-Aware** — Reads the show from the destination folder and the season from its name (`Season 15`, `Season.15`, or `Specials` for season 0), so the folder is the only argument.
 * **Punctuation-Blind Matching** — A release is matched as the show's words followed by the season, case-insensitively, with the punctuation between the words uncompared: `Agatha Christie's Marple` matches `Agatha.Christies.Marple`, and `Alan Davies - As Yet Untitled` matches `Alan.Davies.As.Yet.Untitled`. A library folder's trailing disambiguating year (`Alice (2009)`) is optional in the release name.
 * **No Bleed Between Similar Titles** — Because the season has to follow the title directly, a run in `QI` does not collect `QI.XL` releases, and one in `Alice` does not collect `Alice in Borderland`.
 * **Season Spellings** — `S15`, `Season 15` and `15x07` all count, with any zero padding, so a `Season 1` folder takes both `S1E03` and `S01E04`.
@@ -28,18 +28,20 @@ The show and the season come from the destination directory rather than from arg
 TEMP_DIR="/mnt/storage/temp/sonarr"
 ```
 
-**2. Run** from the folder the episodes should end up in:
+**2. Run** against the folder the episodes should end up in:
+
+```bash
+link-series --dry-run "/mnt/storage/tv/uk/Taskmaster/Season 15"   # see what would be linked
+link-series "/mnt/storage/tv/uk/Taskmaster/Season 15"             # link it
+link-series -q 1080p "/mnt/storage/tv/uk/Taskmaster/Season 15"    # one quality only
+```
+
+Or from inside it, naming the current directory:
 
 ```bash
 cd "/mnt/storage/tv/uk/Taskmaster/Season 15"
-link-series --dry-run          # see what would be linked
-link-series                    # link it
-```
-
-Or point it at the folder instead:
-
-```bash
-link-series -q 1080p "/mnt/storage/tv/uk/Taskmaster/Season 15"
+link-series --dry-run .
+link-series .
 ```
 
 ### Options
