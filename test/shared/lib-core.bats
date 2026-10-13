@@ -122,6 +122,20 @@ setup() { setup_common; }
   [ "$output" = "survived" ]
 }
 
+@test "log_message without a log file is safe to call from a trap handler after a failure" {
+  # In bash 5.2 a bare `return` in a function called from a trap handler yields the status from before
+  # the trap, here the exit's 3, which errexit then acts on: the handler stops before its second line.
+  run_snippet "$LIB_DIR/core.sh" 'set -o errexit; trap '\''log_message INFO "nowhere"; echo handler-finished'\'' EXIT; exit 3'
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"handler-finished"* ]]
+}
+
+@test "log_command without a log file passes on the command's status from a trap handler" {
+  local tool; tool=$(lib_at opt/tools trapper core.sh)
+  run_snippet "$tool" 'trap '\''log_command true; echo "after=$?"'\'' EXIT; exit 3'
+  [[ "$output" == *"after=0"* ]]
+}
+
 @test "log_message timestamps each line in ISO 8601" {
   local log="$BATS_TEST_TMPDIR/app.log"
   run_snippet "$LIB_DIR/core.sh" "LOG_FILE='$log'; log_message INFO 'stamped'"

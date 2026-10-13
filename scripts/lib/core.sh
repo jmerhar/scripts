@@ -65,7 +65,7 @@ _get_script_prefix() {
   script_path=$( (cd "${script_dir}" && pwd -P) )
 
   if [[ -z "${script_path}" ]]; then
-    return
+    return 0
   fi
 
   local bin_dir
@@ -78,6 +78,10 @@ _get_script_prefix() {
 ########################################
 # Writes a log message to LOG_FILE with an ISO 8601 timestamp.
 # Does nothing if LOG_FILE is unset or empty.
+#
+# The early exits in this library say `return 0`, never a bare `return`: in bash 5.2 a bare `return` in a
+# function called from a trap handler yields the status from before the trap ran, so a logger called
+# from a handler after a failing command would itself fail and, under errexit, end the script mid-handler.
 # Globals:
 #   LOG_FILE
 # Arguments:
@@ -86,7 +90,7 @@ _get_script_prefix() {
 ########################################
 log_message() {
   if [[ -z "${LOG_FILE:-}" ]]; then
-    return
+    return 0
   fi
 
   local level="$1"
@@ -215,7 +219,7 @@ default_log_file() {
   local prefix
   prefix=$(_get_script_prefix)
   if [[ -z "${prefix}" ]]; then
-    return
+    return 0
   fi
   printf '%s/var/log/%s.log' "${prefix}" "${SCRIPT_NAME}"
 }
@@ -241,13 +245,13 @@ default_log_file() {
 log_command() {
   log_debug "Running command: $*"
 
+  local status=0
   if [[ -z "${LOG_FILE:-}" ]]; then
-    "$@"
-    return
+    "$@" || status=$?
+    return "${status}"
   fi
 
   mkdir -p "$(dirname "${LOG_FILE}")"
-  local status=0
   "$@" > >(tee -a "${LOG_FILE}") 2> >(tee -a "${LOG_FILE}" >&2) || status=$?
   return "${status}"
 }
