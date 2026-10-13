@@ -11,6 +11,12 @@ Builds a lean ffmpeg and ffprobe with the nonfree libfdk-aac encoder in a throwa
 
 deps: `git` _(Linux only)_
 
+### [`docker-live-upgrade`](docker-live-upgrade/)
+
+Runs a command that restarts the Docker daemon, such as a package upgrade, and repairs whatever live-restore did not carry across it: orphaned container processes are stopped first, so no container ever runs twice on one data directory, then affected containers are started in tier order a batch at a time, waiting for their healthchecks, and never before their Compose dependencies.
+
+`bash 4.4+` _(Linux only)_
+
 ### [`local-backup`](local-backup/)
 
 A generic script to create and automatically prune rsync-based system backups.

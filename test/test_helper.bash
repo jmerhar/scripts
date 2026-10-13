@@ -99,6 +99,24 @@ _coverage_prefix() {
 }
 
 ########################################
+# Sets SIGNAL_PREFIX to the command that restores SIGINT's default disposition before running what
+# follows it, when SIGINT_DEFAULT is set, and to nothing otherwise.
+#
+# For a test that delivers a real SIGINT. A parallel runner starts its jobs with SIGINT ignored, and a
+# shell can neither trap nor reset a signal it inherited as ignored, so under `make check` the signal
+# would never arrive and the test would describe a process no terminal produces. perl resets the
+# disposition and execs, so what it runs starts as a terminal session's foreground job would.
+# Globals:
+#   SIGINT_DEFAULT, SIGNAL_PREFIX
+########################################
+_signal_prefix() {
+  SIGNAL_PREFIX=()
+  if [[ -n "${SIGINT_DEFAULT:-}" ]]; then
+    SIGNAL_PREFIX=(perl -e '$SIG{INT} = "DEFAULT"; exec @ARGV or die "exec: $!\n"')
+  fi
+}
+
+########################################
 # Runs a script end to end through its command line, as a user would.
 # Executed directly rather than via `bash <script>`, both because that is how a user invokes it — every
 # published script is executable, which bin/lint/check-manifest.sh enforces — and because kcov can only trace
@@ -116,8 +134,9 @@ run_script() {
   shift
   # Word-split on purpose: the prefix is a command with its own arguments, and is empty without
   # COVERAGE_DIR.
+  _signal_prefix
   # shellcheck disable=SC2046
-  run $(_coverage_prefix) "${script}" "$@"
+  run "${SIGNAL_PREFIX[@]}" $(_coverage_prefix) "${script}" "$@"
 }
 
 ########################################
@@ -239,13 +258,14 @@ HARNESS
 _run_sourced() {
   local mode="$1" script="$2"
   shift 2
+  _signal_prefix
 
   if [[ -z "${COVERAGE_DIR:-}" ]]; then
     if [[ "${mode}" == "eval" ]]; then
-      run bash -c 'source "$1"; shift; eval "$1"' \
+      run "${SIGNAL_PREFIX[@]}" bash -c 'source "$1"; shift; eval "$1"' \
         "${script}" "$(_sourceable_path "${script}")" "$@"
     else
-      run bash -c 'source "$1"; shift; "$@"' \
+      run "${SIGNAL_PREFIX[@]}" bash -c 'source "$1"; shift; "$@"' \
         "${script}" "$(_sourceable_path "${script}")" "$@"
     fi
     return
@@ -258,7 +278,7 @@ _run_sourced() {
   local script_name
   script_name="$(basename "${script}" .sh)"
   # shellcheck disable=SC2046  # the prefix is a command with arguments
-  run $(_coverage_prefix) "${harness}" "${mode}" "${script_name}" "${script}" "$@"
+  run "${SIGNAL_PREFIX[@]}" $(_coverage_prefix) "${harness}" "${mode}" "${script_name}" "${script}" "$@"
 }
 
 ########################################

@@ -62,6 +62,11 @@ They are subprocess-based even where sourcing in-process would be faster, becaus
 `readonly` globals that a second in-process source could not re-assign, and because keeping the launch
 in one place means line coverage can be added later by editing these three functions and nothing else.
 
+A test that delivers a real SIGINT sets `SIGINT_DEFAULT=1` for the call. A parallel runner starts its
+jobs with SIGINT ignored, and a shell can neither trap nor reset a signal it inherited as ignored, so
+without it the signal never arrives under `make check`; the helpers then launch through `perl`, which
+restores the default before exec.
+
 `run_func` needs the script's trailing `main "$@"` to be guarded:
 
 ```bash

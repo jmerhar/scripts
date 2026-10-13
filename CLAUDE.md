@@ -352,6 +352,7 @@ real system. The full set:
 | `remove-old-kernels` | `RUNNING_KERNEL`, `DPKG_QUERY_BIN`, `APT_GET_BIN` | The whole decision is about the machine's own kernels; a test has to describe a machine rather than read one |
 | `smart-check` | `SMARTCTL_BIN`, `SUDO_BIN` | smartctl needs root, and the stub for sudo records without executing — so the escalation is a seam too, or the double's output never comes back |
 | `ufw-docker-expose` | `DOCKER_BIN` | The double cannot simply be called `docker`: `bin/coverage/run-coverage.sh` and the bash-3.2 guard test run the real CLI for pinned images, and a stub of that name on `PATH` would be handed to them |
+| `docker-live-upgrade` | `DOCKER_BIN`, `KILL_BIN`, `PROC_ROOT`, `KILL_GRACE` | `DOCKER_BIN` for the same reason as above. `KILL_BIN` because `kill` is a builtin no `PATH` stub can shadow, so without it a test would signal a real PID; `PROC_ROOT` so orphan detection reads fake processes, never the machine's; `KILL_GRACE` so the never-dies test does not wait ten seconds |
 
 ### Replacing a file someone else is seeding
 

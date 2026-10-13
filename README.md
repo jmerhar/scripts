@@ -25,6 +25,12 @@ Aggregates a folder of DMARC RUA reports (.xml.gz/.zip) into one overall report,
 
 `bash 4.0+` · deps: `curl`, `jq` (+`libxml2` macOS, `libxml2-utils`, `unzip` Linux)
 
+### [`docker-live-upgrade`](scripts/system/docker-live-upgrade/)
+
+Runs a command that restarts the Docker daemon, such as a package upgrade, and repairs whatever live-restore did not carry across it: orphaned container processes are stopped first, so no container ever runs twice on one data directory, then affected containers are started in tier order a batch at a time, waiting for their healthchecks, and never before their Compose dependencies.
+
+`bash 4.4+` _(Linux only)_
+
 ### [`dovi-active-area`](scripts/media/dovi-active-area/)
 
 Reports the Dolby Vision L5 active area of Matroska files, and on request zeroes it by rewriting the RPU in place, so a display stops cropping or letterboxing a picture that already fills its frame. Requires the external tool 'dovi_tool', which Debian has no package for.
