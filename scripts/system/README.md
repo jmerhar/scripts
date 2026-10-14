@@ -13,7 +13,7 @@ deps: `git` _(Linux only)_
 
 ### [`docker-live-upgrade`](docker-live-upgrade/)
 
-Runs a command that restarts the Docker daemon, such as a package upgrade, and repairs whatever live-restore did not carry across it: orphaned container processes are stopped first, so no container ever runs twice on one data directory, then affected containers are started in tier order a batch at a time, waiting for their healthchecks, and never before their Compose dependencies.
+Runs a command that restarts the Docker daemon, such as a package upgrade, and repairs whatever live-restore did not carry across it: orphaned container processes are stopped first, so no container ever runs twice on one data directory, then affected containers are started in tier order a batch at a time, waiting for their healthchecks, and never before their Compose dependencies; containers tied to a restarted one by `restart: true` or a shared network namespace are restarted after it.
 
 `bash 4.4+` _(Linux only)_
 

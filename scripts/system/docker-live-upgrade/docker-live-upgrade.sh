@@ -14,6 +14,8 @@
 # identified by its cgroup naming the container rather than by PID alone, since a PID can be reused.
 # Only then are the affected containers started or restarted, a few at a time in tier order, each batch
 # waiting for its healthchecks before the next, and none before its Compose dependencies are ready.
+# A container that was restored but is tied to a restarted one, by `restart: true` or by sharing its
+# network namespace, is restarted after it.
 #
 # Usage:
 #   sudo ./docker-live-upgrade.sh -- apt upgrade
@@ -53,12 +55,19 @@ _command=()
 
 # The snapshot, keyed by full container ID.
 _ids=()
-declare -A _name=() _started=() _pid=() _tier=() _stop=() _project=() _service=() _depends_on=()
+declare -A _name=() _started=() _pid=() _tier=() _stop=() _project=() _service=() _depends_on=() _network=()
 # Each container's dependencies among the recorded containers, as space-separated IDs.
 declare -A _deps=()
+# The subset of each container's dependencies it must be restarted with: depends_on entries with
+# `restart: true`, and the container whose network namespace it shares.
+declare -A _ties=()
 # Containers in the repair not yet ready: queued, or started and still being waited on. A dependency in
 # here is unsatisfied; one outside it was restored, repaired, or never needed repair.
 declare -A _not_ready=()
+# Containers the daemon restarted that a follower waits on, checked each round until ready or failed,
+# and the time by which they must be ready.
+_awaiting=()
+_await_deadline=0
 
 # Outcome of the verification and repair, as lists of container IDs.
 _restored=()
@@ -68,6 +77,8 @@ _to_start=()
 _to_restart=()
 _repaired=()
 _failed=()
+# Containers restarted because something they are tied to was restarted; also listed in _to_restart.
+_followers=()
 
 ########################################
 # Print usage information.
@@ -78,7 +89,8 @@ Usage: sudo $(basename "$0") [options] -- <command> [args...]
 
 Runs a command that restarts the Docker daemon (usually a package upgrade) and repairs any container
 that live-restore did not carry across it: orphaned processes are stopped, then affected containers
-are started in tier order, a batch at a time, waiting for their healthchecks.
+are started in tier order, a batch at a time, waiting for their healthchecks and their Compose
+dependencies. Containers tied to a restarted one are restarted after it.
 
 Options:
   -d, --debug     enable debug output
@@ -180,14 +192,16 @@ load_settings() {
 # template error, so both go through `index`, which yields nothing for a missing key; an unset value
 # prints as "<no value>", as a missing label does.
 #
-# The last three fields are the labels Docker Compose records: the project, the service, and
-# depends_on as "service:condition:restart" entries separated by commas.
+# Then come the labels Docker Compose records: the project, the service, and depends_on as
+# "service:condition:restart" entries separated by commas. The network mode is last; a container
+# sharing another's network namespace reads "container:<id or name>".
 # Globals:
 #   DOCKER_BIN, TIER_LABEL
 # Arguments:
 #   Container ID.
 # Outputs:
-#   id|name|status|started|pid|health|tier label|cgroup parent|stop timeout|project|service|depends on
+#   id|name|status|started|pid|health|tier label|cgroup parent|stop timeout|project|service|depends on|
+#   network mode
 # Returns:
 #   Non-zero when the container does not exist.
 ########################################
@@ -197,7 +211,7 @@ inspect_container() {
   format+='{{with index .State "Health"}}{{.Status}}{{else}}none{{end}}|'
   format+="{{index .Config.Labels \"${TIER_LABEL}\"}}|{{.HostConfig.CgroupParent}}|{{index .Config \"StopTimeout\"}}|"
   format+='{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|'
-  format+='{{index .Config.Labels "com.docker.compose.depends_on"}}'
+  format+='{{index .Config.Labels "com.docker.compose.depends_on"}}|{{.HostConfig.NetworkMode}}'
   "${DOCKER_BIN}" inspect --format "${format}" "$1" 2>/dev/null
 }
 
@@ -232,17 +246,17 @@ resolve_tier() {
 ########################################
 # Record every running container, before anything can change.
 # Globals:
-#   DOCKER_BIN, _ids, _name, _started, _pid, _tier, _stop, _project, _service, _depends_on
+#   DOCKER_BIN, _ids, _name, _started, _pid, _tier, _stop, _project, _service, _depends_on, _network
 # Returns:
 #   Non-zero when Docker cannot list or inspect its containers.
 ########################################
 take_snapshot() {
-  local ids id line name status started pid health label parent stop project service depends_on
+  local ids id line name status started pid health label parent stop project service depends_on network
   ids=$("${DOCKER_BIN}" ps --quiet --no-trunc) || return 1
   for id in ${ids}; do
     # A container that stopped between the listing and this lookup is simply not running.
     line=$(inspect_container "${id}") || continue
-    IFS='|' read -r id name status started pid health label parent stop project service depends_on <<<"${line}"
+    IFS='|' read -r id name status started pid health label parent stop project service depends_on network <<<"${line}"
     [[ "${status}" == "running" ]] || continue
     _ids+=("${id}")
     _name[${id}]="${name#/}"
@@ -257,47 +271,153 @@ take_snapshot() {
     _project[${id}]="${project}"
     _service[${id}]="${service}"
     _depends_on[${id}]="${depends_on}"
+    _network[${id}]="${network}"
   done
   log_debug "recorded ${#_ids[@]} running containers."
 }
 
 ########################################
-# Turn each recorded container's Compose depends_on label into the IDs of the recorded containers it
-# depends on, and warn wherever a container outranks its own dependency.
+# Work out what each recorded container depends on and what it is tied to, and warn wherever a
+# container outranks its own dependency.
 #
-# A dependency is the container of the named service in the same Compose project. One that was not
-# running before the command is not recorded and so not a dependency here: the repair only brings back
-# what was running, and nothing will start it.
+# Two things make a dependency. A Compose depends_on entry names a service, meaning that service's
+# container in the same project; with `restart: true` the dependent is also tied to it, to be restarted
+# whenever it is. A shared network namespace ("container:<id or name>") is both a dependency and a tie,
+# since the sharer cannot start without the owner and loses its network when the owner restarts. Only
+# recorded containers count: one that was not running before the command is not brought back, so
+# nothing waits for it.
 #
 # The warning is about configuration, not this run: a container in an earlier tier than its dependency
 # waits for that dependency's tier whenever both need repair, so its tier promises more than the order
 # can deliver. Usually the tiers are what is wrong.
 # Globals:
-#   _ids, _name, _tier, _project, _service, _depends_on, _deps
+#   _ids, _name, _tier, _project, _service, _depends_on, _network, _deps, _ties
 ########################################
 resolve_dependencies() {
-  local id other entry service
-  local -A by_service=()
+  local id other entry service restart owner
+  local -A by_service=() by_name=()
   for id in "${_ids[@]}"; do
+    by_name[${_name[${id}]}]="${id}"
     if (( ${#_service[${id}]} > 0 )) && [[ "${_service[${id}]}" != "<no value>" ]]; then
       by_service["${_project[${id}]}/${_service[${id}]}"]="${id}"
     fi
   done
   for id in "${_ids[@]}"; do
     _deps[${id}]=""
-    [[ "${_depends_on[${id}]}" != "<no value>" ]] || continue
-    local -a entries=()
-    IFS=',' read -r -a entries <<<"${_depends_on[${id}]}"
-    for entry in "${entries[@]}"; do
-      service="${entry%%:*}"
-      other="${by_service["${_project[${id}]}/${service}"]:-}"
-      (( ${#other} > 0 )) || continue
-      _deps[${id}]+="${_deps[${id}]:+ }${other}"
-      if (( _tier[${id}] < _tier[${other}] )); then
-        log_warn "${_name[${id}]} (tier ${_tier[${id}]}) depends on ${_name[${other}]} (tier ${_tier[${other}]}), so it waits for that tier whenever both are repaired; give it tier ${_tier[${other}]} or later."
+    _ties[${id}]=""
+    if [[ "${_depends_on[${id}]}" != "<no value>" ]]; then
+      local -a entries=()
+      IFS=',' read -r -a entries <<<"${_depends_on[${id}]}"
+      for entry in "${entries[@]}"; do
+        IFS=':' read -r service _ restart _ <<<"${entry}"
+        other="${by_service["${_project[${id}]}/${service}"]:-}"
+        (( ${#other} > 0 )) || continue
+        add_dependency "${id}" "${other}"
+        if [[ "${restart}" == true ]]; then
+          _ties[${id}]+="${_ties[${id}]:+ }${other}"
+        fi
+      done
+    fi
+    if [[ "${_network[${id}]}" == container:* ]]; then
+      owner="${_network[${id}]#container:}"
+      other=""
+      # Docker records the owner's full ID, even for `--network container:<name>`; the name is only
+      # a fallback, for a daemon that keeps what it was given.
+      if [[ -n "${_name[${owner}]+set}" ]]; then
+        other="${owner}"
+      elif [[ -n "${by_name[${owner}]+set}" ]]; then
+        other="${by_name[${owner}]}"
+      fi
+      if (( ${#other} > 0 )); then
+        add_dependency "${id}" "${other}"
+        # Word-split on purpose: the value is a space-separated list of IDs.
+        # shellcheck disable=SC2086
+        contains "${other}" ${_ties[${id}]} || _ties[${id}]+="${_ties[${id}]:+ }${other}"
+      fi
+    fi
+  done
+}
+
+########################################
+# Record that one container depends on another, once, warning when the dependent's tier is earlier.
+# Globals:
+#   _deps, _name, _tier
+# Arguments:
+#   The dependent's ID.
+#   The dependency's ID.
+########################################
+add_dependency() {
+  local id="$1" other="$2"
+  # Word-split on purpose: the value is a space-separated list of IDs.
+  # shellcheck disable=SC2086
+  if contains "${other}" ${_deps[${id}]}; then
+    return 0
+  fi
+  _deps[${id}]+="${_deps[${id}]:+ }${other}"
+  if (( _tier[${id}] < _tier[${other}] )); then
+    log_warn "${_name[${id}]} (tier ${_tier[${id}]}) depends on ${_name[${other}]} (tier ${_tier[${other}]}), so it waits for that tier whenever both are repaired; give it tier ${_tier[${other}]} or later."
+  fi
+}
+
+########################################
+# Add to the repair every container tied to one that is being restarted or was restarted by the
+# daemon, transitively, so it is restarted once what it is tied to is ready.
+#
+# Such a container may itself have been live-restored, but it holds connections to, or the network
+# namespace of, an instance that no longer exists. Restarting it is what `restart: true` asks of
+# Compose, and the only way a namespace sharer gets a network again. One tied to a container that no
+# longer exists cannot be put right by a restart, so it is reported as failed rather than counted as
+# restored.
+# Globals:
+#   _ids, _name, _ties, _restored, _daemon_restarted, _to_start, _to_restart, _followers, _failed
+########################################
+plan_followers() {
+  local id tie added=true
+  local -A restarting=()
+  for id in "${_to_start[@]}" "${_to_restart[@]}" "${_daemon_restarted[@]}"; do
+    restarting[${id}]=1
+  done
+  # At this point _failed holds only the containers that vanished during the command.
+  local -a broken=()
+  for id in "${_restored[@]}" "${_daemon_restarted[@]}"; do
+    # Word-split on purpose: the value is a space-separated list of IDs.
+    # shellcheck disable=SC2086
+    for tie in ${_ties[${id}]:-}; do
+      if contains "${tie}" "${_failed[@]}"; then
+        log_error "${_name[${id}]} is tied to ${_name[${tie}]}, which no longer exists; it is still running without it."
+        broken+=("${id}")
+        break
       fi
     done
   done
+  _failed+=("${broken[@]}")
+  while [[ "${added}" == true ]]; do
+    added=false
+    for id in "${_restored[@]}" "${_daemon_restarted[@]}"; do
+      contains "${id}" "${_followers[@]}" "${broken[@]}" && continue
+      # Word-split on purpose: the value is a space-separated list of IDs.
+      # shellcheck disable=SC2086
+      for tie in ${_ties[${id}]:-}; do
+        [[ "${tie}" != "${id}" && -n "${restarting[${tie}]:-}" ]] || continue
+        log_info "${_name[${id}]} is tied to ${_name[${tie}]}, which was restarted; restarting it after."
+        _followers+=("${id}")
+        _to_restart+=("${id}")
+        restarting[${id}]=1
+        added=true
+        break
+      done
+    done
+  done
+  local -a kept=()
+  for id in "${_restored[@]}"; do
+    contains "${id}" "${_followers[@]}" "${broken[@]}" || kept+=("${id}")
+  done
+  _restored=("${kept[@]}")
+  kept=()
+  for id in "${_daemon_restarted[@]}"; do
+    contains "${id}" "${_followers[@]}" "${broken[@]}" || kept+=("${id}")
+  done
+  _daemon_restarted=("${kept[@]}")
 }
 
 ########################################
@@ -509,6 +629,23 @@ repair_containers() {
     fi
   done
 
+  # A container the daemon restarted is in no round, so nothing would wait for it, and a follower tied
+  # to one would restart at once against a dependency that may still be starting. Each such container
+  # counts as not ready until a round's check finds it ready, so only its followers wait for it.
+  local tie
+  _awaiting=()
+  _await_deadline=$(( SECONDS + HEALTH_TIMEOUT ))
+  for id in "${_followers[@]}"; do
+    # Word-split on purpose: the value is a space-separated list of IDs.
+    # shellcheck disable=SC2086
+    for tie in ${_ties[${id}]:-}; do
+      if contains "${tie}" "${_daemon_restarted[@]}" && ! contains "${tie}" "${_awaiting[@]}"; then
+        _awaiting+=("${tie}")
+        _not_ready[${tie}]=1
+      fi
+    done
+  done
+
   # One line per container, "tier name id action", sorted so tiers run in order and a tier runs in a
   # stable order.
   local -a plan=()
@@ -532,13 +669,18 @@ repair_containers() {
   # satisfied, starts them, and waits for them. A container whose dependency is not ready waits for a
   # later round, which is what keeps a dependency and its dependent out of one batch.
   while (( ${#pending[@]} > 0 )); do
+    check_awaited
     local -a batch=() remaining=()
     local batch_tier="" progressed=false
     for entry in "${pending[@]}"; do
       read -r tier name id action <<<"${entry}"
       state=$(dependency_state "${id}")
       if [[ "${state}" == failed:* ]]; then
-        log_error "not ${action}ing ${name}: its dependency ${state#failed:} could not be brought back."
+        if contains "${id}" "${_followers[@]}"; then
+          log_error "not restarting ${name}: ${state#failed:}, which it is tied to, could not be brought back; it is still running."
+        else
+          log_error "not ${action}ing ${name}: its dependency ${state#failed:} could not be brought back."
+        fi
         _failed+=("${id}")
         unset "_not_ready[${id}]"
         progressed=true
@@ -563,17 +705,68 @@ repair_containers() {
     for id in "${batch[@]}"; do
       unset "_not_ready[${id}]"
     done
+    pending=("${remaining[@]}")
     if [[ "${progressed}" == false ]]; then
+      if (( ${#_awaiting[@]} > 0 )); then
+        # Nothing could start yet, but a container the daemon restarted may still become ready.
+        sleep "${POLL_INTERVAL}"
+        continue
+      fi
       # Everything left waits on something else left: a dependency cycle.
-      for entry in "${remaining[@]}"; do
+      for entry in "${pending[@]}"; do
         read -r tier name id action <<<"${entry}"
         log_error "not ${action}ing ${name}: its dependencies form a cycle."
         _failed+=("${id}")
       done
-      return 0
+      break
     fi
-    pending=("${remaining[@]}")
   done
+
+  local -a kept=()
+  for id in "${_daemon_restarted[@]}"; do
+    contains "${id}" "${_failed[@]}" || kept+=("${id}")
+  done
+  _daemon_restarted=("${kept[@]}")
+}
+
+########################################
+# Check, without waiting, each container the daemon restarted that a follower is waiting on. One
+# that is running and, if it has a healthcheck, healthy stops counting as not ready. One that exited
+# or is gone is recorded as failed at once; anything else, such as `restarting` while its restart
+# policy backs off a crash at startup, is checked again until HEALTH_TIMEOUT after the repair began,
+# as wait_until_ready does.
+# Globals:
+#   _awaiting, _await_deadline, _failed, _name, _not_ready, HEALTH_TIMEOUT
+########################################
+check_awaited() {
+  (( ${#_awaiting[@]} > 0 )) || return 0
+  local tie line name status started pid health label parent stop
+  local -a still=()
+  for tie in "${_awaiting[@]}"; do
+    status=gone health=none
+    if line=$(inspect_container "${tie}"); then
+      IFS='|' read -r _ name status started pid health label parent stop _ <<<"${line}"
+    fi
+    if [[ "${status}" == running && ( "${health}" == none || "${health}" == healthy ) ]]; then
+      unset "_not_ready[${tie}]"
+      continue
+    fi
+    case "${status}" in
+      exited | dead | gone)
+        log_error "${_name[${tie}]}, restarted by the daemon, ${status/gone/no longer exists}."
+        ;;
+      *)
+        if (( SECONDS < _await_deadline )); then
+          still+=("${tie}")
+          continue
+        fi
+        log_error "${_name[${tie}]}, restarted by the daemon, is not running and healthy after ${HEALTH_TIMEOUT}s."
+        ;;
+    esac
+    _failed+=("${tie}")
+    unset "_not_ready[${tie}]"
+  done
+  _awaiting=("${still[@]}")
 }
 
 ########################################
@@ -701,6 +894,7 @@ main() {
   fi
 
   verify_containers
+  plan_followers
   if (( ${#_daemon_restarted[@]} > 0 )); then
     log_warn "restarted by the daemon: $(names_of "${_daemon_restarted[@]}")."
   fi

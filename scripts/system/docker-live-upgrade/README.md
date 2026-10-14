@@ -20,7 +20,7 @@ is how a database gets corrupted, so the repair order matters:
    dependencies are ready; see [Order](#order).
 
 A container that the daemon itself restarted, with no orphan left behind, is reported but not
-touched.
+touched. A restored container tied to a restarted one is restarted after it; see [Ties](#ties).
 
 Only a container's main process is checked for. That is enough because it is PID 1 of the
 container's PID namespace, and when it exits the kernel ends every other process in the namespace; a
@@ -34,6 +34,8 @@ container run with `--pid=host` has no namespace of its own, so its other proces
   already runs in, so a host that groups containers by priority needs no new labels.
 - Respects Compose `depends_on`, read from the labels Compose records on each container, and warns
   when a container's tier is earlier than its dependency's.
+- Restarts a live-restored container tied to a restarted one, by `restart: true` or a shared network
+  namespace.
 - Hooks before and after, for instance to open and close a monitoring maintenance window; the
   after-hook receives the outcome.
 - Distinct exit codes for restored, repaired, failed and command-failed.
@@ -98,11 +100,20 @@ healthcheck, healthy; one that was live-restored, or was not running before the 
 need waiting for. When a dependency cannot be brought back, its dependents are not started, and
 containers whose dependencies form a cycle are reported rather than started.
 
-Only the start order is taken from `depends_on`. Two ties between containers are not followed: a
-dependent with `restart: true` is not restarted when its dependency is repaired, and neither is a
-container sharing another's network namespace (`network_mode: service:<name>` or
-`container:<name>`). If such a container was live-restored while what it is tied to was repaired,
-restart it by hand: it keeps stale connections, or a network namespace that no longer exists.
+A container sharing another's network namespace (`network_mode: service:<name>` or
+`container:<name>`) depends on that container too, since it cannot start without it.
+
+### Ties
+
+Two kinds of dependency also tie a container to what it depends on: a `depends_on` entry with
+`restart: true`, and a shared network namespace. When the container it is tied to is started,
+restarted, or was restarted by the daemon, a tied container that was itself live-restored is restarted
+after it. Otherwise it would keep connections to an instance that no longer exists, or a network
+namespace that is gone. Ties are followed transitively, and a container the daemon restarted is waited
+on until it is ready before anything tied to it restarts.
+
+A tied container is not restarted when what it is tied to cannot be brought back, or no longer exists;
+it is reported as failed while still running.
 
 A dependency is never moved earlier for the container waiting on it, so a dependent in an earlier
 tier than its dependency waits for that tier. Every run warns about such a pair, because usually the

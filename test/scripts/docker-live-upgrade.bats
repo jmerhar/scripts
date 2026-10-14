@@ -33,6 +33,7 @@ setup() {
 # Writes the docker double. It answers exactly the calls the script makes: info, ps, inspect, start
 # and restart. start and restart give the container a new start time, a new PID and a healthy status,
 # unless a fixture under $FAKE says the start fails, the container exits, or it never becomes healthy.
+# inspect reports a container as starting while $FAKE/starting-<id> counts down, logging when it ends.
 # ps fails when $FAKE/ps-fails exists.
 ########################################
 write_docker_double() {
@@ -53,8 +54,47 @@ case "$1" in
     done
     ;;
   inspect)
-    f="$FAKE/state/${*: -1}"
+    id="${*: -1}" f="$FAKE/state/${*: -1}"
     [[ -e "$f" ]] || exit 1
+    # $FAKE/crash-after-<id> holds how many more lookups find the container running before it exits.
+    if [[ -e "$FAKE/crash-after-$id" ]]; then
+      n=$(cat "$FAKE/crash-after-$id")
+      if (( n > 0 )); then
+        echo $(( n - 1 )) > "$FAKE/crash-after-$id"
+      else
+        rm "$FAKE/crash-after-$id"
+        IFS='|' read -r a b c rest <"$f"
+        printf '%s|%s|exited|%s\n' "$a" "$b" "$rest" > "$f"
+      fi
+    fi
+    # $FAKE/restarting-<id> holds "<skip> <count>": after <skip> ordinary lookups, the next <count>
+    # report the container as restarting.
+    if [[ -e "$FAKE/restarting-$id" ]]; then
+      read -r skip n <"$FAKE/restarting-$id"
+      if (( skip > 0 )); then
+        echo "$(( skip - 1 )) $n" > "$FAKE/restarting-$id"
+      elif (( n > 0 )); then
+        echo "0 $(( n - 1 ))" > "$FAKE/restarting-$id"
+        IFS='|' read -r a b _ rest <"$f"
+        printf '%s|%s|restarting|%s\n' "$a" "$b" "$rest"
+        printf 'docker-restarting %s\n' "$id" >> "$STUB_CALLS"
+        exit 0
+      else
+        rm "$FAKE/restarting-$id"
+      fi
+    fi
+    # $FAKE/starting-<id> holds how many more lookups report the container as still starting.
+    if [[ -e "$FAKE/starting-$id" ]]; then
+      n=$(cat "$FAKE/starting-$id")
+      if (( n > 0 )); then
+        echo $(( n - 1 )) > "$FAKE/starting-$id"
+        IFS='|' read -r a b c d e _ rest <"$f"
+        printf '%s|%s|%s|%s|%s|starting|%s\n' "$a" "$b" "$c" "$d" "$e" "$rest"
+        exit 0
+      fi
+      rm "$FAKE/starting-$id"
+      printf 'docker-healthy %s\n' "$id" >> "$STUB_CALLS"
+    fi
     cat "$f"
     ;;
   start | restart)
@@ -94,11 +134,11 @@ DOUBLE
 # Writes a container's current state.
 # Arguments:
 #   id, name, status, started, pid, then optionally health (default healthy), tier label, cgroup
-#   parent, stop timeout, Compose project, Compose service, Compose depends_on. An absent label or stop
-#   timeout reads "<no value>", as real Docker prints it.
+#   parent, stop timeout, Compose project, Compose service, Compose depends_on, network mode (default
+#   bridge). An absent label or stop timeout reads "<no value>", as real Docker prints it.
 ########################################
 container() {
-  printf '%s|/%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" "$5" "${6:-healthy}" "${7:-<no value>}" "${8:-}" "${9:-<no value>}" "${10:-<no value>}" "${11:-<no value>}" "${12:-<no value>}" > "$FAKE/state/$1"
+  printf '%s|/%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" "$5" "${6:-healthy}" "${7:-<no value>}" "${8:-}" "${9:-<no value>}" "${10:-<no value>}" "${11:-<no value>}" "${12:-<no value>}" "${13:-bridge}" > "$FAKE/state/$1"
 }
 
 ########################################
@@ -497,6 +537,189 @@ printf "%s|%s|exited|t|0|healthy|<no value>||<no value>\n" "$id" "$name" >"$f"; 
   dlu_run
   [ "$status" -eq 2 ]
   [ "$(call_line '^docker start b2')" -lt "$(call_line '^docker start z1')" ]
+}
+
+# --- Ties: restart: true and shared network namespaces ------------------------------------------
+
+########################################
+# Marks a container as restarted by the daemon itself: running, with a new start time and PID.
+# Arguments:
+#   Container ID.
+########################################
+restarted_by_daemon() {
+  printf 'IFS="|" read -r id n s st p h rest <"$FAKE/state/%s"; printf "%%s|%%s|running|daemon|9999700|%%s|%%s\\n" "$id" "$n" "$h" "$rest" >"$FAKE/state/%s"\n' "$1" "$1" >> "$FAKE/upgrade.sh"
+}
+
+@test "a live-restored dependent with restart: true is restarted once its repaired dependency is ready" {
+  container d1 db running t 9999901 healthy 50 "" "" shop db
+  container a1 api running t 9999902 healthy 50 "" "" shop api "db:service_healthy:true"
+  lost_in_upgrade d1
+  dlu_run
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"api is tied to db, which was restarted; restarting it after"* ]]
+  [ "$(call_line '^docker start d1')" -lt "$(call_line '^docker restart a1')" ]
+  [[ "$output" == *"repaired: db, api"* ]]
+}
+
+@test "a live-restored dependent without restart: true is left alone" {
+  container d1 db running t 9999901 healthy 50 "" "" shop db
+  container a1 api running t 9999902 healthy 50 "" "" shop api "db:service_healthy:false"
+  lost_in_upgrade d1
+  dlu_run
+  [ "$status" -eq 2 ]
+  [ "$(count_calls '^docker restart a1')" -eq 0 ]
+  [[ "$output" == *"1 of 2 containers live-restored"* ]]
+}
+
+@test "a live-restored container sharing a repaired container's network, named by ID, is restarted after it" {
+  container o1 vpn running t 9999901 healthy 50
+  container s1 client running t 9999902 healthy 50 "" "" "" "" "" container:o1
+  lost_in_upgrade o1
+  dlu_run
+  [ "$status" -eq 2 ]
+  [ "$(call_line '^docker start o1')" -lt "$(call_line '^docker restart s1')" ]
+}
+
+@test "a network namespace owner named by container name is resolved too" {
+  container o1 vpn running t 9999901 healthy 50
+  container s1 client running t 9999902 healthy 50 "" "" "" "" "" container:vpn
+  lost_in_upgrade o1
+  dlu_run
+  [ "$status" -eq 2 ]
+  [ "$(call_line '^docker start o1')" -lt "$(call_line '^docker restart s1')" ]
+}
+
+@test "a container tied to one the daemon restarted is restarted, and the daemon's restart is left alone" {
+  container o1 vpn running t 9999901 healthy 50
+  container s1 client running t 9999902 healthy 50 "" "" "" "" "" container:o1
+  : > "$FAKE/upgrade.sh"
+  restarted_by_daemon o1
+  dlu_run
+  [ "$status" -eq 2 ]
+  stub_called 'docker restart s1'
+  [ "$(count_calls '^docker \(start\|restart\) o1')" -eq 0 ]
+  [[ "$output" == *"restarted by the daemon: vpn"* ]]
+}
+
+@test "a follower of a container the daemon restarted waits until that container is healthy" {
+  container o1 vpn running t 9999901 healthy 50
+  container s1 client running t 9999902 healthy 50 "" "" "" "" "" container:o1
+  : > "$FAKE/upgrade.sh"
+  restarted_by_daemon o1
+  printf 'echo 2 > "$FAKE/starting-o1"\n' >> "$FAKE/upgrade.sh"
+  dlu_run
+  [ "$status" -eq 2 ]
+  [ "$(call_line '^docker-healthy o1')" -lt "$(call_line '^docker restart s1')" ]
+}
+
+@test "waiting on a container the daemon restarted holds back only what is tied to it" {
+  container o1 vpn running t 9999901 healthy 50
+  container s1 client running t 9999902 healthy 50 "" "" "" "" "" container:o1
+  container d1 dns running t 9999903 healthy 10
+  : > "$FAKE/upgrade.sh"
+  restarted_by_daemon o1
+  printf 'echo 3 > "$FAKE/starting-o1"\n' >> "$FAKE/upgrade.sh"
+  printf 'printf "d1|/dns|exited|t|0|healthy|10||<no value>|<no value>|<no value>|<no value>|bridge\\n" > "$FAKE/state/d1"\n' >> "$FAKE/upgrade.sh"
+  dlu_run
+  [ "$status" -eq 2 ]
+  [ "$(call_line '^docker start d1')" -lt "$(call_line '^docker-healthy o1')" ]
+  [ "$(call_line '^docker-healthy o1')" -lt "$(call_line '^docker restart s1')" ]
+}
+
+@test "a follower is not restarted when the container the daemon restarted never becomes healthy" {
+  printf 'HEALTH_TIMEOUT=1\n' >> "$CONF"
+  container o1 vpn running t 9999901 healthy 50
+  container s1 client running t 9999902 healthy 50 "" "" "" "" "" container:o1
+  : > "$FAKE/upgrade.sh"
+  restarted_by_daemon o1
+  printf 'echo 99 > "$FAKE/starting-o1"\n' >> "$FAKE/upgrade.sh"
+  dlu_run
+  [ "$status" -eq 3 ]
+  [ "$(count_calls '^docker restart s1')" -eq 0 ]
+  [[ "$output" == *"vpn, restarted by the daemon, is not running and healthy"* ]]
+  [[ "$output" == *"FAILED: vpn"* ]]
+  # The summary, not the early report made before the wait, must not list it as restarted.
+  [[ "$output" != *"; restarted by the daemon: vpn"* ]]
+}
+
+@test "a container the daemon restarted that then exits fails its followers without waiting out the timeout" {
+  printf 'HEALTH_TIMEOUT=60\n' >> "$CONF"
+  container o1 vpn running t 9999901 healthy 50
+  container s1 client running t 9999902 healthy 50 "" "" "" "" "" container:o1
+  : > "$FAKE/upgrade.sh"
+  restarted_by_daemon o1
+  printf 'echo 1 > "$FAKE/crash-after-o1"; echo 99 > "$FAKE/starting-o1"\n' >> "$FAKE/upgrade.sh"
+  local before=$SECONDS
+  dlu_run
+  [ "$status" -eq 3 ]
+  [ $(( SECONDS - before )) -lt 30 ]
+  [ "$(count_calls '^docker restart s1')" -eq 0 ]
+  [[ "$output" == *"vpn, restarted by the daemon, exited."* ]]
+}
+
+@test "a container the daemon restarted that is briefly restarting still gets its followers restarted" {
+  container o1 vpn running t 9999901 healthy 50
+  container s1 client running t 9999902 healthy 50 "" "" "" "" "" container:o1
+  : > "$FAKE/upgrade.sh"
+  restarted_by_daemon o1
+  # Running at the verification, then restarting for two checks while its policy backs off.
+  printf 'echo "1 2" > "$FAKE/restarting-o1"\n' >> "$FAKE/upgrade.sh"
+  dlu_run
+  [ "$status" -eq 2 ]
+  [ "$(count_calls '^docker-restarting o1')" -eq 2 ]
+  stub_called 'docker restart s1'
+}
+
+@test "a container tied to one removed during the command is reported as failed, not restored" {
+  container o1 vpn running t 9999901 healthy 50
+  container s1 client running t 9999902 healthy 50 "" "" "" "" "" container:o1
+  upgrade_does 'rm "$FAKE/state/o1"'
+  dlu_run
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"client is tied to vpn, which no longer exists"* ]]
+  [[ "$output" == *"0 of 2 containers live-restored"* ]]
+  [[ "$output" == *"FAILED: vpn, client"* ]]
+}
+
+@test "a depends_on label with a field after restart still yields the tie" {
+  container d1 db running t 9999901 healthy 50 "" "" shop db
+  container a1 api running t 9999902 healthy 50 "" "" shop api "db:service_healthy:true:extra"
+  lost_in_upgrade d1
+  dlu_run
+  [ "$status" -eq 2 ]
+  stub_called 'docker restart a1'
+}
+
+@test "ties are followed transitively, each restart waiting for the one before" {
+  container c1 base running t 9999901 healthy 50 "" "" app base
+  container b1 mid running t 9999902 healthy 50 "" "" app mid "base:service_healthy:true"
+  container a1 top running t 9999903 healthy 50 "" "" app top "mid:service_healthy:true"
+  lost_in_upgrade c1
+  dlu_run
+  [ "$status" -eq 2 ]
+  [ "$(call_line '^docker start c1')" -lt "$(call_line '^docker restart b1')" ]
+  [ "$(call_line '^docker restart b1')" -lt "$(call_line '^docker restart a1')" ]
+}
+
+@test "a container tied to a dependency that could not be brought back is left running and reported" {
+  container d1 db running t 9999901 healthy 50 "" "" shop db
+  container a1 api running t 9999902 healthy 50 "" "" shop api "db:service_healthy:true"
+  touch "$FAKE/fail-start-d1"
+  lost_in_upgrade d1
+  dlu_run
+  [ "$status" -eq 3 ]
+  [ "$(count_calls '^docker restart a1')" -eq 0 ]
+  [[ "$output" == *"not restarting api: db, which it is tied to, could not be brought back; it is still running"* ]]
+}
+
+@test "a lost container sharing a network starts after the owner, whatever its tier" {
+  container o1 vpn running t 9999901 healthy 50
+  container s1 client running t 9999902 healthy 10 "" "" "" "" "" container:o1
+  lost_in_upgrade o1 s1
+  dlu_run
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"client (tier 10) depends on vpn (tier 50)"* ]]
+  [ "$(call_line '^docker start o1')" -lt "$(call_line '^docker start s1')" ]
 }
 
 # --- Failures ---------------------------------------------------------------------------------
