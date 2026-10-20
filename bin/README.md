@@ -2,7 +2,7 @@
 
 Scripts in `bin/` are not published as packages. They are the build, lint, test and
 release machinery: packaging, the `@include`/`@embed` compiler, the manifest checks,
-the README index generator, and the coverage runner. The Makefile and the GitHub Actions
+the README index generator, and the coverage hooks. The Makefile and the GitHub Actions
 workflows are thin wrappers that call into these scripts so the same logic runs locally
 before a push and in CI.
 
@@ -16,7 +16,7 @@ The tools are grouped by concern, one subdirectory each:
 | [`compile/`](compile/) | The `@include` compiler (one file and the whole tree) |
 | [`package/`](package/) | Packaging, the release smoke test, the release orchestrator, and the downstream push |
 | [`docs/`](docs/) | The README index generator (one file and every file) |
-| [`coverage/`](coverage/) | The kcov coverage runner, and the script it runs inside the container |
+| [`coverage/`](coverage/) | The hooks the shared kcov runner calls: the suite command, and the container setup |
 | [`test/`](test/) | The bats suite runner, which parallelises across cores when GNU parallel is installed |
 | [`_lib/`](_lib/) | Shared path resolution and logging, sourced (not run) by the tools above |
 

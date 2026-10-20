@@ -344,14 +344,14 @@ real system. The full set:
 | `nopasswd-sudo` | `DROPIN`, `SYSTEMD_UNIT_DIR` | Defaults are `/etc/sudoers.d` and `/etc/systemd/system`; the coverage job runs as root |
 | `subtitle-sync` | `CACHE_DIR` (via config) | Defaults under `$XDG_CACHE_HOME`, so a test would write to the real cache |
 | `memory-pressure-alert` | `SWAPUSAGE_CMD`, `MEMSIZE_CMD`, `VMSTAT_CMD`, `TOP_CMD`, `NOTIFY_CMD`, `LAUNCHCTL_CMD`, `LAUNCH_AGENTS_DIR`, `AGENT_LOG_DIR` | Every reading is live kernel state; the notifier would post to the developer's desktop and `--install` would load a real launchd agent |
-| `run-coverage` | `KCOV_BIN`, `BATS_BIN`, `DOCKER_BIN` | None can be stubbed on PATH under its real name: a `kcov` or `bats` there is picked up by the harness tracing the test, and a `docker` is handed to `ufw-docker-expose`'s suite |
+| `measure` | `BATS_BIN` | A `bats` on PATH is picked up by the harness tracing the test |
 | `run-suite` | `BATS_BIN`, `PARALLEL_BIN`, `JOBS` | Same reason: a `bats` on PATH is picked up by the suite running this tool's own test, and a `parallel` there changes how that suite runs. `JOBS` pins what the core count would otherwise decide |
-| `in-container` | `SRC`, `TMP`, `PREFIX`, `BATS_BIN` | Its defaults are a container's own filesystem, so the real steps install into the developer's `/usr/local` and extract into their `/tmp` — one run of an early version of its suite did exactly that |
+| `setup` (coverage) | `TMP`, `PREFIX` | Its defaults are a container's own filesystem, so the real steps install into the developer's `/usr/local` and extract into their `/tmp` — one run of an early version of its suite did exactly that |
 | `dovi-active-area` | `DOVI_TOOL_BIN` (via config), `WORK_DIR` | dovi_tool is often installed under a path of its own, and the rewrite must write its multi-gigabyte intermediates somewhere a test is not |
 | `build-ffmpeg-nonfree` | `DOCKER_BIN`, `GIT_BIN`, `OS_RELEASE`, `BUILD_DIR`, `DEST` (via config) | Otherwise a test reaches the network, runs a 30-minute container, and installs binaries onto the developer's PATH |
 | `remove-old-kernels` | `RUNNING_KERNEL`, `DPKG_QUERY_BIN`, `APT_GET_BIN` | The whole decision is about the machine's own kernels; a test has to describe a machine rather than read one |
 | `smart-check` | `SMARTCTL_BIN`, `SUDO_BIN` | smartctl needs root, and the stub for sudo records without executing — so the escalation is a seam too, or the double's output never comes back |
-| `ufw-docker-expose` | `DOCKER_BIN` | The double cannot simply be called `docker`: `bin/coverage/run-coverage.sh` and the bash-3.2 guard test run the real CLI for pinned images, and a stub of that name on `PATH` would be handed to them |
+| `ufw-docker-expose` | `DOCKER_BIN` | The double cannot simply be called `docker`: the bash-3.2 guard test runs the real CLI for pinned images, and a stub of that name on `PATH` would be handed to it |
 | `docker-live-upgrade` | `DOCKER_BIN`, `KILL_BIN`, `PROC_ROOT`, `KILL_GRACE` | `DOCKER_BIN` for the same reason as above. `KILL_BIN` because `kill` is a builtin no `PATH` stub can shadow, so without it a test would signal a real PID; `PROC_ROOT` so orphan detection reads fake processes, never the machine's; `KILL_GRACE` so the never-dies test does not wait ten seconds |
 
 ### Replacing a file someone else is seeding
@@ -382,10 +382,13 @@ intended trade, and `dovi-active-area` says so when it sees a link count above o
 
 ### Coverage
 
-Line coverage is measured by kcov through `bin/coverage/run-coverage.sh` and published to
-[the shared site](https://jmerhar.github.io/coverage/scripts/); `coverage.toml` declares the suite and
-its gate, and the reporting is the shared actions from
-[jmerhar/coverage](https://github.com/jmerhar/coverage). Four things about it are not obvious:
+Line coverage is measured by kcov and published to
+[the shared site](https://jmerhar.github.io/coverage/scripts/). `coverage.toml` declares the suite, its
+gate and how to run it — the `command` (`bin/coverage/measure.sh`), the container's `packages`, `requires`,
+`min_bash` and the container-only `setup` (`bin/coverage/setup.sh`) — and the runner, reporting and gate
+are shared tooling from [jmerhar/coverage](https://github.com/jmerhar/coverage): its `run-kcov.sh`, fetched
+into `.coverage-tooling/` by `make coverage-tooling`, and its actions in CI. Do not reintroduce a runner
+of this repository's own. Several things about it are not obvious:
 
 - **The kcov seam lives in `test/test_helper.bash` and nowhere else.** `run_script`, `run_func` and
   `run_snippet` notice `COVERAGE_DIR`; no `.bats` file knows coverage exists. Keep it that way.
@@ -393,22 +396,24 @@ its gate, and the reporting is the shared actions from
   script under `set -o nounset` dies before its function runs, and `--bash-method=DEBUG` measures
   nothing. Function-level calls therefore go through a harness kcov executes directly, written beside
   the script, so the library path it derives from `$(dirname "$0")` still resolves.
-  `bin/coverage/run-coverage.sh` removes them.
+  `bin/coverage/measure.sh` removes them.
 - **bats is installed from source in the container, not from apt.** Debian ships 1.8, which predates
   `BATS_TEST_TIMEOUT`; a suite that bounds a test to turn a runaway loop into a failure would silently
-  have no bound. `BATS_VERSION` in `bin/coverage/run-coverage.sh` pins the same version a local run and the macOS
+  have no bound. `BATS_VERSION` in `bin/coverage/setup.sh` pins the same version a local run and the macOS
   job use, so all three behave alike.
 - **An unexecuted file is absent from the report, not 0%.** kcov's bash backend reports only what it
   observes running, so a script no test drives simply does not appear — which is why
-  `--exclude-pattern` never needed to name `run-coverage.sh`, and why there is no cost to measuring the
-  coverage harness. The way to measure it is to drive it: `test/bin/run-coverage.bats` and
-  `test/bin/in-container.bats` do, through the seams above. `.conf` files and READMEs still need
+  `--exclude-pattern` never needed to name the coverage harness, and why there is no cost to measuring
+  it. The way to measure it is to drive it: `test/bin/measure.bats` and `test/bin/setup.bats` do,
+  through the seams above. `.conf` files and READMEs still need
   excluding, because kcov's bash parser reads a prose line as code once something in the same
   directory is traced.
-- **Coverage is Linux-only, and that is deliberate.** kcov's macOS build ignores the shebang and execs
-  `/bin/bash` — 3.2 there — so most of these scripts fail under it. The runner detects that and uses the
-  pinned container instead, which is also what CI does, so `make coverage` needs Docker rather than a
-  local kcov.
+- **Coverage is always measured in the Linux container, and that is deliberate.** `local = false` in
+  `coverage.toml` makes the runner take the pinned container even when a local kcov could run the
+  suite, so `make coverage` needs Docker. The scripts branch on GNU against BSD coreutils, on running
+  as root and on macOS-only tools, so a Mac measures different lines (88.6% against 94.7% when last
+  compared) and would gate a figure CI never publishes. `min_bash = 4` records the other reason: stock
+  kcov on macOS execs `/bin/bash` 3.2 whatever the shebang, and most of these scripts fail under it.
 
 The gate sits just under the measured figure. What keeps it short of the whole file is defensive code the
 tests cannot drive rather than logic they miss: branches for a tool that is absent (stubbed here, so the
@@ -424,7 +429,6 @@ reads as never executed and the lines between are not instrumented at all — an
 are not bash in the first place, they run as awk or jq. Programs live in their own files, which are not
 measured. Write a long command on one long line instead: line length is free, where a continuation is not.
 Keep new code single-statement-per-line, and a program longer than a line or two in a file.
-`bin/coverage/run-coverage.sh` is the one file exempt, since `--exclude-pattern` keeps it out of the report.
 Both halves are enforced in `make lint` and in the lint workflow, so each is a build failure rather than
 something to remember: `bin/lint/check-continuations.sh` for the backslash, and
 `bin/lint/check-inline-programs.sh` for a quoted multi-line `awk` or `jq` program, which is one command

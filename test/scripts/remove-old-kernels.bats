@@ -6,8 +6,8 @@
 #
 # Both package tools are doubles written here rather than shared stubs. dpkg has to answer two different
 # queries differently — the list of kernel images, and the packages belonging to one version — and a
-# shared apt-get would shadow the double that test/bin/in-container.bats writes for itself, since the stub
-# directory comes first on PATH for every suite.
+# shared dpkg would shadow the double that test/bin/setup.bats writes for itself, since the stub directory
+# comes first on PATH for every suite.
 #
 # The purge is asserted from a call log either way: as root the double records itself, and as a normal user
 # the shared sudo stub records the whole command without running it.

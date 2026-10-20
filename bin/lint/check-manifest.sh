@@ -16,7 +16,7 @@
 #
 # Exits non-zero if any registered script is missing, non-executable, undocumented or lacking a
 # shebang. An unregistered script is a warning: a work in progress under scripts/ is legitimate, and so
-# is the harness that run-coverage.sh puts there for the duration of a run.
+# is the harness the test helper puts there for the duration of a coverage run.
 
 set -o errexit
 set -o nounset

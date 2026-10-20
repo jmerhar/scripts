@@ -4,8 +4,9 @@ help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*##|^##@' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*## "}; /^##@/ {printf "\n\033[1m%s\033[0m\n", substr($$0, 5); next} {printf "  \033[36mmake %-14s\033[0m %s\n", $$1, $$2}'
 
-# Defined here so both `coverage-tooling` (which fetches it) and `coverage` (which runs it) see one name.
-COVERAGE_REPORT := .coverage-report.py
+# Defined here so `coverage-tooling` (which fetches into it), the coverage targets (which run from it) and
+# `clean` see one name.
+COVERAGE_TOOLING := .coverage-tooling
 
 ##@ Setup
 
@@ -70,29 +71,32 @@ test: ## Run the bats suite
 test-ci: ## Run the suite with the environment CI has
 	bin/test/run-suite.sh --ci
 
-# Measured in the pinned kcov container, even locally: kcov's macOS build ignores the shebang and execs
-# /bin/bash, which is 3.2, and most of these scripts need 4.0 or newer. run-coverage.sh detects that and
-# falls back, so this needs Docker running rather than a local kcov.
-test-coverage: ## Run the suite under kcov without gating (writes coverage/)
-	bin/coverage/run-coverage.sh
+# The kcov runner, the summary and the gate are shared tooling from jmerhar/coverage, configured by
+# coverage.toml. Fetched rather than vendored, so a local run does exactly what CI does, and kept side by
+# side because run-kcov.sh finds coverage-report.py in its own directory. Refreshed on every run rather
+# than only when absent: v1 moves within its major version, so a cached copy would drift from what CI
+# enforces. -z makes an unchanged file cost a 304, and a failed request falls back to the copy already on
+# disk, so this still works offline.
+coverage-tooling: ## Fetch the shared coverage tooling (run automatically by `make coverage`)
+	@mkdir -p $(COVERAGE_TOOLING)
+	@for f in coverage-report.py run-kcov.sh; do \
+		curl -fsSL -z $(COVERAGE_TOOLING)/$$f -o $(COVERAGE_TOOLING)/$$f \
+			https://raw.githubusercontent.com/jmerhar/coverage/v1/bin/$$f \
+			|| test -f $(COVERAGE_TOOLING)/$$f || exit 1; \
+	done
 
-# The coverage summary and gate are shared tooling from jmerhar/coverage, configured by coverage.toml.
-# Fetched rather than vendored, so a local gate enforces exactly what CI does. Refreshed on every run
-# rather than only when absent: v1 moves within its major version, so a cached copy would drift from
-# what CI enforces. -z makes an unchanged file cost a 304, and a failed request falls back to the copy
-# already on disk, so this still works offline.
-coverage-tooling: ## Fetch the shared coverage-report script (run automatically by `make coverage`)
-	@curl -fsSL -z $(COVERAGE_REPORT) -o $(COVERAGE_REPORT) \
-		https://raw.githubusercontent.com/jmerhar/coverage/v1/bin/coverage-report.py \
-		|| test -f $(COVERAGE_REPORT)
+# Measured in the pinned kcov container, even locally (`local = false` in coverage.toml), so this needs
+# Docker: the scripts branch on the platform, the coreutils flavour and root, and a Mac would measure
+# different lines from the Linux container CI publishes.
+test-coverage: coverage-tooling ## Run the suite under kcov without gating (writes coverage/)
+	bash $(COVERAGE_TOOLING)/run-kcov.sh
 
-coverage: coverage-tooling ## Run the suite under kcov and enforce the coverage gate
-	bin/coverage/run-coverage.sh
-	python3 $(COVERAGE_REPORT) --gate
+coverage: test-coverage ## Run the suite under kcov and enforce the coverage gate
+	python3 $(COVERAGE_TOOLING)/coverage-report.py --gate
 
 check: lint test-ci published ## Lint + tests + published form (gate a commit on this)
 
 ##@ Housekeeping
 
 clean: ## Remove build and coverage artefacts (all regenerable)
-	rm -rf dist coverage junit $(COVERAGE_REPORT)
+	rm -rf dist coverage junit $(COVERAGE_TOOLING)

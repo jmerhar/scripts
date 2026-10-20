@@ -116,14 +116,14 @@ EOF
   # exempt on that reasoning until the thirty-line docker invocation hiding behind the exemption made the
   # case against it. A continuation costs a reader whatever kcov does.
   fake_repo_tool check-continuations.sh
-  fake_repo_replace_tool run-coverage.sh <<'EOF'
+  fake_repo_replace_tool measure.sh <<'EOF'
 #!/usr/bin/env bash
 docker run --rm \
   -v x:y image
 EOF
   run_script "$FAKE_TOOL" "$FAKE_REPO/bin"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"run-coverage.sh:2"* ]]
+  [[ "$output" == *"measure.sh:2"* ]]
 }
 
 @test "a continuation in any other bin tool is reported too" {

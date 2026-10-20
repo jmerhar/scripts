@@ -35,8 +35,8 @@ setup_common() {
   LIB_DIR="$REPO_ROOT/scripts/lib"
   export LIB_DIR
 
-  # Basename of the harness bin/coverage/run-coverage.sh places beside each script while measuring.
-  # Named here because both the seams below and the runner that creates them need to agree on it.
+  # Basename of the harness the seams below place beside each script while measuring, and that
+  # bin/coverage/measure.sh removes afterwards; both need to agree on it.
   COVERAGE_HARNESS_NAME="${COVERAGE_HARNESS_NAME:-_coverage-harness}"
   export COVERAGE_HARNESS_NAME
 
@@ -206,8 +206,8 @@ git_fixture_init() {
 # Writes the sourcing harness kcov executes, at the given path.
 # Created next to its target on demand, because it must live beside the script it sources: $0 is the
 # harness, and the scripts resolve their library relative to "$(dirname "$0")". Written here rather
-# than only by bin/coverage/run-coverage.sh so that a tool copied into a fixture tree — as the bin/
-# suites do — gets one too. bin/coverage/run-coverage.sh deletes any that a run leaves behind.
+# on demand so that a tool copied into a fixture tree — as the bin/ suites do — gets one too.
+# bin/coverage/measure.sh deletes any that a run leaves behind.
 # Arguments:
 #   path: Where to write the harness.
 ########################################
@@ -243,7 +243,7 @@ HARNESS
 # BASH_SOURCE, which is unset inside a `-c` command string, so a script running under `set -o nounset`
 # — all of them here — dies before its function is reached. (--bash-method=DEBUG survives that but
 # measures nothing at all.) So under coverage the call goes through a harness script that kcov executes
-# directly; bin/coverage/run-coverage.sh places one beside every script for the duration of a run, so that
+# directly, written beside the script for the duration of a run (see _write_coverage_harness), so that
 # $(dirname "$0") is still the script's own directory and its library include resolves, and the harness
 # exports SCRIPT_NAME so the config path and log prefix are the script's own rather than the harness's.
 # Globals:

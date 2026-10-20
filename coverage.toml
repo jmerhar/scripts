@@ -1,8 +1,9 @@
 # Coverage configuration for the shared tooling in jmerhar/coverage, which renders the CI summary
 # table, enforces the gate, and publishes the HTML report to https://jmerhar.github.io/coverage/.
 #
-# One suite: the shell in scripts/ and bin/, traced by kcov via bin/coverage/run-coverage.sh. kcov measures lines
-# only — there is no branch coverage for shell — so the table simply has no Branch column.
+# One suite: the shell in scripts/ and bin/, traced by kcov through jmerhar/coverage's run-kcov.sh, as
+# configured by the command, packages, requires, min_bash, local and setup keys below. kcov measures lines only —
+# there is no branch coverage for shell — so the table simply has no Branch column.
 #
 # `report` points at the merged report and `html` at the kcov output root; what gets published follows
 # from that. kcov also writes one report per traced invocation, each crediting only the hits from runs
@@ -15,6 +16,26 @@ label = "Shell scripts (bash)"
 format = "kcov"
 report = "coverage/kcov-merged/coverage.json"
 html = "coverage"
+# bin/coverage/measure.sh runs bats; test/test_helper.bash applies kcov per invocation from COVERAGE_DIR.
+command = 'bin/coverage/measure.sh'
+# What the scripts under test shell out to, installed in the container: a suite covering a script that
+# needs one fails for want of the tool rather than for a fault in the code, so keep this in step with what
+# the suites exercise. wget is for setup.sh, which fetches bats and yq. procps is for bats, not the
+# scripts: its per-test timeout shells out to ps/pkill, and without them every test in a file that sets
+# BATS_TEST_TIMEOUT aborts with "Cannot execute timeout". git is for the release suites, which drive real
+# repositories rather than stubbing git.
+packages = ["wget", "libxml2-utils", "zip", "unzip", "jq", "procps", "git"]
+requires = ["bats"]
+# Eight of the scripts use case conversion, associative arrays, mapfile or namerefs. Stock kcov on macOS
+# traces with /bin/bash (3.2) whatever the shebang, so it would report failures from constructs the scripts
+# legitimately use.
+min_bash = 4
+# Measured in the container even when a local kcov could run the suite: the scripts branch on GNU against
+# BSD coreutils, on running as root, and on macOS-only tools, so a Mac measures different lines (88.6%
+# against 94.7% when last compared) and its gate would check a figure CI never publishes.
+local = false
+# Installs bats from source and yq at their pinned versions, in the container only.
+setup = 'bin/coverage/setup.sh'
 # Set just under the measured figure so a real regression fails while a defensive line here or there is
 # tolerated. Every publishable script has a behavioural suite, and no measured file has a `\` continuation
 # left — a rule, not a coincidence: see the coverage section of CLAUDE.md for the grep that proves it and
@@ -29,8 +50,8 @@ html = "coverage"
 #     the Linux run cannot reach the BSD arm and the macOS run cannot reach the GNU one;
 #   * root-only and non-root-only branches, each unreachable on one of the two runs;
 #   * guards that exist precisely because they should never fire;
-#   * the four lines of bin/coverage/in-container.sh's entry point, which no test may reach: running it
-#     rather than sourcing one of its functions would apt-get its way through the developer's machine;
+#   * the lines of bin/coverage/setup.sh's entry point, which no test may reach: running it rather than
+#     sourcing one of its functions would install into the developer's machine;
 #   * the `sudo` arm of the two scripts that escalate — smart-check and remove-old-kernels — since the
 #     coverage container runs as root and takes the other branch every time;
 #   * the interiors of the two multi-line `xmllint --xpath` expressions in dmarc-report. Bash attributes
@@ -50,8 +71,8 @@ html = "coverage"
 #
 # It excludes nothing else. A shell file no test drives is simply absent from the report rather than
 # counted at 0%, because kcov's bash backend records only what it observes running — so the pattern never
-# needed to name the coverage runner, and there is no cost to measuring the harness. Both of its files are
-# measured, driven through their seams by test/bin/run-coverage.bats and test/bin/in-container.bats.
+# needed to name the coverage harness, and there is no cost to measuring it. Both of its files are
+# measured, driven through their seams by test/bin/measure.bats and test/bin/setup.bats.
 #
 # The measured figure is 94.66% (5731/6054 lines) across 49 files, the bin tools' own library included:
 # `--include-path` names bin/ and recurses, so bin/_lib/ is measured like everything else, and both of its

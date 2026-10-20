@@ -29,11 +29,12 @@ jobs:
       - name: ShellCheck the test helper and stubs
         run: shellcheck --severity=warning test/test_helper.bash test/stubs/_stub
 
-      # Runs the whole suite, so it replaces a separate bats step. No toolchain to install: kcov has no
-      # Ubuntu 24.04 package, so run-coverage.sh uses the pinned upstream image, which brings kcov and
-      # installs bats and yq itself.
-      - name: Test with coverage
-        run: JUNIT_DIR=junit bin/coverage/run-coverage.sh
+      # Runs the whole suite under kcov, as declared on the suite in coverage.toml, so it replaces a
+      # separate bats step. No toolchain to install: kcov has no Ubuntu 24.04 package, so this takes the
+      # pinned kcov container, whose setup step installs bats and yq.
+      - uses: jmerhar/coverage/.github/actions/kcov@v1
+        with:
+          junit-dir: junit
 
       # The suite, its label and its gate are declared in coverage.toml; the tooling behind this and the
       # three steps below is shared by every project publishing to the coverage site.

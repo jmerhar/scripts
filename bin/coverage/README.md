@@ -1,9 +1,11 @@
-# `bin/coverage/` — coverage runner
+# `bin/coverage/` — coverage hooks
+
+The runner itself is shared: jmerhar/coverage's `run-kcov.sh` (fetched into `.coverage-tooling/` by
+`make coverage-tooling`, and the `kcov` action in CI) reads the suite in `coverage.toml` and calls these.
 
 | Script | Role |
 |---|---|
-| `run-coverage.sh` | Runs the bats suite under kcov and leaves a merged report in `coverage/`. It does not gate: `make coverage` applies the shared gate from `coverage.toml` afterwards, and `make test-coverage` skips it. Pinned to a kcov image by digest and a bats version, so a local run, the macOS job and the Linux container all behave alike. On macOS it detects kcov exec'ing `/bin/bash` 3.2 and falls back to the pinned container, so `make coverage` needs Docker rather than a local kcov. |
+| `measure.sh` | The suite's `command`: runs the bats suite with `COVERAGE_DIR` set, from the repository root, and removes the per-script harness files the test helper leaves behind. Writes bats's JUnit report when `JUNIT_DIR` is set. |
+| `setup.sh` | The suite's `setup`, run in the kcov container only: installs bats from source and mikefarah's yq at their pinned versions, so a local run, the macOS job and the Linux container all behave alike. |
 
-The kcov seam that makes the tools traceable lives in `test/test_helper.bash`, not here;
-this script only runs the suite under the instrumented binary and removes the per-script
-harness files a run leaves behind.
+The kcov seam that makes the tools traceable lives in `test/test_helper.bash`, not here.

@@ -230,7 +230,7 @@ manifest_with() {
 # --- Unregistered scripts ----------------------------------------------------------------------
 
 # A warning rather than an error: work in progress under scripts/ is legitimate, and so is the harness
-# run-coverage.sh places there for the duration of a run.
+# the test helper places there for the duration of a coverage run.
 @test "warns about an unregistered script without failing" {
   good_script alpha
   good_script stray

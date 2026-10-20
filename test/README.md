@@ -231,9 +231,10 @@ make coverage        # the suite under kcov, then the shared gate
 make test-coverage   # the same without gating
 ```
 
-Needs Docker rather than a local kcov: kcov's macOS build ignores the shebang and execs `/bin/bash`,
-which is 3.2 there, and most of these scripts need 4.0 or newer — so `bin/coverage/run-coverage.sh` probes what a
-local kcov would run and falls back to the pinned container, which is what CI uses too.
+Both run through jmerhar/coverage's shared `run-kcov.sh`, configured on the suite in `coverage.toml`, and
+need Docker: `local = false` measures in the pinned Linux container, as CI does, because the scripts
+branch on the platform, the coreutils flavour and root, so a Mac would measure different lines. kcov's
+macOS build also execs `/bin/bash` (3.2) whatever the shebang, which most of these scripts cannot use.
 
 Everything coverage-specific is in `test_helper.bash`: the three seams notice `COVERAGE_DIR` and trace
 through kcov. **No `.bats` file should ever mention coverage.**
@@ -243,7 +244,7 @@ exactly, but kcov's prologue reads `BASH_SOURCE`, which is unset inside a `-c` s
 `set -o nounset` dies before its function is reached. Under coverage those calls instead go through a
 harness kcov executes directly, written beside the script — so the library path the script derives
 from `$(dirname "$0")` still resolves — and handed the script's own `SCRIPT_NAME`. It defaults rather than forces that name, so
-a test pinning `SCRIPT_NAME` keeps its value. `bin/coverage/run-coverage.sh` deletes any harness a run leaves
+a test pinning `SCRIPT_NAME` keeps its value. `bin/coverage/measure.sh` deletes any harness a run leaves
 behind, and `.gitignore` covers one that a killed run strands.
 
 The consequence for tests: assert what the scripts need from `$0` — its directory, and their own name —
