@@ -20,7 +20,8 @@ is how a database gets corrupted, so the repair order matters:
    dependencies are ready; see [Order](#order).
 
 A container that the daemon itself restarted, with no orphan left behind, is reported but not
-touched. A restored container tied to a restarted one is restarted after it; see [Ties](#ties).
+touched. A restored container tied to a restarted one is restarted after it; see [Ties](#ties). So is
+one that bind-mounts a socket the command replaced; see [Replaced sockets](#replaced-sockets).
 
 Only a container's main process is checked for. That is enough because it is PID 1 of the
 container's PID namespace, and when it exits the kernel ends every other process in the namespace; a
@@ -34,6 +35,8 @@ container run with `--pid=host` has no namespace of its own, so its other proces
   already runs in, so a host that groups containers by priority needs no new labels.
 - Respects Compose `depends_on`, read from the labels Compose records on each container, and warns
   when a container's tier is earlier than its dependency's.
+- Restarts a live-restored container that bind-mounts a socket the command replaced, such as
+  `/var/run/docker.sock` when a Docker upgrade restarts `docker.socket`.
 - Restarts a live-restored container tied to a restarted one, by `restart: true` or a shared network
   namespace.
 - Hooks before and after, for instance to open and close a monitoring maintenance window; the
@@ -114,6 +117,17 @@ on until it is ready before anything tied to it restarts.
 
 A tied container is not restarted when what it is tied to cannot be brought back, or no longer exists;
 it is reported as failed while still running.
+
+### Replaced sockets
+
+A bind mount of a single file keeps the file it found when the container started. When the command
+replaces a bind-mounted Unix socket -- a Docker package upgrade restarts `docker.socket`, which
+recreates `/var/run/docker.sock` -- a live-restored container mounting it keeps a socket nothing
+listens on. Every socket the recorded containers bind-mount is identified by device and inode before
+the command and checked afterwards; a live-restored container mounting one that changed is restarted,
+along with anything tied to it. One mounting a socket that no longer exists is reported as failed
+rather than restarted, since Docker would create a directory in its place. Ordinary files are not
+tracked.
 
 A dependency is never moved earlier for the container waiting on it, so a dependent in an earlier
 tier than its dependency waits for that tier. Every run warns about such a pair, because usually the

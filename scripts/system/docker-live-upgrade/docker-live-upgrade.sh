@@ -15,7 +15,8 @@
 # Only then are the affected containers started or restarted, a few at a time in tier order, each batch
 # waiting for its healthchecks before the next, and none before its Compose dependencies are ready.
 # A container that was restored but is tied to a restarted one, by `restart: true` or by sharing its
-# network namespace, is restarted after it.
+# network namespace, is restarted after it, as is one that bind-mounts a Unix socket the command
+# replaced.
 #
 # Usage:
 #   sudo ./docker-live-upgrade.sh -- apt upgrade
@@ -41,7 +42,10 @@ source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/config.sh"
 : "${DOCKER_BIN:=docker}"
 : "${KILL_BIN:=kill}"
 : "${PROC_ROOT:=/proc}"
-readonly DOCKER_BIN KILL_BIN PROC_ROOT
+# GNU stat, which reports a bind-mounted socket's type and identity; the suite's double describes files
+# that a test cannot create, such as a Unix socket, on any platform.
+: "${STAT_BIN:=stat}"
+readonly DOCKER_BIN KILL_BIN PROC_ROOT STAT_BIN
 
 # Seconds to wait for an orphan to exit after SIGKILL before giving up on it. Overridable for the
 # same reason as the commands above: the suite exercises a process that never exits.
@@ -56,6 +60,9 @@ _command=()
 # The snapshot, keyed by full container ID.
 _ids=()
 declare -A _name=() _started=() _pid=() _tier=() _stop=() _project=() _service=() _depends_on=() _network=()
+# Each container's bind-mount sources, separated by ';', and the identity ("<device>:<inode>") of every
+# one of those sources that was a Unix socket when the snapshot was taken.
+declare -A _binds=() _socket_before=()
 # Each container's dependencies among the recorded containers, as space-separated IDs.
 declare -A _deps=()
 # The subset of each container's dependencies it must be restarted with: depends_on entries with
@@ -79,6 +86,8 @@ _repaired=()
 _failed=()
 # Containers restarted because something they are tied to was restarted; also listed in _to_restart.
 _followers=()
+# Restored containers restarted because a socket they bind-mount was replaced; also in _to_restart.
+_stale=()
 
 ########################################
 # Print usage information.
@@ -90,7 +99,8 @@ Usage: sudo $(basename "$0") [options] -- <command> [args...]
 Runs a command that restarts the Docker daemon (usually a package upgrade) and repairs any container
 that live-restore did not carry across it: orphaned processes are stopped, then affected containers
 are started in tier order, a batch at a time, waiting for their healthchecks and their Compose
-dependencies. Containers tied to a restarted one are restarted after it.
+dependencies. Containers tied to a restarted one, or mounting a socket the command replaced, are
+restarted.
 
 Options:
   -d, --debug     enable debug output
@@ -193,15 +203,16 @@ load_settings() {
 # prints as "<no value>", as a missing label does.
 #
 # Then come the labels Docker Compose records: the project, the service, and depends_on as
-# "service:condition:restart" entries separated by commas. The network mode is last; a container
-# sharing another's network namespace reads "container:<id or name>".
+# "service:condition:restart" entries separated by commas. Then the network mode, where a container
+# sharing another's network namespace reads "container:<id or name>", and last the sources of its bind
+# mounts, each followed by ';'.
 # Globals:
 #   DOCKER_BIN, TIER_LABEL
 # Arguments:
 #   Container ID.
 # Outputs:
 #   id|name|status|started|pid|health|tier label|cgroup parent|stop timeout|project|service|depends on|
-#   network mode
+#   network mode|bind sources
 # Returns:
 #   Non-zero when the container does not exist.
 ########################################
@@ -211,7 +222,8 @@ inspect_container() {
   format+='{{with index .State "Health"}}{{.Status}}{{else}}none{{end}}|'
   format+="{{index .Config.Labels \"${TIER_LABEL}\"}}|{{.HostConfig.CgroupParent}}|{{index .Config \"StopTimeout\"}}|"
   format+='{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|'
-  format+='{{index .Config.Labels "com.docker.compose.depends_on"}}|{{.HostConfig.NetworkMode}}'
+  format+='{{index .Config.Labels "com.docker.compose.depends_on"}}|{{.HostConfig.NetworkMode}}|'
+  format+='{{range .Mounts}}{{if eq .Type "bind"}}{{.Source}};{{end}}{{end}}'
   "${DOCKER_BIN}" inspect --format "${format}" "$1" 2>/dev/null
 }
 
@@ -246,17 +258,18 @@ resolve_tier() {
 ########################################
 # Record every running container, before anything can change.
 # Globals:
-#   DOCKER_BIN, _ids, _name, _started, _pid, _tier, _stop, _project, _service, _depends_on, _network
+#   DOCKER_BIN, _ids, _name, _started, _pid, _tier, _stop, _project, _service, _depends_on, _network,
+#   _binds
 # Returns:
 #   Non-zero when Docker cannot list or inspect its containers.
 ########################################
 take_snapshot() {
-  local ids id line name status started pid health label parent stop project service depends_on network
+  local ids id line name status started pid health label parent stop project service depends_on network binds
   ids=$("${DOCKER_BIN}" ps --quiet --no-trunc) || return 1
   for id in ${ids}; do
     # A container that stopped between the listing and this lookup is simply not running.
     line=$(inspect_container "${id}") || continue
-    IFS='|' read -r id name status started pid health label parent stop project service depends_on network <<<"${line}"
+    IFS='|' read -r id name status started pid health label parent stop project service depends_on network binds <<<"${line}"
     [[ "${status}" == "running" ]] || continue
     _ids+=("${id}")
     _name[${id}]="${name#/}"
@@ -272,8 +285,97 @@ take_snapshot() {
     _service[${id}]="${service}"
     _depends_on[${id}]="${depends_on}"
     _network[${id}]="${network}"
+    _binds[${id}]="${binds}"
   done
   log_debug "recorded ${#_ids[@]} running containers."
+}
+
+########################################
+# Print a path's identity as "<device>:<inode>" when it is a Unix socket, and nothing otherwise.
+# Globals:
+#   STAT_BIN
+# Arguments:
+#   The path.
+# Outputs:
+#   The identity, or nothing for anything that is not a socket or does not exist.
+########################################
+socket_identity() {
+  local out
+  out=$("${STAT_BIN}" -L -c '%F %d:%i' -- "$1" 2>/dev/null) || return 0
+  if [[ "${out}" == "socket "* ]]; then
+    printf '%s' "${out#socket }"
+  fi
+}
+
+########################################
+# Record the identity of every Unix socket a recorded container bind-mounts.
+#
+# A bind mount of a single file pins the inode it found, so when the command replaces the file -- a
+# package upgrade restarting docker.socket recreates /var/run/docker.sock -- a container that was
+# live-restored keeps the old, dead socket. Comparing identities afterwards is how such a container is
+# found. Only sockets are tracked: an ordinary file replaced by an upgrade, such as a zoneinfo file
+# behind /etc/localtime, does not stop a container working.
+# Globals:
+#   _ids, _binds, _socket_before
+########################################
+record_sockets() {
+  local id src identity
+  local -a sources=()
+  for id in "${_ids[@]}"; do
+    IFS=';' read -r -a sources <<<"${_binds[${id}]:-}"
+    for src in "${sources[@]}"; do
+      (( ${#src} > 0 )) || continue
+      [[ -z "${_socket_before[${src}]+set}" ]] || continue
+      identity=$(socket_identity "${src}")
+      if (( ${#identity} > 0 )); then
+        _socket_before[${src}]="${identity}"
+      fi
+    done
+  done
+}
+
+########################################
+# Add to the repair every live-restored container that bind-mounts a socket the command replaced, so
+# it is restarted onto the new one. One whose socket no longer exists is reported as failed instead:
+# restarting it would make Docker create a directory where the socket was.
+# Globals:
+#   _restored, _binds, _name, _socket_before, _stale, _to_restart, _failed
+########################################
+plan_stale_mounts() {
+  (( ${#_socket_before[@]} > 0 )) || return 0
+  local src id now outcome
+  local -A replaced=() gone=()
+  for src in "${!_socket_before[@]}"; do
+    now=$(socket_identity "${src}")
+    if (( ${#now} == 0 )); then
+      gone[${src}]=1
+    elif [[ "${now}" != "${_socket_before[${src}]}" ]]; then
+      replaced[${src}]=1
+    fi
+  done
+  (( ${#replaced[@]} + ${#gone[@]} > 0 )) || return 0
+  local -a kept=() sources=()
+  for id in "${_restored[@]}"; do
+    IFS=';' read -r -a sources <<<"${_binds[${id}]:-}"
+    outcome=kept
+    for src in "${sources[@]}"; do
+      (( ${#src} > 0 )) || continue
+      if [[ -n "${gone[${src}]:-}" ]]; then
+        log_error "${_name[${id}]} bind-mounts ${src}, which no longer exists; it is still running without it."
+        outcome=failed
+        break
+      elif [[ -n "${replaced[${src}]:-}" ]]; then
+        log_warn "${_name[${id}]} bind-mounts ${src}, which was replaced; restarting it."
+        outcome=stale
+      fi
+    done
+    case "${outcome}" in
+      failed) _failed+=("${id}") ;;
+      stale) _stale+=("${id}"); _to_restart+=("${id}") ;;
+      *) kept+=("${id}") ;;
+    esac
+  done
+  _restored=("${kept[@]}")
 }
 
 ########################################
@@ -864,6 +966,7 @@ main() {
     exit "${EXIT_ERROR}"
   fi
   resolve_dependencies
+  record_sockets
 
   run_hook "PRE_HOOK" "${PRE_HOOK}"
 
@@ -894,6 +997,7 @@ main() {
   fi
 
   verify_containers
+  plan_stale_mounts
   plan_followers
   if (( ${#_daemon_restarted[@]} > 0 )); then
     log_warn "restarted by the daemon: $(names_of "${_daemon_restarted[@]}")."

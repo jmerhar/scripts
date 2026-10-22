@@ -27,7 +27,7 @@ Aggregates a folder of DMARC RUA reports (.xml.gz/.zip) into one overall report,
 
 ### [`docker-live-upgrade`](scripts/system/docker-live-upgrade/)
 
-Runs a command that restarts the Docker daemon, such as a package upgrade, and repairs whatever live-restore did not carry across it: orphaned container processes are stopped first, so no container ever runs twice on one data directory, then affected containers are started in tier order a batch at a time, waiting for their healthchecks, and never before their Compose dependencies; containers tied to a restarted one by `restart: true` or a shared network namespace are restarted after it.
+Runs a command that restarts the Docker daemon, such as a package upgrade, and repairs whatever live-restore did not carry across it: orphaned container processes are stopped first, so no container ever runs twice on one data directory, then affected containers are started in tier order a batch at a time, waiting for their healthchecks, and never before their Compose dependencies; containers tied to a restarted one by `restart: true` or a shared network namespace, or bind-mounting a socket the command replaced, are restarted too.
 
 `bash 4.4+` _(Linux only)_
 

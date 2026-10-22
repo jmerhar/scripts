@@ -27,6 +27,33 @@ setup() {
   printf '# no change\n' > "$FAKE/upgrade.sh"
   write_docker_double
   write_kill_double
+  write_stat_double
+}
+
+########################################
+# Writes the stat double. It describes a path from $FAKE/stat/<path with / as _>, which holds what
+# `stat -L -c '%F %d:%i'` would print (e.g. "socket 26:100"), and fails for a path with no fixture.
+########################################
+write_stat_double() {
+  mkdir -p "$FAKE/stat"
+  cat > "$BATS_TEST_TMPDIR/stat-double" <<'DOUBLE'
+#!/usr/bin/env bash
+printf 'stat %s\n' "$*" >> "$STUB_CALLS"
+f="$FAKE/stat/$(printf '%s' "${*: -1}" | tr / _)"
+[[ -e "$f" ]] || exit 1
+cat "$f"
+DOUBLE
+  chmod +x "$BATS_TEST_TMPDIR/stat-double"
+}
+
+########################################
+# Describes a path to the stat double.
+# Arguments:
+#   The path.
+#   What stat prints for it, e.g. "socket 26:100".
+########################################
+host_path() {
+  printf '%s\n' "$2" > "$FAKE/stat/$(printf '%s' "$1" | tr / _)"
 }
 
 ########################################
@@ -135,10 +162,11 @@ DOUBLE
 # Arguments:
 #   id, name, status, started, pid, then optionally health (default healthy), tier label, cgroup
 #   parent, stop timeout, Compose project, Compose service, Compose depends_on, network mode (default
-#   bridge). An absent label or stop timeout reads "<no value>", as real Docker prints it.
+#   bridge), bind sources (each followed by ';'). An absent label or stop timeout reads "<no value>",
+#   as real Docker prints it.
 ########################################
 container() {
-  printf '%s|/%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" "$5" "${6:-healthy}" "${7:-<no value>}" "${8:-}" "${9:-<no value>}" "${10:-<no value>}" "${11:-<no value>}" "${12:-<no value>}" "${13:-bridge}" > "$FAKE/state/$1"
+  printf '%s|/%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" "$5" "${6:-healthy}" "${7:-<no value>}" "${8:-}" "${9:-<no value>}" "${10:-<no value>}" "${11:-<no value>}" "${12:-<no value>}" "${13:-bridge}" "${14:-}" > "$FAKE/state/$1"
 }
 
 ########################################
@@ -180,7 +208,7 @@ upgrade_does() {
 # separately, unpatched. Extra arguments go before the command.
 ########################################
 dlu_run() {
-  CONFIG_FILE="$CONF" DOCKER_BIN="$BATS_TEST_TMPDIR/docker-double" KILL_BIN="$BATS_TEST_TMPDIR/kill-double" PROC_ROOT="$PROC" KILL_GRACE=1 run_snippet "$SCRIPT" "
+  CONFIG_FILE="$CONF" DOCKER_BIN="$BATS_TEST_TMPDIR/docker-double" KILL_BIN="$BATS_TEST_TMPDIR/kill-double" STAT_BIN="$BATS_TEST_TMPDIR/stat-double" PROC_ROOT="$PROC" KILL_GRACE=1 run_snippet "$SCRIPT" "
     require_root() { :; }
     main $* -- bash \"\$FAKE/upgrade.sh\"
   "
@@ -720,6 +748,70 @@ restarted_by_daemon() {
   [ "$status" -eq 2 ]
   [[ "$output" == *"client (tier 10) depends on vpn (tier 50)"* ]]
   [ "$(call_line '^docker start o1')" -lt "$(call_line '^docker start s1')" ]
+}
+
+# --- Replaced sockets -------------------------------------------------------------------------
+
+@test "a restored container that bind-mounts a replaced socket is restarted onto the new one" {
+  host_path /var/run/docker.sock "socket 26:100"
+  container a1 dash running t 9999901 healthy "" "" "" "" "" "" bridge "/opt/dash;/var/run/docker.sock;"
+  container b1 web running t 9999902
+  upgrade_does 'printf "socket 26:200\n" > "$FAKE/stat/_var_run_docker.sock"'
+  dlu_run
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"dash bind-mounts /var/run/docker.sock, which was replaced; restarting it."* ]]
+  stub_called 'docker restart a1'
+  [ "$(count_calls '^docker \(start\|restart\) b1')" -eq 0 ]
+  [[ "$output" == *"1 of 2 containers live-restored; repaired: dash"* ]]
+}
+
+@test "a socket that was not replaced leaves its containers alone" {
+  host_path /var/run/docker.sock "socket 26:100"
+  container a1 dash running t 9999901 healthy "" "" "" "" "" "" bridge "/var/run/docker.sock;"
+  dlu_run
+  [ "$status" -eq 0 ]
+  [ "$(count_calls '^docker restart')" -eq 0 ]
+}
+
+@test "a replaced ordinary file does not restart the containers mounting it" {
+  host_path /etc/localtime "regular file 2049:100"
+  container a1 web running t 9999901 healthy "" "" "" "" "" "" bridge "/etc/localtime;"
+  upgrade_does 'printf "regular file 2049:200\n" > "$FAKE/stat/_etc_localtime"'
+  dlu_run
+  [ "$status" -eq 0 ]
+  [ "$(count_calls '^docker restart')" -eq 0 ]
+}
+
+@test "a container whose socket is gone is reported as failed, not restarted" {
+  host_path /run/app.sock "socket 26:100"
+  container a1 client running t 9999901 healthy "" "" "" "" "" "" bridge "/run/app.sock;"
+  upgrade_does 'rm "$FAKE/stat/_run_app.sock"'
+  dlu_run
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"client bind-mounts /run/app.sock, which no longer exists"* ]]
+  [ "$(count_calls '^docker restart a1')" -eq 0 ]
+}
+
+@test "a container the daemon restarted already has the new socket and is not restarted again" {
+  host_path /var/run/docker.sock "socket 26:100"
+  container a1 healer running t 9999901 healthy "" "" "" "" "" "" bridge "/var/run/docker.sock;"
+  : > "$FAKE/upgrade.sh"
+  restarted_by_daemon a1
+  printf 'printf "socket 26:200\\n" > "$FAKE/stat/_var_run_docker.sock"\n' >> "$FAKE/upgrade.sh"
+  dlu_run
+  [ "$status" -eq 2 ]
+  [ "$(count_calls '^docker restart a1')" -eq 0 ]
+  [[ "$output" == *"restarted by the daemon: healer"* ]]
+}
+
+@test "a container tied to one restarted onto a replaced socket follows it" {
+  host_path /var/run/docker.sock "socket 26:100"
+  container o1 proxy running t 9999901 healthy "" "" "" "" "" "" bridge "/var/run/docker.sock;"
+  container s1 client running t 9999902 healthy "" "" "" "" "" "" container:o1
+  upgrade_does 'printf "socket 26:200\n" > "$FAKE/stat/_var_run_docker.sock"'
+  dlu_run
+  [ "$status" -eq 2 ]
+  [ "$(call_line '^docker restart o1')" -lt "$(call_line '^docker restart s1')" ]
 }
 
 # --- Failures ---------------------------------------------------------------------------------
