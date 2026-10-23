@@ -17,6 +17,10 @@
 # Requiring the season to follow the words directly is what keeps a shorter title out of a longer one —
 # a "QI" folder must not collect "QI.XL" releases, and both exist in the same library.
 #
+# A release may also carry the year its show started ("Hijack.2023.S02") where the library folder has
+# none. Such a release is linked only once confirmed, because that year is exactly what tells two shows
+# of the same name apart, and the folder gives no year to check it against.
+#
 # Usage:
 #   ./link-series.sh [OPTIONS] DIRECTORY
 
@@ -25,6 +29,9 @@ set -o nounset
 set -o pipefail
 
 # --- Shared Library ---
+# shellcheck source=../../lib/prompt.sh
+source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/prompt.sh"
+# @include ../../lib/prompt.sh
 # shellcheck source=../../lib/colors.sh
 source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/colors.sh"
 # @include ../../lib/colors.sh
@@ -41,6 +48,7 @@ source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/config.sh"
 # --- Global State (option flags) ---
 _dry_run=false
 _no_color=false
+_assume_yes=false
 _quality=""
 _link_type_opt=""   # From --symlink; empty means the config's LINK_TYPE, then the default below.
 _source_opt=""      # From --temp-dir; empty means the config's TEMP_DIR.
@@ -65,10 +73,19 @@ readonly _SEP='[^[:alnum:]]'
 _show=""
 _season=""
 
+# Releases that matched only by carrying a year the library folder does not, held for confirmation:
+# each file's path and the year its name gave, at the same index.
+_year_files=()
+_year_years=()
+
+# Holds the most recent line entered by the user (set by prompt_line).
+_answer=""
+
 # Outcome counters, reported by print_summary and reflected in the exit status.
 _linked=0
 _skipped=0
 _failed=0
+_declined=0
 
 # --- Color Variables (set by setup_colors "${_no_color}") ---
 
@@ -96,6 +113,8 @@ Options:
   -q, --quality Q     Only link releases whose name contains Q (e.g. 1080p, 720p).
   -s, --symlink       Create symbolic links instead of hard links. Needed when the
                       download folder and the library are on different filesystems.
+  -y, --yes           Link releases that add a year the library folder does not
+                      name without asking first.
   -n, --dry-run       Show what would be linked without linking anything.
   -C, --no-color      Disable colored output.
   -d, --debug         Enable verbose debug logging, including the search pattern.
@@ -103,6 +122,10 @@ Options:
 
 The download folder is read from a configuration file (e.g. /etc/${SCRIPT_NAME}.conf)
 unless --temp-dir names one.
+
+A release whose name adds a year to the show ("Hijack.2023.S02" for a folder
+called "Hijack") could belong to another show of the same name, so those are
+listed and linked only once confirmed, or with --yes.
 
 A file already present in the destination is left alone, so a repeated run links
 only what is new.
@@ -112,7 +135,7 @@ EOF
 ########################################
 # Parses command-line arguments into global option flags.
 # Globals:
-#   _dry_run, _no_color, _quality, _link_type_opt, _source_opt, _target_dir
+#   _dry_run, _no_color, _assume_yes, _quality, _link_type_opt, _source_opt, _target_dir
 # Arguments:
 #   Command-line arguments passed to the script.
 ########################################
@@ -133,6 +156,10 @@ parse_options() {
         ;;
       -s|--symlink)
         _link_type_opt="symlink"
+        shift
+        ;;
+      -y|--yes)
+        _assume_yes=true
         shift
         ;;
       -n|--dry-run)
@@ -349,17 +376,23 @@ season_pattern() {
 #
 # Three parts in the order a release name carries them: the show's words, the season, and — when asked
 # for — the quality. A trailing "(2009)" in the folder name is a disambiguator the library needs and
-# the release usually omits, so it is matched optionally. Between the show and the season there may be
-# punctuation but nothing else, which is what stops a title matching a longer one that starts with it.
+# the release usually omits, so it is matched optionally; a release that does carry a year must then
+# carry that one. Between the show and the season there may be punctuation and that year but nothing
+# else, which is what stops a title matching a longer one that starts with it.
 # The quality is bracketed by punctuation so that "720p" is not found inside "1720p".
+#
+# The "year" form is for a folder with no year: it matches only releases that add one, and captures
+# that year as the pattern's first group, so the caller can ask about each year it finds. For a folder
+# that names its year there is nothing to ask, and the form is empty.
 # Globals:
 #   _show, _season, _quality, _SEP
 # Arguments:
-#   None
+#   form: "exact" (the default) or "year".
 # Outputs:
-#   The pattern on stdout.
+#   The pattern on stdout, or nothing for the "year" form of a folder that names a year.
 ########################################
 build_pattern() {
+  local form="${1:-exact}"
   local show="${_show,,}"
   local year=""
 
@@ -370,7 +403,12 @@ build_pattern() {
 
   local pattern
   pattern="$(words_pattern "${show}")"
-  [[ -n "${year}" ]] && pattern+="(${_SEP}*\\(?${year}\\)?)?"
+  if [[ -n "${year}" ]]; then
+    [[ "${form}" == "year" ]] && return 0
+    pattern+="(${_SEP}*\\(?${year}\\)?)?"
+  elif [[ "${form}" == "year" ]]; then
+    pattern+="${_SEP}*\\(?((19|20)[0-9]{2})\\)?"
+  fi
   pattern+="${_SEP}+$(season_pattern)"
   [[ -n "${_quality}" ]] && pattern+=".*${_SEP}$(escape_ere "${_quality,,}")${_SEP}"
 
@@ -444,21 +482,24 @@ link_one() {
 }
 
 ########################################
-# Walks the download folder and links every release that matches the pattern.
+# Walks the download folder, linking every release that matches exactly and setting aside those that
+# match only by adding a year.
 #
 # Matching is against each file's path relative to the download folder, so a release whose name is
 # carried by its containing directory rather than by the episode file — which is how a season pack
 # arrives — is found too. Paths are lowercased for the comparison instead of the pattern being made
 # case-insensitive, so that the behaviour does not depend on a shell option being set.
 # Globals:
-#   _source_dir, _media_exts, and everything link_one touches.
+#   _source_dir, _media_exts, _year_files, _year_years, and everything link_one touches.
 # Arguments:
 #   None
 ########################################
 scan_and_link() {
-  local pattern
+  local pattern year_pattern
   pattern="$(build_pattern)"
+  year_pattern="$(build_pattern year)"
   log_debug "Search pattern: ${pattern}"
+  [[ -n "${year_pattern}" ]] && log_debug "Pattern for releases that add a year: ${year_pattern}"
   log_debug "Searching ${_source_dir} for ${_media_exts[*]} files."
 
   local file relative
@@ -467,14 +508,73 @@ scan_and_link() {
     relative="${file#"${_source_dir}"/}"
     if [[ "${relative,,}" =~ ${pattern} ]]; then
       link_one "${file}"
+    elif [[ -n "${year_pattern}" && "${relative,,}" =~ ${year_pattern} ]]; then
+      _year_files+=("${file}")
+      _year_years+=("${BASH_REMATCH[1]}")
     fi
   done < <(find "${_source_dir}" -type f -print0 | sort -z)
 }
 
 ########################################
+# Asks, one year at a time, whether to link the releases that matched only by adding a year.
+#
+# Grouping by year is what makes the question answerable: "Hijack 2023" can be recognised as the show
+# in the library, or not, where a mixed list would need a decision per file. Anything but "y" or "yes"
+# declines, end of input included, so a run with nothing on stdin links only the exact matches.
+# Globals:
+#   _year_files, _year_years, _source_dir, _show, _dry_run, _assume_yes, _answer, _declined, and
+#   color globals.
+# Arguments:
+#   None
+# Outputs:
+#   The releases for each year, the question, and what was linked.
+########################################
+confirm_year_matches() {
+  (( ${#_year_files[@]} > 0 )) || return 0
+
+  local -a years
+  mapfile -t years < <(printf '%s\n' "${_year_years[@]}" | sort -u)
+
+  local year i
+  local -a files
+  for year in "${years[@]}"; do
+    files=()
+    for i in "${!_year_files[@]}"; do
+      [[ "${_year_years[i]}" == "${year}" ]] && files+=("${_year_files[i]}")
+    done
+
+    printf '%s\n' "${_C_YELLOW}${#files[@]} file(s) name the show '${_show} ${year}', a year the library folder does not carry:${_C_RESET}"
+    for i in "${files[@]}"; do
+      printf '%s\n' "${_C_DIM}  ${i#"${_source_dir}"/}${_C_RESET}"
+    done
+
+    if [[ "${_dry_run}" == true ]]; then
+      printf '%s\n' "${_C_YELLOW}A real run would ask before linking these.${_C_RESET}"
+    elif [[ "${_assume_yes}" != true ]]; then
+      printf '%s' "${_C_BOLD}${_C_CYAN}Link them? ${_C_RESET}${_C_DIM}[y/N] ${_C_RESET}"
+      prompt_line
+      # A terminal echoes the newline that ends an answer; a pipe or end of input does not.
+      [[ -t 0 ]] || printf '\n'
+      case "${_answer,,}" in
+        y|yes) ;;
+        *)
+          printf '%s\n' "${_C_DIM}Not linking the '${_show} ${year}' releases.${_C_RESET}"
+          _declined=$(( _declined + ${#files[@]} ))
+          continue
+          ;;
+      esac
+    fi
+
+    for i in "${files[@]}"; do
+      link_one "${i}"
+    done
+  done
+}
+
+########################################
 # Prints what the run did, or that it found nothing to do.
 # Globals:
-#   _linked, _skipped, _failed, _dry_run, _show, _season, and color globals.
+#   _linked, _skipped, _failed, _declined, _dry_run, _show, _season, and color globals.
 # Arguments:
 #   None
 ########################################
@@ -485,7 +585,7 @@ print_summary() {
   # Failures are counted separately, and a run whose only outcome was a failure has still matched
   # something: reporting that as "nothing matched" would send the reader looking for a naming problem
   # instead of at the error just printed.
-  if (( _linked == 0 && _skipped == 0 && _failed == 0 )); then
+  if (( _linked == 0 && _skipped == 0 && _failed == 0 && _declined == 0 )); then
     # The pattern is offered because a miss is nearly always a naming difference between the library
     # folder and the release, and seeing what was searched for is what identifies which.
     printf '%s\n' "${_C_YELLOW}No matching releases found for ${scope}. Use --debug to see the search pattern.${_C_RESET}"
@@ -498,6 +598,7 @@ print_summary() {
   local summary="${verb} ${_linked} file(s) for ${scope}"
   (( _skipped > 0 )) && summary+=", skipped ${_skipped} already present"
   (( _failed > 0 )) && summary+=", ${_failed} failed"
+  (( _declined > 0 )) && summary+=", declined ${_declined} naming a year the folder does not"
   printf '%s\n' "${_C_BOLD}${_C_BRIGHT_GREEN}${summary}.${_C_RESET}"
 }
 
@@ -523,6 +624,7 @@ main() {
   detect_context || exit 1
 
   scan_and_link
+  confirm_year_matches
   print_summary
 
   (( _failed == 0 ))

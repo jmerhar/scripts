@@ -8,6 +8,7 @@ The show and the season come from the destination directory rather than from arg
 
 * **Context-Aware** — Reads the show from the destination folder and the season from its name (`Season 15`, `Season.15`, or `Specials` for season 0), so the folder is the only argument.
 * **Punctuation-Blind Matching** — A release is matched as the show's words followed by the season, case-insensitively, with the punctuation between the words uncompared: `Agatha Christie's Marple` matches `Agatha.Christies.Marple`, and `Alan Davies - As Yet Untitled` matches `Alan.Davies.As.Yet.Untitled`. A library folder's trailing disambiguating year (`Alice (2009)`) is optional in the release name.
+* **Confirms Added Years** — A release that adds a year the folder does not name (`Hijack.2023.S02` for a `Hijack` folder) may belong to another show of the same name, so those are listed by year and linked only once you answer `y`, or with `--yes`.
 * **No Bleed Between Similar Titles** — Because the season has to follow the title directly, a run in `QI` does not collect `QI.XL` releases, and one in `Alice` does not collect `Alice in Borderland`.
 * **Season Spellings** — `S15`, `Season 15` and `15x07` all count, with any zero padding, so a `Season 1` folder takes both `S1E03` and `S01E04`.
 * **Season Packs** — Matches each file's path below the download folder, not just its name, so episodes inside a release folder named after the show are found.
@@ -51,6 +52,7 @@ link-series .
 | `-t`, `--temp-dir DIR` | Search `DIR` for episodes instead of the configured `TEMP_DIR`. |
 | `-q`, `--quality Q` | Only link releases whose name contains `Q` (e.g. `1080p`, `720p`). |
 | `-s`, `--symlink` | Create symbolic links instead of hard links. |
+| `-y`, `--yes` | Link releases that add a year the library folder does not name without asking first. |
 | `-n`, `--dry-run` | Show what would be linked without linking anything. |
 | `-C`, `--no-color` | Disable colored output. |
 | `-d`, `--debug` | Enable verbose debug logging, including the search pattern. |
@@ -71,5 +73,5 @@ Linked 2 file(s) for Taskmaster season 16, skipped 1 already present.
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Everything that matched was linked, or nothing matched. |
+| `0` | Everything that matched was linked or declined, or nothing matched. |
 | `1` | A link failed, or the destination or download folder was unusable. |

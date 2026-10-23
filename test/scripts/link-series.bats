@@ -202,6 +202,90 @@ linked_names() {
   [ "${#lines[@]}" -eq 2 ]
 }
 
+# Releases often carry the year a show started in even when the library had no second show to tell
+# it apart from, so the folder has none. That year could equally be another show's, so these wait for
+# an answer, and no answer is a no.
+@test "a release adding a year the folder lacks is not linked without confirmation" {
+  mkdir -p "$LIB/Hijack/Season 2"
+  release "Hijack.2023.S02.720p.WEB/Hijack.2023.S02E01.Signal.720p.WEB.mkv"
+  release "Hijack.S02E02.720p.WEB.mkv"
+  run_script "$SCRIPT" "$LIB/Hijack/Season 2" </dev/null
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"1 file(s) name the show 'Hijack 2023', a year the library folder does not carry:"* ]]
+  [[ "$output" == *"Hijack.2023.S02.720p.WEB/Hijack.2023.S02E01.Signal.720p.WEB.mkv"* ]]
+  [[ "$output" == *"Not linking the 'Hijack 2023' releases."* ]]
+  [[ "$output" == *"Linked 1 file(s) for Hijack season 02, declined 1 naming a year the folder does not."* ]]
+  run linked_names "Hijack/Season 2"
+  [ "$output" = "Hijack.S02E02.720p.WEB.mkv" ]
+}
+
+@test "a confirmed year match is linked" {
+  mkdir -p "$LIB/Hijack/Season 2"
+  release "Hijack.2023.S02E01.720p.mkv"
+  release "Hijack (2023) S02E02 720p.mkv"
+  run_script "$SCRIPT" "$LIB/Hijack/Season 2" <<<"y"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"2 file(s) name the show 'Hijack 2023'"* ]]
+  run linked_names "Hijack/Season 2"
+  [ "${#lines[@]}" -eq 2 ]
+}
+
+# Two shows of one name are told apart by their years, so each year is its own question.
+@test "each year a release adds is asked about separately" {
+  mkdir -p "$LIB/Hijack/Season 1"
+  release "Hijack.1971.S01E01.mkv"
+  release "Hijack.2023.S01E01.mkv"
+  run_script "$SCRIPT" "$LIB/Hijack/Season 1" <<<$'n\nyes'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Not linking the 'Hijack 1971' releases."* ]]
+  run linked_names "Hijack/Season 1"
+  [ "$output" = "Hijack.2023.S01E01.mkv" ]
+}
+
+@test "--yes links year matches without asking" {
+  mkdir -p "$LIB/Hijack/Season 2"
+  release "Hijack.2023.S02E01.720p.mkv"
+  run_script "$SCRIPT" --yes "$LIB/Hijack/Season 2" </dev/null
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"[y/N]"* ]]
+  run linked_names "Hijack/Season 2"
+  [ "$output" = "Hijack.2023.S02E01.720p.mkv" ]
+}
+
+@test "--dry-run lists year matches without asking or linking" {
+  mkdir -p "$LIB/Hijack/Season 2"
+  release "Hijack.2023.S02E01.720p.mkv"
+  run_script "$SCRIPT" -n "$LIB/Hijack/Season 2" </dev/null
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"[y/N]"* ]]
+  [[ "$output" == *"A real run would ask before linking these."* ]]
+  [[ "$output" == *"Would hard link Hijack.2023.S02E01.720p.mkv"* ]]
+  run linked_names "Hijack/Season 2"
+  [ -z "$output" ]
+}
+
+# A folder that names its year has nothing to confirm: a release with that year is an exact match.
+@test "a release carrying the folder's own year is linked without asking" {
+  mkdir -p "$LIB/Hijack (2023)/Season 2"
+  release "Hijack.2023.S02E01.720p.mkv"
+  run_script "$SCRIPT" "$LIB/Hijack (2023)/Season 2" </dev/null
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"[y/N]"* ]]
+  run linked_names "Hijack (2023)/Season 2"
+  [ "$output" = "Hijack.2023.S02E01.720p.mkv" ]
+}
+
+# The folder's year is what separates it from another show of the same name, so a release naming a
+# different year belongs to that other show.
+@test "a release with a different year from the folder's is not linked" {
+  mkdir -p "$LIB/Dallas (2012)/Season 1"
+  release "Dallas.2012.S01E01.720p.mkv"
+  release "Dallas.1978.S01E01.720p.mkv"
+  run_script "$SCRIPT" "$LIB/Dallas (2012)/Season 1"
+  run linked_names "Dallas (2012)/Season 1"
+  [ "$output" = "Dallas.2012.S01E01.720p.mkv" ]
+}
+
 # Releases drop the punctuation a library folder spells out: the hyphen in "Alan Davies - As Yet
 # Untitled" and the apostrophe in "Agatha Christie's Marple" both disappear, so neither can be compared.
 @test "punctuation in the folder name is not required in the release" {
