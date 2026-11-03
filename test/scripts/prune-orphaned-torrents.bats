@@ -98,6 +98,8 @@ linked() {
 
 ########################################
 # Declares one torrent for the status reply. Files are "name:size" pairs relative to the save path.
+# Globals:
+#   SEEDED: The torrent's seeding time in seconds (default 0); set it for the one call.
 # Arguments:
 #   hash: Info-hash.
 #   name: Torrent name.
@@ -117,9 +119,9 @@ torrent() {
   total=$(jq '[.[].size] | add // 0' <<<"$files")
   TORRENTS=$(jq -c \
     --arg h "$hash" --arg n "$name" --arg sp "$save" --argjson ta "$added" \
-    --argjson f "$files" --argjson tot "$total" \
+    --argjson f "$files" --argjson tot "$total" --argjson st "${SEEDED:-0}" \
     '. + {($h): {name: $n, download_location: $sp, save_path: $sp, total_size: $tot,
-                 time_added: $ta, files: $f}}' <<<"$TORRENTS")
+                 time_added: $ta, seeding_time: $st, files: $f}}' <<<"$TORRENTS")
   rpc_reply core.get_torrents_status "$TORRENTS"
 }
 
@@ -218,6 +220,20 @@ with_conf() {
 }
 
 # --- Scan directories --------------------------------------------------------------------------
+
+@test "MIN_SEED_DAYS must be a non-negative number" {
+  local value
+  for value in abc -1 5d ''; do
+    write_conf "MIN_SEED_DAYS='${value}'"
+    prune_run
+    if [[ -z "$value" ]]; then
+      [[ "$output" != *"MIN_SEED_DAYS must be"* ]]
+    else
+      [ "$status" -eq 1 ]
+      [[ "$output" == *"MIN_SEED_DAYS must be a non-negative number of days (got '${value}')"* ]]
+    fi
+  done
+}
 
 @test "a non-existent scan directory is skipped with a note" {
   write_conf
@@ -376,6 +392,7 @@ with_conf() {
   stub_called 'curl-rpc core.get_torrents_status .*download_location'
   stub_called 'curl-rpc core.get_torrents_status .*time_added'
   stub_called 'curl-rpc core.get_torrents_status .*files'
+  stub_called 'curl-rpc core.get_torrents_status .*seeding_time'
 }
 
 # --- Choosing candidates -----------------------------------------------------------------------
@@ -498,6 +515,90 @@ with_conf() {
   torrent hashOld "Older" "$TEMP_ROOT/a" 1000 "ep.mkv:5000"
   prune_run --dry-run
   [[ "$output" == *"Older"*"Newer"* ]]
+}
+
+# --- The minimum seeding time ------------------------------------------------------------------
+#
+# Removing a torrent before a private tracker's minimum seeding time is a hit-and-run, so a torrent
+# short of MIN_SEED_DAYS must never be removed, whatever was answered or passed.
+
+@test "a torrent seeded for less than MIN_SEED_DAYS is held back, not offered" {
+  write_conf 'MIN_SEED_DAYS=5'
+  orphan show/ep1.mkv 5000
+  SEEDED=$(( 5 * 86400 - 1 )) torrent hashA "Recent Show" "$TEMP_ROOT/show" 1000 "ep1.mkv:5000"
+  prune_run --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Held back: seeded for less than MIN_SEED_DAYS (5 days)"* ]]
+  [[ "$output" == *"Recent Show (seeded 4d 23h)"* ]]
+  [[ "$output" != *"would remove this torrent"* ]]
+  [[ "$output" == *"Nothing else to prune"* ]]
+}
+
+@test "a torrent that has seeded for exactly MIN_SEED_DAYS is offered" {
+  write_conf 'MIN_SEED_DAYS=5'
+  orphan show/ep1.mkv 5000
+  SEEDED=$(( 5 * 86400 )) torrent hashA "Old Show" "$TEMP_ROOT/show" 1000 "ep1.mkv:5000"
+  prune_run --dry-run
+  [[ "$output" == *"would remove this torrent"* ]]
+  [[ "$output" != *"Held back"* ]]
+}
+
+@test "--yes removes the seasoned torrent and leaves the held one alone" {
+  write_conf 'MIN_SEED_DAYS=5'
+  orphan old/ep.mkv 5000
+  orphan new/ep.mkv 5000
+  SEEDED=$(( 30 * 86400 )) torrent hashOld "Old Show" "$TEMP_ROOT/old" 1000 "ep.mkv:5000"
+  SEEDED=3600 torrent hashNew "New Show" "$TEMP_ROOT/new" 9000 "ep.mkv:5000"
+  prune_run --yes
+  [ "$status" -eq 0 ]
+  [ "$(rpc_calls core.remove_torrent)" -eq 1 ]
+  stub_called 'curl-rpc core.remove_torrent .*hashOld'
+  [[ "$output" == *"New Show (seeded 1h 0m)"* ]]
+  [[ "$output" == *"Removed 1 torrent"* ]]
+  [ -f "$TEMP_ROOT/new/ep.mkv" ]
+}
+
+@test "the files of a held torrent are not offered as strays" {
+  write_conf 'MIN_SEED_DAYS=5'
+  orphan show/ep1.mkv 5000
+  SEEDED=60 torrent hashA "Recent Show" "$TEMP_ROOT/show" 1000 "ep1.mkv:5000"
+  prune_run --yes
+  [[ "$output" != *"Stray files"* ]]
+  [ -f "$TEMP_ROOT/show/ep1.mkv" ]
+}
+
+@test "MIN_SEED_DAYS takes a fraction of a day" {
+  write_conf 'MIN_SEED_DAYS=0.5'
+  orphan a/ep.mkv 5000
+  orphan b/ep.mkv 5000
+  SEEDED=43199 torrent hashA "Short" "$TEMP_ROOT/a" 1000 "ep.mkv:5000"
+  SEEDED=43200 torrent hashB "Long" "$TEMP_ROOT/b" 2000 "ep.mkv:5000"
+  prune_run --dry-run
+  [[ "$output" == *"Held back"*"Short (seeded 11h 59m)"* ]]
+  [[ "$output" == *"Long"*"would remove this torrent"* ]]
+  [[ "$output" == *"Would remove 1 torrent"* ]]
+}
+
+@test "without MIN_SEED_DAYS a torrent that has not seeded at all is offered" {
+  orphan show/ep1.mkv 5000
+  SEEDED=0 torrent hashA "Show" "$TEMP_ROOT/show" 1000 "ep1.mkv:5000"
+  prune_run --dry-run
+  [[ "$output" == *"would remove this torrent"* ]]
+  [[ "$output" != *"Held back"* ]]
+}
+
+# A daemon that leaves the field out tells us nothing about how long the torrent has seeded, so the
+# guard must assume the worst rather than let it through.
+@test "a torrent reporting no seeding time is held back when the guard is on" {
+  write_conf 'MIN_SEED_DAYS=1'
+  orphan show/ep1.mkv 5000
+  TORRENTS=$(jq -nc --arg sp "$TEMP_ROOT/show" \
+    '{hashA: {name: "Show", save_path: $sp, total_size: 5000, time_added: 1,
+              files: [{path: "ep1.mkv", size: 5000}]}}')
+  rpc_reply core.get_torrents_status "$TORRENTS"
+  prune_run --yes
+  [ "$(rpc_calls core.remove_torrent)" -eq 0 ]
+  [[ "$output" == *"Show (seeded 0h 0m)"* ]]
 }
 
 # A metadata-only or errored torrent reports no location at all. It still carries a file list, so the

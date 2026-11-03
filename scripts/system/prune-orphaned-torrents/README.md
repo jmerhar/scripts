@@ -9,6 +9,7 @@ When the *arr apps hard-link a completed download from the torrent temp/seed fol
 * **Orphan Detection** — Scans the configured temp folders for files with a link count of `1` (no remaining hard link), the tell-tale sign that the organised copy was deleted.
 * **Sidecar Exclusion** — Ignores non-media files that are never hard-linked (e.g. `*.nfo`, `*sample*`, artwork, subtitles, deleted scenes) via configurable glob patterns, so they are not mistaken for orphans.
 * **Extra/Spam Filtering** — Ignores media files that are tiny relative to a torrent's main feature (configurable `MIN_MEDIA_RATIO`), so a leftover deleted-scenes clip or release-group advert can't flag a torrent whose real video is still in Plex.
+* **Minimum Seeding Time** — Holds back any torrent that has seeded for less than `MIN_SEED_DAYS`, listing it with its seeding time instead of offering it, so a private tracker's hit-and-run rules are not broken. Held torrents are skipped under `--yes` too, and their files are never offered as strays.
 * **Torrent Mapping** — Maps each orphaned file back to its torrent through the Deluge Web JSON-RPC API and prompts per torrent, removing the torrent and its data on confirmation.
 * **Hard-Link Safe** — Offers to remove a torrent whenever *any* of its media files are orphaned, but warns and lists exactly which files would be freed vs kept when some are still hard-linked. Removing such a torrent frees only the orphaned copies; files still linked into Plex keep their other hard link and survive.
 * **Stray File Cleanup** — Orphaned files that belong to no torrent at all (e.g. leftovers from a torrent that was already removed) are offered separately for direct deletion, and any folders left empty afterwards are pruned. Files that still belong to a live torrent are never deleted directly.
@@ -39,6 +40,9 @@ EXCLUDE_PATTERNS=( "*sample*" "*.nfo" "*.srt" "*.sub" "*.idx" "*.md5" "*.sha" "*
 
 # Ignore media files smaller than this fraction of the torrent's largest media file:
 MIN_MEDIA_RATIO=0.1
+
+# Never remove a torrent that has seeded for less than this many days (0 disables):
+MIN_SEED_DAYS=5
 
 DELUGE_URL="http://127.0.0.1:8112/json"
 DELUGE_PASSWORD="your-web-ui-password"

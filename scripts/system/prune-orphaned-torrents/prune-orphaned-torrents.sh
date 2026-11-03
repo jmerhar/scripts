@@ -18,6 +18,9 @@
 # Orphaned files that belong to no torrent at all (e.g. leftovers from a torrent
 # that was already removed) are offered separately for direct deletion.
 #
+# A torrent that has seeded for less than MIN_SEED_DAYS is held back and only
+# reported, so a private tracker's minimum seeding time is never cut short.
+#
 # All system-specific values (paths, exclusions, Deluge endpoint/password) live
 # in a configuration file discovered next to the script or under <prefix>/etc/.
 #
@@ -86,7 +89,8 @@ Usage: ${SCRIPT_NAME} [OPTIONS]
 
 Find orphaned media files left by *arr hard-linking and remove the
 corresponding torrents from Deluge. Orphaned files that belong to no torrent
-are offered for direct deletion.
+are offered for direct deletion. Torrents that have seeded for less than
+MIN_SEED_DAYS are held back.
 
 All settings are read from a configuration file (e.g., /etc/${SCRIPT_NAME}.conf).
 
@@ -336,7 +340,7 @@ deluge_connect() {
 #   The torrents-status JSON object (info-hash -> status) on stdout.
 ########################################
 fetch_torrent_status() {
-  local fields='["name", "download_location", "save_path", "total_size", "files", "time_added"]'
+  local fields='["name", "download_location", "save_path", "total_size", "files", "time_added", "seeding_time"]'
   deluge_rpc "core.get_torrents_status" "[{}, ${fields}]"
 }
 
@@ -352,10 +356,12 @@ fetch_torrent_status() {
 # file), so tiny extras (deleted scenes, advert clips) don't flag it. Records
 # are sorted oldest-first by time_added.
 #
-# Each emitted object has: hash, name, total_size, freed, time_added, n_orphan,
-# n_media, and the orphaned/linked file arrays ({path, size}).
+# Each emitted object has: hash, name, total_size, freed, time_added,
+# seeding_time, held, n_orphan, n_media, and the orphaned/linked file arrays
+# ({path, size}). held is true when the torrent has seeded for less than
+# MIN_SEED_DAYS; such a record must be reported, never removed.
 # Globals:
-#   _orphans_json, _excludes_json, MIN_MEDIA_RATIO,
+#   _orphans_json, _excludes_json, MIN_MEDIA_RATIO, MIN_SEED_DAYS,
 #   DELUGE_PATH_PREFIX, LOCAL_PATH_PREFIX
 # Arguments:
 #   status: The torrents-status JSON object.
@@ -372,6 +378,7 @@ compute_candidates() {
   args+=(--argjson orphans "${_orphans_json}")
   args+=(--argjson excludes "${_excludes_json}")
   args+=(--argjson minratio "${MIN_MEDIA_RATIO:-0.1}")
+  args+=(--arg minseed "${MIN_SEED_DAYS:-0}")
   args+=(--arg dprefix "${dprefix}")
   args+=(--arg lprefix "${lprefix}")
 
@@ -409,6 +416,30 @@ compute_strays() {
   local prog
   prog=$(load_program strays.jq)  # @embed strays.jq
   jq "${args[@]}" "${prog}" <<<"${status}"
+}
+
+########################################
+# Lists the candidates held back because they have not yet seeded for
+# MIN_SEED_DAYS, with how long each has seeded so far.
+# Globals:
+#   MIN_SEED_DAYS, _C_*
+# Arguments:
+#   held: Newline-delimited compact JSON candidate objects, all marked held.
+# Outputs:
+#   The list on stdout.
+########################################
+print_held() {
+  local held="$1"
+  local -a rows=()
+  mapfile -t rows <<<"${held}"
+
+  printf '\n%s\n' "${_C_BOLD}${_C_YELLOW}Held back: seeded for less than MIN_SEED_DAYS (${MIN_SEED_DAYS} days):${_C_RESET}"
+  local row name seeded
+  for row in "${rows[@]}"; do
+    [[ -n "${row}" ]] || continue
+    IFS=$'\t' read -r seeded name < <(jq -r '[.seeding_time, .name] | @tsv' <<<"${row}")
+    printf '%s\n' "${_C_DIM}  ${name} (seeded $(format_age "${seeded}"))${_C_RESET}"
+  done
 }
 
 ########################################
@@ -709,6 +740,10 @@ main() {
     log_error "MIN_MEDIA_RATIO must be a number between 0 and 1 (got '${MIN_MEDIA_RATIO}')."
     exit 1
   fi
+  if [[ -n "${MIN_SEED_DAYS:-}" && ! "${MIN_SEED_DAYS}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+    log_error "MIN_SEED_DAYS must be a non-negative number of days (got '${MIN_SEED_DAYS}')."
+    exit 1
+  fi
   setup_colors "${_no_color}"
 
   # Convert the configured exclusion globs into a JSON array for the matcher.
@@ -739,15 +774,27 @@ main() {
   # Partition the orphans: torrents worth removing (compute_candidates) and
   # files belonging to no torrent at all (compute_strays). Orphans that belong
   # to a still-seeding torrent the gate filtered out fall into neither and are
-  # left untouched.
-  local candidates strays n_strays
-  candidates=$(compute_candidates "${status}")
+  # left untouched. Candidates that have not seeded for MIN_SEED_DAYS are split
+  # off and only reported; prompt_and_remove never sees them.
+  local all candidates held strays n_strays
+  all=$(compute_candidates "${status}")
+  candidates=$(jq -c 'select(.held | not)' <<<"${all}")
+  held=$(jq -c 'select(.held)' <<<"${all}")
   strays=$(compute_strays "${status}")
   n_strays=$(jq 'length' <<<"${strays}")
 
+  # Length rather than [[ -n ]]: a multi-line value inside [[ ]] is echoed by the coverage trace.
+  if (( ${#held} > 0 )); then
+    print_held "${held}"
+  fi
+
   # Length rather than [[ -z ]]: a multi-line value inside [[ ]] is echoed by the coverage trace.
   if (( ${#candidates} == 0 )) && [[ "${n_strays}" -eq 0 ]]; then
-    printf '%s\n' "${_C_BRIGHT_GREEN}Nothing to prune: every orphaned file belongs to a torrent still seeding wanted media.${_C_RESET}"
+    if (( ${#held} > 0 )); then
+      printf '\n%s\n' "${_C_BRIGHT_GREEN}Nothing else to prune.${_C_RESET}"
+    else
+      printf '%s\n' "${_C_BRIGHT_GREEN}Nothing to prune: every orphaned file belongs to a torrent still seeding wanted media.${_C_RESET}"
+    fi
     exit 0
   fi
 

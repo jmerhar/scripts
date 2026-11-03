@@ -1,16 +1,21 @@
 # Selects the torrents whose media files are orphaned, as JSON objects sorted oldest first.
 #
 # Input is the Deluge torrents-status map, keyed by hash. The caller supplies the orphan set, the
-# filename patterns to ignore, the significance ratio, and the two path prefixes that translate a
-# Deluge-reported path into a local one.
+# filename patterns to ignore, the significance ratio, the minimum seeding time in days, and the two
+# path prefixes that translate a Deluge-reported path into a local one.
 #
-# lint-args: --argjson orphans [] --argjson excludes [] --argjson minratio 0.1 --arg dprefix /d --arg lprefix /l
+# A candidate that has seeded for less than the minimum is still emitted, marked `held`, so the caller
+# can report it without offering it for removal. A torrent reporting no seeding time counts as having
+# seeded for none.
+#
+# lint-args: --argjson orphans [] --argjson excludes [] --argjson minratio 0.1 --arg minseed 0 --arg dprefix /d --arg lprefix /l
 
 # Rewrite a Deluge-reported absolute path into the local filesystem path.
 def rewrite:
   if ($dprefix | length) > 0 and (. == $dprefix or startswith($dprefix + "/"))
   then $lprefix + .[($dprefix | length):] else . end;
 ($orphans | map({(.): true}) | add // {}) as $set
+| (($minseed | tonumber) * 86400) as $minsecs
 | def glob_to_regex($g):
     "^" + ($g
       | gsub("(?<c>[.+^$()\\[\\]{}|\\\\])"; "\\\(.c)")
@@ -39,11 +44,14 @@ def rewrite:
   # extras/spam (deleted scenes, release-group advert clips) that are tiny
   # next to the real feature and would otherwise flag a still-wanted torrent.
   | select(any($orphaned[]; .size >= ($maxsize * $minratio)))
+  | ($t.seeding_time // 0 | floor) as $seeded
   | { hash: $hash,
       name: $t.name,
       total_size: ($t.total_size // 0 | floor),
       freed: ($orphaned | map(.size) | add // 0 | floor),
       time_added: ($t.time_added // 0 | floor),
+      seeding_time: $seeded,
+      held: ($seeded < $minsecs),
       n_orphan: ($orphaned | length),
       n_media: ($media | length),
       orphaned: [ $orphaned[] | {path: .abs, size: (.size // 0 | floor)} ],
