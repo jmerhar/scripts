@@ -4,7 +4,7 @@
 # and repair whatever live-restore did not carry across it.
 #
 # With `live-restore` enabled, restarting dockerd leaves containers running and the new daemon
-# reattaches to them. Docker guarantees that only across patch releases. When it fails, the daemon
+# reattaches to them; the run turns it on for its own length when it is off. Docker guarantees that only across patch releases. When it fails, the daemon
 # either loses a container (it reads as stopped, and its restart policy may start a second instance) or
 # leaves its process running with nothing managing it. That second case is the dangerous one: a fresh
 # instance beside a still-running orphan means two processes on one data directory.
@@ -45,7 +45,12 @@ source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/config.sh"
 # GNU stat, which reports a bind-mounted socket's type and identity; the suite's double describes files
 # that a test cannot create, such as a Unix socket, on any platform.
 : "${STAT_BIN:=stat}"
-readonly DOCKER_BIN KILL_BIN PROC_ROOT STAT_BIN
+# The daemon's configuration, and the tools that validate and reload it, for turning live-restore on
+# for the length of a run.
+: "${DAEMON_JSON:=/etc/docker/daemon.json}"
+: "${DOCKERD_BIN:=dockerd}"
+: "${SYSTEMCTL_BIN:=systemctl}"
+readonly DOCKER_BIN KILL_BIN PROC_ROOT STAT_BIN DAEMON_JSON DOCKERD_BIN SYSTEMCTL_BIN
 
 # Seconds to wait for an orphan to exit after SIGKILL before giving up on it. Overridable for the
 # same reason as the commands above: the suite exercises a process that never exits.
@@ -56,6 +61,11 @@ readonly KILL_GRACE
 readonly EXIT_RESTORED=0 EXIT_ERROR=1 EXIT_REPAIRED=2 EXIT_FAILED=3 EXIT_COMMAND_FAILED=4
 
 _command=()
+
+# How live-restore was set in DAEMON_JSON before the run turned it on: "file" when there was no file,
+# "key" when the file had no live-restore key, "false" when it was set to false, empty when the run did
+# not change it.
+_live_restore_was=""
 
 # The snapshot, keyed by full container ID.
 _ids=()
@@ -112,7 +122,7 @@ Examples:
 
 Exit codes:
   0  every container was live-restored
-  1  invalid arguments, not root, Docker unreachable, or live-restore disabled
+  1  invalid arguments, not root, Docker unreachable, or live-restore could not be turned on
   2  some containers were restarted, and all are running again
   3  some containers could not be brought back
   4  the command failed, and every container is running
@@ -531,6 +541,116 @@ plan_followers() {
 ########################################
 live_restore_enabled() {
   [[ "$("${DOCKER_BIN}" info --format '{{.LiveRestoreEnabled}}' 2>/dev/null)" == "true" ]]
+}
+
+########################################
+# Reload the daemon's configuration and wait for its live-restore setting to read as wanted.
+# Globals:
+#   SYSTEMCTL_BIN, POLL_INTERVAL
+# Arguments:
+#   "true" or "false".
+# Returns:
+#   0 once the daemon reports the setting, 1 if the reload fails or it never does.
+########################################
+reload_live_restore() {
+  local want="$1" _
+  "${SYSTEMCTL_BIN}" reload docker >/dev/null 2>&1 || return 1
+  for _ in 1 2 3 4 5; do
+    if [[ "$("${DOCKER_BIN}" info --format '{{.LiveRestoreEnabled}}' 2>/dev/null)" == "${want}" ]]; then
+      return 0
+    fi
+    sleep "${POLL_INTERVAL}"
+  done
+  return 1
+}
+
+########################################
+# Write a JSON document over DAEMON_JSON after the daemon has validated it. Written in place, so the
+# file keeps its owner and mode.
+# Globals:
+#   DAEMON_JSON, DOCKERD_BIN
+# Arguments:
+#   The document.
+# Returns:
+#   Non-zero, with DAEMON_JSON untouched, when the daemon rejects the document.
+########################################
+write_daemon_json() {
+  local candidate
+  candidate=$(mktemp) || return 1
+  printf '%s\n' "$1" > "${candidate}"
+  if ! "${DOCKERD_BIN}" --validate --config-file "${candidate}" >/dev/null 2>&1; then
+    rm -f "${candidate}"
+    return 1
+  fi
+  cat "${candidate}" > "${DAEMON_JSON}"
+  rm -f "${candidate}"
+}
+
+########################################
+# Turn live-restore on in DAEMON_JSON and in the running daemon for the length of the run, recording
+# how it was set so restore_live_restore can put it back.
+#
+# Live-restore is what keeps containers running across the daemon restart, and it has a cost when left
+# on: at host shutdown the daemon leaves its containers to be killed rather than stopping each with its
+# own timeout. Turning it on only for the run keeps both.
+# Globals:
+#   DAEMON_JSON, _live_restore_was
+# Returns:
+#   0 when live-restore is on, 1 when it could not be turned on (the file is then unchanged).
+########################################
+enable_live_restore() {
+  local current was document
+  if [[ ! -e "${DAEMON_JSON}" ]]; then
+    was=file current='{}'
+  else
+    if ! current=$(jq -e 'type == "object"' "${DAEMON_JSON}" >/dev/null 2>&1 && cat "${DAEMON_JSON}"); then
+      log_error "${DAEMON_JSON} is not a JSON object; not changing it."
+      return 1
+    fi
+    case "$(jq -r 'if has("live-restore") then (."live-restore" | tostring) else "absent" end' <<<"${current}")" in
+      absent) was=key ;;
+      *) was=false ;;
+    esac
+  fi
+  document=$(jq '. + {"live-restore": true}' <<<"${current}") || return 1
+  if ! write_daemon_json "${document}"; then
+    log_error "the daemon rejected ${DAEMON_JSON} with live-restore turned on; not changing it."
+    return 1
+  fi
+  _live_restore_was="${was}"
+  if ! reload_live_restore true; then
+    log_error "live-restore did not take effect after reloading the daemon."
+    restore_live_restore
+    return 1
+  fi
+  log_info "turned live-restore on for this run."
+}
+
+########################################
+# Put live-restore back as enable_live_restore found it, in DAEMON_JSON and in the running daemon.
+# Does nothing when the run did not change it, so it is safe to call more than once.
+# Globals:
+#   DAEMON_JSON, _live_restore_was
+########################################
+restore_live_restore() {
+  [[ -n "${_live_restore_was}" ]] || return 0
+  local was="${_live_restore_was}" document
+  _live_restore_was=""
+  case "${was}" in
+    false) document=$(jq '."live-restore" = false' "${DAEMON_JSON}") ;;
+    *) document=$(jq 'del(."live-restore")' "${DAEMON_JSON}") ;;
+  esac
+  if [[ "${was}" == file && "${document}" == "{}" ]]; then
+    rm -f "${DAEMON_JSON}"
+  elif ! write_daemon_json "${document}"; then
+    log_error "could not put live-restore back in ${DAEMON_JSON}; it is still on."
+    return 0
+  fi
+  if reload_live_restore false; then
+    log_info "turned live-restore back off."
+  else
+    log_warn "live-restore is off in ${DAEMON_JSON} but the running daemon did not pick it up; it will at its next start."
+  fi
 }
 
 ########################################
@@ -956,8 +1076,12 @@ main() {
     exit "${EXIT_ERROR}"
   fi
   if ! live_restore_enabled; then
-    log_error "live-restore is disabled, so restarting the daemon stops every container. Set \"live-restore\": true in /etc/docker/daemon.json and run 'systemctl reload docker'."
-    exit "${EXIT_ERROR}"
+    # From here every exit, however it happens, puts live-restore back.
+    trap restore_live_restore EXIT
+    if ! enable_live_restore; then
+      log_error "live-restore is off and could not be turned on, so restarting the daemon would stop every container."
+      exit "${EXIT_ERROR}"
+    fi
   fi
 
   # Before the pre-hook, so that no exit between the two hooks can leave a window it opened unclosed.

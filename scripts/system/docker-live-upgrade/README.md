@@ -41,13 +41,15 @@ container run with `--pid=host` has no namespace of its own, so its other proces
   namespace.
 - Hooks before and after, for instance to open and close a monitoring maintenance window; the
   after-hook receives the outcome.
+- Turns live-restore on for the length of the run when it is off, and puts it back afterwards; see
+  [Live-restore](#live-restore).
 - Distinct exit codes for restored, repaired, failed and command-failed.
 
 ### Requirements
 
-- Docker with `"live-restore": true` in `/etc/docker/daemon.json` (apply it with
-  `systemctl reload docker`; no restart needed). The script refuses to run without it.
-- root, to signal orphaned processes.
+- Docker managed by systemd, so that `systemctl reload docker` applies a configuration change.
+- `jq`, to edit `/etc/docker/daemon.json`.
+- root, to signal orphaned processes and to edit the daemon's configuration.
 - Linux: orphans are identified through `/proc/<pid>/cgroup`.
 
 ### Usage
@@ -89,6 +91,19 @@ All settings are optional; see [`docker-live-upgrade.conf`](docker-live-upgrade.
 always runs too. `POST_HOOK` sees `DOCKER_LIVE_UPGRADE_RESULT` (`restored`, `repaired`,
 `command-failed` or `failed`) and `DOCKER_LIVE_UPGRADE_SUMMARY` in its environment. A failing hook is
 logged and does not stop the run.
+
+### Live-restore
+
+When live-restore is off, the run turns it on in `/etc/docker/daemon.json`, validates the file with
+`dockerd --validate`, and reloads the daemon before the command; afterwards, on every exit path, it
+puts the setting back as it found it (`false`, an absent key, or no file at all) and reloads again.
+Other settings in the file are kept. If live-restore cannot be turned on, the command is not run.
+
+Leaving live-restore off between runs keeps Docker's own shutdown: at host shutdown the daemon stops
+each container with its stop timeout, where with live-restore on it leaves them to be killed. On a
+host where Docker uses the systemd cgroup driver, that also needs the container scopes ordered before
+`docker.service` and a `TimeoutStopSec` on it that covers the longest stop timeout, or systemd stops
+the containers itself, in parallel, after 90 seconds.
 
 ### Order
 
@@ -155,7 +170,7 @@ POST_HOOK='curl -fsS -d "$DOCKER_LIVE_UPGRADE_SUMMARY" https://ntfy.example/dock
 | Code | Meaning |
 |---|---|
 | `0` | Every container was live-restored. |
-| `1` | Invalid arguments or configuration, not root, Docker unreachable, or live-restore disabled. Nothing was run. |
+| `1` | Invalid arguments or configuration, not root, Docker unreachable, or live-restore could not be turned on. Nothing was run. |
 | `2` | Some containers were restarted, by the daemon or by this script, and all are running again. |
 | `3` | Some containers could not be brought back, or the daemon did not return. |
 | `4` | The command failed, and every container is running. |

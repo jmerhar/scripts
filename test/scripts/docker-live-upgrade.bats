@@ -28,6 +28,33 @@ setup() {
   write_docker_double
   write_kill_double
   write_stat_double
+  write_daemon_doubles
+}
+
+########################################
+# Writes the doubles for changing the daemon's configuration. `dockerd --validate` accepts any file
+# unless $FAKE/dockerd-rejects exists. `systemctl reload docker` makes the running daemon (the docker
+# double's $FAKE/live-restore) take live-restore from $FAKE/daemon.json, unless $FAKE/reload-ignored
+# exists; a missing file or key means off.
+########################################
+write_daemon_doubles() {
+  cat > "$BATS_TEST_TMPDIR/dockerd-double" <<'DOUBLE'
+#!/usr/bin/env bash
+printf 'dockerd %s\n' "$*" >> "$STUB_CALLS"
+[[ -e "$FAKE/dockerd-rejects" ]] && exit 1
+exit 0
+DOUBLE
+  cat > "$BATS_TEST_TMPDIR/systemctl-double" <<'DOUBLE'
+#!/usr/bin/env bash
+printf 'systemctl %s\n' "$*" >> "$STUB_CALLS"
+[[ -e "$FAKE/reload-ignored" ]] && exit 0
+if [[ -e "$FAKE/daemon.json" ]]; then
+  jq -j '."live-restore" // false | tostring' "$FAKE/daemon.json" > "$FAKE/live-restore"
+else
+  printf 'false' > "$FAKE/live-restore"
+fi
+DOUBLE
+  chmod +x "$BATS_TEST_TMPDIR/dockerd-double" "$BATS_TEST_TMPDIR/systemctl-double"
 }
 
 ########################################
@@ -208,7 +235,7 @@ upgrade_does() {
 # separately, unpatched. Extra arguments go before the command.
 ########################################
 dlu_run() {
-  CONFIG_FILE="$CONF" DOCKER_BIN="$BATS_TEST_TMPDIR/docker-double" KILL_BIN="$BATS_TEST_TMPDIR/kill-double" STAT_BIN="$BATS_TEST_TMPDIR/stat-double" PROC_ROOT="$PROC" KILL_GRACE=1 run_snippet "$SCRIPT" "
+  CONFIG_FILE="$CONF" DOCKER_BIN="$BATS_TEST_TMPDIR/docker-double" KILL_BIN="$BATS_TEST_TMPDIR/kill-double" STAT_BIN="$BATS_TEST_TMPDIR/stat-double" DAEMON_JSON="$FAKE/daemon.json" DOCKERD_BIN="$BATS_TEST_TMPDIR/dockerd-double" SYSTEMCTL_BIN="$BATS_TEST_TMPDIR/systemctl-double" PROC_ROOT="$PROC" KILL_GRACE=1 run_snippet "$SCRIPT" "
     require_root() { :; }
     main $* -- bash \"\$FAKE/upgrade.sh\"
   "
@@ -286,13 +313,98 @@ require_non_root() {
   [ ! -e "$FAKE/ran" ]
 }
 
-@test "disabled live-restore stops the run before the command" {
+# --- Live-restore for the length of the run ------------------------------------------------------
+
+@test "live-restore that is off is on during the command and put back afterwards" {
+  printf '{"log-driver": "json-file", "live-restore": false}\n' > "$FAKE/daemon.json"
   printf 'false' > "$FAKE/live-restore"
+  container a1 web running t 9999901
+  upgrade_does 'cat "$FAKE/live-restore" > "$FAKE/during"; jq -c . "$FAKE/daemon.json" > "$FAKE/file-during"'
+  dlu_run
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE/during")" = "true" ]
+  [ "$(cat "$FAKE/file-during")" = '{"log-driver":"json-file","live-restore":true}' ]
+  [ "$(jq -c . "$FAKE/daemon.json")" = '{"log-driver":"json-file","live-restore":false}' ]
+  [ "$(cat "$FAKE/live-restore")" = "false" ]
+  [[ "$output" == *"turned live-restore on for this run"* ]]
+  [[ "$output" == *"turned live-restore back off"* ]]
+}
+
+@test "a live-restore key that was absent is removed again, keeping the rest of the file" {
+  printf '{"log-driver": "json-file"}\n' > "$FAKE/daemon.json"
+  printf 'false' > "$FAKE/live-restore"
+  dlu_run
+  [ "$status" -eq 0 ]
+  [ "$(jq -c . "$FAKE/daemon.json")" = '{"log-driver":"json-file"}' ]
+}
+
+@test "a daemon.json the run had to create is removed again" {
+  printf 'false' > "$FAKE/live-restore"
+  upgrade_does 'test -e "$FAKE/daemon.json" && touch "$FAKE/existed-during"'
+  dlu_run
+  [ "$status" -eq 0 ]
+  [ -e "$FAKE/existed-during" ]
+  [ ! -e "$FAKE/daemon.json" ]
+}
+
+@test "live-restore that is already on leaves the configuration alone" {
+  printf '{"live-restore": true}\n' > "$FAKE/daemon.json"
+  dlu_run
+  [ "$status" -eq 0 ]
+  [ "$(count_calls '^systemctl ')" -eq 0 ]
+  [ "$(count_calls '^dockerd ')" -eq 0 ]
+}
+
+@test "a configuration the daemon rejects stops the run before the command, file unchanged" {
+  printf '{"log-driver": "json-file"}\n' > "$FAKE/daemon.json"
+  printf 'false' > "$FAKE/live-restore"
+  touch "$FAKE/dockerd-rejects"
   upgrade_does 'touch "$FAKE/ran"'
   dlu_run
   [ "$status" -eq 1 ]
-  [[ "$output" == *"live-restore is disabled"* ]]
   [ ! -e "$FAKE/ran" ]
+  [ "$(jq -c . "$FAKE/daemon.json")" = '{"log-driver":"json-file"}' ]
+  [ "$(count_calls '^systemctl ')" -eq 0 ]
+}
+
+@test "a reload that does not turn live-restore on is undone and stops the run" {
+  printf '{"log-driver": "json-file"}\n' > "$FAKE/daemon.json"
+  printf 'false' > "$FAKE/live-restore"
+  touch "$FAKE/reload-ignored"
+  upgrade_does 'touch "$FAKE/ran"'
+  dlu_run
+  [ "$status" -eq 1 ]
+  [ ! -e "$FAKE/ran" ]
+  [ "$(jq -c . "$FAKE/daemon.json")" = '{"log-driver":"json-file"}' ]
+}
+
+@test "a daemon.json that is not a JSON object is refused" {
+  printf '[1, 2]\n' > "$FAKE/daemon.json"
+  printf 'false' > "$FAKE/live-restore"
+  dlu_run
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"is not a JSON object"* ]]
+  [ "$(cat "$FAKE/daemon.json")" = '[1, 2]' ]
+}
+
+@test "live-restore is put back even when the run fails" {
+  printf 'DAEMON_TIMEOUT=1\n' >> "$CONF"
+  printf '{"log-driver": "json-file"}\n' > "$FAKE/daemon.json"
+  printf 'false' > "$FAKE/live-restore"
+  container a1 web running t 9999901
+  upgrade_does 'touch "$FAKE/daemon-down"'
+  dlu_run
+  [ "$status" -eq 3 ]
+  [ "$(jq -c . "$FAKE/daemon.json")" = '{"log-driver":"json-file"}' ]
+}
+
+@test "live-restore is put back when the run stops early" {
+  printf '{"log-driver": "json-file"}\n' > "$FAKE/daemon.json"
+  printf 'false' > "$FAKE/live-restore"
+  touch "$FAKE/ps-fails"
+  dlu_run
+  [ "$status" -eq 1 ]
+  [ "$(jq -c . "$FAKE/daemon.json")" = '{"log-driver":"json-file"}' ]
 }
 
 @test "a container listing Docker refuses stops the run before the command and both hooks" {
