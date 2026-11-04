@@ -64,6 +64,15 @@ is interrupted halfway may still have restarted the daemon. A dropped ssh sessio
 ssh run it inside `tmux` or `screen`. An installed copy also logs to
 `<prefix>/var/log/docker-live-upgrade.log`.
 
+The run ends with one line: a verdict, then how every container got there, in counts that add up to
+the total. It is an error only when a container could not be brought back; a failed command is a
+warning.
+
+```
+[INFO]: All 77 containers are running: 68 live-restored, 1 restarted by the daemon, 8 restarted onto a new socket.
+[ERROR]: 1 of 77 containers need attention: db. Of the rest: 75 live-restored, 1 started after being lost.
+```
+
 ### Options
 
 | Option | Description |

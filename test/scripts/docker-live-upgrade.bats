@@ -457,7 +457,7 @@ require_non_root() {
   upgrade_does 'true'
   dlu_run
   [ "$status" -eq 0 ]
-  [[ "$output" == *"2 of 2 containers live-restored"* ]]
+  [[ "$output" == *"[INFO]: All 2 containers are running: 2 live-restored."* ]]
   [ "$(count_calls '^docker \(start\|restart\)\|^kill ')" -eq 0 ]
 }
 
@@ -466,7 +466,7 @@ require_non_root() {
   container ccc old exited t0 0
   dlu_run
   [ "$status" -eq 0 ]
-  [[ "$output" == *"1 of 1 containers live-restored"* ]]
+  [[ "$output" == *"All 1 containers are running: 1 live-restored."* ]]
   [ "$(count_calls '^docker start ')" -eq 0 ]
 }
 
@@ -475,8 +475,9 @@ require_non_root() {
   upgrade_does 'exit 7'
   dlu_run
   [ "$status" -eq 4 ]
-  [[ "$output" == *"exited with status 7"* ]]
-  [[ "$output" == *"1 of 1 containers live-restored"* ]]
+  [[ "$output" == *"[WARN]: 'bash"*"' exited with status 7; checking the containers anyway."* ]]
+  [[ "$output" == *"[WARN]: All 1 containers are running: 1 live-restored. 'bash"*"' exited with status 7."* ]]
+  [[ "$output" != *"[ERROR]"* ]]
 }
 
 @test "Ctrl-C during the command still checks and repairs the containers" {
@@ -508,7 +509,7 @@ kill -INT "$PPID"; kill -INT $$'
   dlu_run
   [ "$status" -eq 2 ]
   stub_called 'docker start aaa'
-  [[ "$output" == *"repaired: web"* ]]
+  [[ "$output" == *"[INFO]: All 1 containers are running: 0 live-restored, 1 started after being lost."* ]]
 }
 
 @test "an orphaned process is stopped before its container is started" {
@@ -564,7 +565,7 @@ printf "bbb|/web|exited|t2|0|none|<no value>||<no value>\n" > "$FAKE/state/bbb"'
   [ "$status" -eq 3 ]
   [ "$(count_calls '^docker start aaa')" -eq 0 ]
   stub_called 'docker start bbb'
-  [[ "$output" == *"FAILED: db"* ]]
+  [[ "$output" == *"[ERROR]: 1 of 2 containers need attention: db. Of the rest: 0 live-restored, 1 started after being lost."* ]]
 }
 
 # --- Order ------------------------------------------------------------------------------------
@@ -698,7 +699,7 @@ restarted_by_daemon() {
   [ "$status" -eq 2 ]
   [[ "$output" == *"api is tied to db, which was restarted; restarting it after"* ]]
   [ "$(call_line '^docker start d1')" -lt "$(call_line '^docker restart a1')" ]
-  [[ "$output" == *"repaired: db, api"* ]]
+  [[ "$output" == *"All 2 containers are running: 0 live-restored, 1 started after being lost, 1 restarted with a container they are tied to."* ]]
 }
 
 @test "a live-restored dependent without restart: true is left alone" {
@@ -708,7 +709,7 @@ restarted_by_daemon() {
   dlu_run
   [ "$status" -eq 2 ]
   [ "$(count_calls '^docker restart a1')" -eq 0 ]
-  [[ "$output" == *"1 of 2 containers live-restored"* ]]
+  [[ "$output" == *"All 2 containers are running: 1 live-restored, 1 started after being lost."* ]]
 }
 
 @test "a live-restored container sharing a repaired container's network, named by ID, is restarted after it" {
@@ -777,7 +778,7 @@ restarted_by_daemon() {
   [ "$status" -eq 3 ]
   [ "$(count_calls '^docker restart s1')" -eq 0 ]
   [[ "$output" == *"vpn, restarted by the daemon, is not running and healthy"* ]]
-  [[ "$output" == *"FAILED: vpn"* ]]
+  [[ "$output" == *"2 of 2 containers need attention: vpn, client. Of the rest: 0 live-restored."* ]]
   # The summary, not the early report made before the wait, must not list it as restarted.
   [[ "$output" != *"; restarted by the daemon: vpn"* ]]
 }
@@ -817,8 +818,7 @@ restarted_by_daemon() {
   dlu_run
   [ "$status" -eq 3 ]
   [[ "$output" == *"client is tied to vpn, which no longer exists"* ]]
-  [[ "$output" == *"0 of 2 containers live-restored"* ]]
-  [[ "$output" == *"FAILED: vpn, client"* ]]
+  [[ "$output" == *"2 of 2 containers need attention: vpn, client. Of the rest: 0 live-restored."* ]]
 }
 
 @test "a depends_on label with a field after restart still yields the tie" {
@@ -871,10 +871,10 @@ restarted_by_daemon() {
   upgrade_does 'printf "socket 26:200\n" > "$FAKE/stat/_var_run_docker.sock"'
   dlu_run
   [ "$status" -eq 2 ]
-  [[ "$output" == *"dash bind-mounts /var/run/docker.sock, which was replaced; restarting it."* ]]
+  [[ "$output" == *"[INFO]: dash bind-mounts /var/run/docker.sock, which the command replaced; restarting it."* ]]
   stub_called 'docker restart a1'
   [ "$(count_calls '^docker \(start\|restart\) b1')" -eq 0 ]
-  [[ "$output" == *"1 of 2 containers live-restored; repaired: dash"* ]]
+  [[ "$output" == *"All 2 containers are running: 1 live-restored, 1 restarted onto a new socket."* ]]
 }
 
 @test "a socket that was not replaced leaves its containers alone" {
@@ -926,6 +926,58 @@ restarted_by_daemon() {
   [ "$(call_line '^docker restart o1')" -lt "$(call_line '^docker restart s1')" ]
 }
 
+# --- Reporting ---------------------------------------------------------------------------------
+
+@test "containers sharing a replaced socket are reported in one line" {
+  host_path /var/run/docker.sock "socket 26:100"
+  container a1 alpha running t 9999901 healthy "" "" "" "" "" "" bridge "/var/run/docker.sock;"
+  container b1 beta running t 9999902 healthy "" "" "" "" "" "" bridge "/var/run/docker.sock;"
+  upgrade_does 'printf "socket 26:200\n" > "$FAKE/stat/_var_run_docker.sock"'
+  dlu_run
+  [ "$status" -eq 2 ]
+  [ "$(grep -c 'bind-mount' <<<"$output")" -eq 1 ]
+  [[ "$output" == *"[INFO]: 2 containers bind-mount /var/run/docker.sock, which the command replaced; restarting them: alpha, beta."* ]]
+}
+
+@test "each restart says how far through the repair it is" {
+  container a1 one running t 9999901
+  container b1 two running t 9999902
+  lost_in_upgrade a1 b1
+  dlu_run
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"starting one (1 of 2, tier 50)."* ]]
+  [[ "$output" == *"starting two (2 of 2, tier 50)."* ]]
+}
+
+@test "a repaired run that brought every container back reports no warning or error" {
+  container a1 web running t 9999901
+  lost_in_upgrade a1
+  dlu_run
+  [ "$status" -eq 2 ]
+  [[ "$output" != *"[WARN]"* ]]
+  [[ "$output" != *"[ERROR]"* ]]
+}
+
+@test "the summary accounts for every container, by how it got there" {
+  host_path /var/run/docker.sock "socket 26:100"
+  container r1 kept running t 9999901
+  container l1 lost running t 9999902
+  container d1 daemoned running t 9999903
+  container s1 socketed running t 9999904 healthy "" "" "" "" "" "" bridge "/var/run/docker.sock;"
+  container o1 orphaned running t 9999905
+  process 9999905 o1
+  container g1 gone running t 9999906
+  : > "$FAKE/upgrade.sh"
+  restarted_by_daemon d1
+  printf 'printf "socket 26:200\\n" > "$FAKE/stat/_var_run_docker.sock"\n' >> "$FAKE/upgrade.sh"
+  printf 'IFS="|" read -r id n s st p h rest <"$FAKE/state/l1"; printf "%%s|%%s|exited|%%s|0|%%s|%%s\\n" "$id" "$n" "$st" "$h" "$rest" >"$FAKE/state/l1"\n' >> "$FAKE/upgrade.sh"
+  printf 'IFS="|" read -r id n s st p h rest <"$FAKE/state/o1"; printf "%%s|%%s|exited|%%s|0|%%s|%%s\\n" "$id" "$n" "$st" "$h" "$rest" >"$FAKE/state/o1"\n' >> "$FAKE/upgrade.sh"
+  printf 'rm "$FAKE/state/g1"\n' >> "$FAKE/upgrade.sh"
+  dlu_run
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"[ERROR]: 1 of 6 containers need attention: gone. Of the rest: 1 live-restored, 1 restarted by the daemon, 1 started after being lost, 1 restarted after an orphaned process was stopped, 1 restarted onto a new socket."* ]]
+}
+
 # --- Failures ---------------------------------------------------------------------------------
 
 @test "a container that never becomes healthy fails the run" {
@@ -958,8 +1010,7 @@ printf "bbb|/db|exited|t2|0|none|<no value>||<no value>\n" > "$FAKE/state/bbb"'
   dlu_run
   [ "$status" -eq 3 ]
   stub_called 'docker start bbb'
-  [[ "$output" == *"FAILED: web"* ]]
-  [[ "$output" == *"repaired: db"* ]]
+  [[ "$output" == *"1 of 2 containers need attention: web. Of the rest: 0 live-restored, 1 started after being lost."* ]]
 }
 
 @test "a container removed during the command is reported as failed" {
@@ -1008,7 +1059,7 @@ printf "bbb|/db|exited|t2|0|none|<no value>||<no value>\n" > "$FAKE/state/bbb"'
   [ "$status" -eq 2 ]
   [ "$(sed -n 1p "$FAKE/order")" = "pre" ]
   [ "$(sed -n 2p "$FAKE/order")" = "upgrade" ]
-  [ "$(sed -n 3p "$FAKE/order")" = "repaired|0 of 1 containers live-restored; repaired: web" ]
+  [ "$(sed -n 3p "$FAKE/order")" = "repaired|All 1 containers are running: 0 live-restored, 1 started after being lost." ]
 }
 
 @test "a failing pre-hook is reported and the run continues" {

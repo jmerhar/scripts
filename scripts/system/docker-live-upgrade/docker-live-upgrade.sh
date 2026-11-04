@@ -365,6 +365,7 @@ plan_stale_mounts() {
   done
   (( ${#replaced[@]} + ${#gone[@]} > 0 )) || return 0
   local -a kept=() sources=()
+  local -A stale_by_socket=()
   for id in "${_restored[@]}"; do
     IFS=';' read -r -a sources <<<"${_binds[${id}]:-}"
     outcome=kept
@@ -375,7 +376,7 @@ plan_stale_mounts() {
         outcome=failed
         break
       elif [[ -n "${replaced[${src}]:-}" ]]; then
-        log_warn "${_name[${id}]} bind-mounts ${src}, which was replaced; restarting it."
+        stale_by_socket[${src}]+="${stale_by_socket[${src}]:+, }${_name[${id}]}"
         outcome=stale
       fi
     done
@@ -386,6 +387,16 @@ plan_stale_mounts() {
     esac
   done
   _restored=("${kept[@]}")
+  local names count
+  for src in "${!stale_by_socket[@]}"; do
+    names="${stale_by_socket[${src}]}"
+    count=$(( $(tr -cd ',' <<<"${names}" | wc -c) + 1 ))
+    if (( count == 1 )); then
+      log_info "${names} bind-mounts ${src}, which the command replaced; restarting it."
+    else
+      log_info "${count} containers bind-mount ${src}, which the command replaced; restarting them: ${names}."
+    fi
+  done
 }
 
 ########################################
@@ -882,6 +893,7 @@ repair_containers() {
   local entry tier name action state
   local -a pending=()
   mapfile -t pending < <(printf '%s\n' "${plan[@]}" | sort -k1,1n -k2,2)
+  local planned=${#pending[@]} started=0
   for entry in "${pending[@]}"; do
     read -r tier name id action <<<"${entry}"
     _not_ready[${id}]=1
@@ -914,7 +926,8 @@ repair_containers() {
       fi
       batch_tier="${tier}"
       progressed=true
-      log_info "${action}ing ${name} (tier ${tier})."
+      started=$(( started + 1 ))
+      log_info "${action}ing ${name} (${started} of ${planned}, tier ${tier})."
       if "${DOCKER_BIN}" "${action}" "${id}" >/dev/null </dev/null; then
         batch+=("${id}")
       else
@@ -1056,6 +1069,52 @@ names_of() {
 }
 
 ########################################
+# Print the run's one-line outcome: a verdict first, then how every recorded container got there, in
+# counts that add up to the total. Failed containers are named; the rest are named in earlier lines.
+# Globals:
+#   _ids, _restored, _daemon_restarted, _to_start, _orphans, _stale, _followers, _repaired, _failed,
+#   _name, _command
+# Arguments:
+#   The command's exit status.
+# Outputs:
+#   The summary, ending in a full stop.
+########################################
+summarise() {
+  local command_status="$1" id total=${#_ids[@]} failed_names="" line accounting=""
+  local lost=0 orphaned=0 socket=0 tied=0 daemon=0
+  local -A failed=()
+  for id in "${_failed[@]}"; do
+    [[ -n "${failed[${id}]:-}" ]] && continue
+    failed[${id}]=1
+    failed_names+="${failed_names:+, }${_name[${id}]}"
+  done
+  for id in "${_daemon_restarted[@]}"; do
+    [[ -n "${failed[${id}]:-}" ]] || daemon=$(( daemon + 1 ))
+  done
+  for id in "${_repaired[@]}"; do
+    # An orphan first: its container is also in _to_start or _to_restart.
+    if contains "${id}" "${_orphans[@]}"; then orphaned=$(( orphaned + 1 ))
+    elif contains "${id}" "${_to_start[@]}"; then lost=$(( lost + 1 ))
+    elif contains "${id}" "${_stale[@]}"; then socket=$(( socket + 1 ))
+    elif contains "${id}" "${_followers[@]}"; then tied=$(( tied + 1 ))
+    fi
+  done
+  accounting="${#_restored[@]} live-restored"
+  (( daemon == 0 )) || accounting+=", ${daemon} restarted by the daemon"
+  (( lost == 0 )) || accounting+=", ${lost} started after being lost"
+  (( orphaned == 0 )) || accounting+=", ${orphaned} restarted after an orphaned process was stopped"
+  (( socket == 0 )) || accounting+=", ${socket} restarted onto a new socket"
+  (( tied == 0 )) || accounting+=", ${tied} restarted with a container they are tied to"
+  if (( ${#failed[@]} == 0 )); then
+    line="All ${total} containers are running: ${accounting}."
+  else
+    line="${#failed[@]} of ${total} containers need attention: ${failed_names}. Of the rest: ${accounting}."
+  fi
+  (( command_status == 0 )) || line+=" '${_command[*]}' exited with status ${command_status}."
+  printf '%s' "${line}"
+}
+
+########################################
 # Entry point.
 # Globals:
 #   _command, _ids, _restored, _daemon_restarted, _repaired, _failed, POST_HOOK, PRE_HOOK
@@ -1108,7 +1167,9 @@ main() {
     log_warn "interrupted; checking the containers anyway."
   fi
   if (( command_status != 0 )); then
-    log_error "'${_command[*]}' exited with status ${command_status}; checking the containers anyway."
+    # A warning, not an error: the command is the caller's (aborting an apt prompt exits 1), and the
+    # containers are what this run answers for.
+    log_warn "'${_command[*]}' exited with status ${command_status}; checking the containers anyway."
   fi
 
   local result summary code
@@ -1124,28 +1185,24 @@ main() {
   plan_stale_mounts
   plan_followers
   if (( ${#_daemon_restarted[@]} > 0 )); then
-    log_warn "restarted by the daemon: $(names_of "${_daemon_restarted[@]}")."
+    log_info "restarted by the daemon: $(names_of "${_daemon_restarted[@]}")."
   fi
   repair_containers
 
-  summary="${#_restored[@]} of ${#_ids[@]} containers live-restored"
-  (( ${#_daemon_restarted[@]} == 0 )) || summary+="; restarted by the daemon: $(names_of "${_daemon_restarted[@]}")"
-  (( ${#_repaired[@]} == 0 )) || summary+="; repaired: $(names_of "${_repaired[@]}")"
-  (( ${#_failed[@]} == 0 )) || summary+="; FAILED: $(names_of "${_failed[@]}")"
-  (( command_status == 0 )) || summary+="; the command exited with status ${command_status}"
+  summary=$(summarise "${command_status}")
 
   if (( ${#_failed[@]} > 0 )); then
     result=failed code="${EXIT_FAILED}"
-    log_error "${summary}."
+    log_error "${summary}"
   elif (( command_status != 0 )); then
     result=command-failed code="${EXIT_COMMAND_FAILED}"
-    log_error "${summary}."
+    log_warn "${summary}"
   elif (( ${#_daemon_restarted[@]} + ${#_repaired[@]} > 0 )); then
     result=repaired code="${EXIT_REPAIRED}"
-    log_warn "${summary}."
+    log_info "${summary}"
   else
     result=restored code="${EXIT_RESTORED}"
-    log_info "${summary}."
+    log_info "${summary}"
   fi
 
   export DOCKER_LIVE_UPGRADE_RESULT="${result}" DOCKER_LIVE_UPGRADE_SUMMARY="${summary}"
