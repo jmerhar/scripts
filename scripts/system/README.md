@@ -47,6 +47,12 @@ Toggles temporary passwordless sudo for a user, with an in-session auto-revoke t
 
 deps: `sudo` _(Linux only)_
 
+### [`pg-backup`](pg-backup/)
+
+Dumps Postgres databases from their Docker containers with pg_dump and keeps a daily, weekly and monthly rotation of the dumps, pruning only after a dump that succeeded.
+
+`bash 4.3+` _(Linux only)_
+
 ### [`prune-orphaned-torrents`](prune-orphaned-torrents/)
 
 Finds orphaned media files left by *arr hard-linking and interactively removes the corresponding torrents from Deluge.

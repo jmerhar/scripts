@@ -244,6 +244,31 @@ case "${command_name}" in
     fi
     ;;
 
+  docker-cli)
+    # `docker exec <container> pg_dump -U <user> -d <database> -Fc` writes a dump on stdout, and one run
+    # dumps several databases that a suite needs to answer differently — one failing while the rest
+    # succeed. So a pg_dump call is answered per database: docker-cli.pg_dump.<database>.stdout for the
+    # dump, .stderr for what pg_dump says, and .fail for its exit status.
+    if [[ " $* " == *" pg_dump "* ]]; then
+      db=""
+      prev=""
+      for arg in "$@"; do
+        [[ "${prev}" == "-d" ]] && db="${arg}"
+        prev="${arg}"
+      done
+      reply="${fixtures}/docker-cli.pg_dump.${db}"
+      if [[ -f "${reply}.stdout" ]]; then
+        cat "${reply}.stdout"
+      fi
+      if [[ -f "${reply}.stderr" ]]; then
+        cat "${reply}.stderr" >&2
+      fi
+      if [[ -f "${reply}.fail" ]]; then
+        exit "$(cat "${reply}.fail")"
+      fi
+    fi
+    ;;
+
   systemctl)
     # `systemctl show <unit> -p <Property> --value` is asked for a different property each time, so the
     # reply comes from systemctl.<Property>.stdout. Without a fixture for the property the output is

@@ -85,6 +85,12 @@ Brings episode filenames to one spelling — dots for separators, lower case, an
 
 `bash 4.0+`
 
+### [`pg-backup`](scripts/system/pg-backup/)
+
+Dumps Postgres databases from their Docker containers with pg_dump and keeps a daily, weekly and monthly rotation of the dumps, pruning only after a dump that succeeded.
+
+`bash 4.3+` _(Linux only)_
+
 ### [`photo-backup`](scripts/photography/photo-backup/)
 
 A robust script for backing up photo collections from multiple sources to a remote server using rsync.
