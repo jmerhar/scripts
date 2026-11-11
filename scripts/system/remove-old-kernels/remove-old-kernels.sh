@@ -83,6 +83,7 @@ Options:
   -C, --no-color  Disable colored output.
   -d, --debug     Enable verbose debug logging.
   -h, --help      Show this help message.
+      --version   Show the version and exit.
 
 The running kernel is always kept, whether or not it is among the most recent.
 Only the packages listed are purged; nothing is auto-removed alongside them.
@@ -124,6 +125,10 @@ parse_options() {
         ;;
       -h|--help)
         show_usage
+        exit 0
+        ;;
+      --version)
+        show_version
         exit 0
         ;;
       -*)

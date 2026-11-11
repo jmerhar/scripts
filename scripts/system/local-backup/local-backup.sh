@@ -45,8 +45,9 @@ All settings are read from a configuration file
 (e.g., /etc/${SCRIPT_NAME}.conf).
 
 Options:
-  -d, --debug   Debug mode (enables verbose logging to stderr)
-  -h, --help    Show this help message
+  -d, --debug     Debug mode (enables verbose logging to stderr)
+  -h, --help      Show this help message
+      --version   Show the version and exit
 EOF
 }
 
@@ -62,6 +63,7 @@ parse_options() {
     case "$1" in
       -d | --debug) enable_debug_mode; shift ;;
       -h | --help)  show_usage; exit 0 ;;
+      --version)    show_version; exit 0 ;;
       -*)           die_usage "Unknown option '$1'." ;;
       *)            break ;;
     esac

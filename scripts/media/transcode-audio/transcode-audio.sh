@@ -105,6 +105,7 @@ Options:
   -C, --no-color        Disable colored output.
   -d, --debug           Enable verbose debug logging, including the ffmpeg command.
   -h, --help            Show this help message.
+      --version         Show the version and exit.
 
 A file whose audio is already entirely in the target codec is passed over. The
 converted file is named after the original with the codec marker inserted, and
@@ -161,6 +162,10 @@ parse_options() {
         ;;
       -h|--help)
         show_usage
+        exit 0
+        ;;
+      --version)
+        show_version
         exit 0
         ;;
       --)

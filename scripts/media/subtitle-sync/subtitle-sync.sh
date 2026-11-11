@@ -172,6 +172,7 @@ Options:
   -n, --dry-run          Report what would be done; change nothing.
   -C, --no-color         Disable colored output.
   -h, --help             Show this help message.
+      --version          Show the version and exit.
 
 Drift types:
   - Segmented / ad-break drift  -> handled by default (the main use case).
@@ -216,6 +217,7 @@ parse_options() {
       -n|--dry-run) _dry_run=true; shift ;;
       -C|--no-color) _no_color=true; shift ;;
       -h|--help) show_usage; exit 0 ;;
+      --version) show_version; exit 0 ;;
       --) shift; positional+=("$@"); break ;;
       -*) log_error "Unknown option '$1'. Use --help for usage."; exit 1 ;;
       *) positional+=("$1"); shift ;;

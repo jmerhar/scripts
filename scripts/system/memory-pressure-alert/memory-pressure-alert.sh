@@ -194,6 +194,7 @@ ${_C_BOLD}Options:${_C_RESET}
       --no-color          Disable coloured output
   -d, --debug             Enable debug logging
   -h, --help              Show this help message
+      --version           Show the version and exit
 
 ${_C_BOLD}Readings:${_C_RESET}
   used        How much of RAM is in use, counted the way Activity Monitor and
@@ -608,6 +609,10 @@ main() {
       -h|--help)
         setup_colors "${wanted_color}"
         show_usage
+        return 0
+        ;;
+      --version)
+        show_version
         return 0
         ;;
       *)

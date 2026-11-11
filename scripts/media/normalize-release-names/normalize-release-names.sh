@@ -89,6 +89,7 @@ Options:
   -C, --no-color    Disable colored output.
   -d, --debug       Enable verbose debug logging.
   -h, --help        Show this help message.
+      --version     Show the version and exit.
 
 Directories are never renamed, and a rename that would land on a name already
 taken is refused rather than resolved.
@@ -133,6 +134,10 @@ parse_options() {
         ;;
       -h|--help)
         show_usage
+        exit 0
+        ;;
+      --version)
+        show_version
         exit 0
         ;;
       --)

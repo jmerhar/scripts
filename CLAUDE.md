@@ -132,7 +132,7 @@ and using what it sources. See [`bin/README.md`](bin/README.md).
 
 | Library | Holds |
 |---|---|
-| `core.sh` | `SCRIPT_NAME`, the install prefix, `log_info`/`log_warn`/`log_error`/`log_debug` (and their writer `log_message`), `disable_log_colors`, `enable_debug_mode`, `default_log_file`, `log_command` |
+| `core.sh` | `SCRIPT_NAME`, `SCRIPT_VERSION` and `show_version`, the install prefix, `log_info`/`log_warn`/`log_error`/`log_debug` (and their writer `log_message`), `disable_log_colors`, `enable_debug_mode`, `default_log_file`, `log_command` |
 | `config.sh` | `load_config`, `load_optional_config`, `validate_config` — needs `core.sh` |
 | `program.sh` | `load_program` — needs `core.sh` |
 | `colors.sh` | the `_C_*` palette and `setup_colors <wanted>` |
@@ -167,6 +167,10 @@ Each script keeps its own option table and writes its own usage text: a generate
 written one, and a generic parser would have to reproduce every script's diagnostics to avoid changing them.
 `cli.sh` calls `show_usage`, which the script defines — the one inversion, and the alternative is repeating
 `log_error` + `show_usage` + `exit` at every error site.
+
+Every script also accepts `--version`, with no short form, and answers it with `show_version` before reading
+a config or checking for root. `test/shared/smoke.bats` runs each manifest entry with it, so a new script
+that lacks it fails the suite.
 
 `bin/lint/check-includes.sh` is the backstop, in `make lint` and the lint workflow. It computes the same closure
 the compiler does and fails when a script calls a library function nothing it includes provides — which
@@ -258,9 +262,16 @@ afterwards it would pass having checked nothing, which is why it refuses a tree 
 
 Only scripts registered in `scripts.yaml` are publishable. Scripts under `bin/` are internal tooling.
 
+**The version a script reports is stamped in at packaging time.** `core.sh` defines `SCRIPT_VERSION="dev"`,
+which is what a checkout reports; `package-script.sh` replaces that exact line with the version being packaged
+(without its `v`) in the published form. It refuses a script holding the line other than exactly once, and a
+version containing anything but letters, digits and `. + ~ -`, since the value lands in a quoted shell string.
+`make compile` leaves the line alone, because it runs without a version.
+
 `bin/package/smoke-package-all.sh` packages every manifest entry at a throwaway version. That is what catches a
 manifest and a packager that have stopped agreeing — a new entry missing a field, or metadata that no
-longer matches the tree — before a release does. It runs in CI and from `make smoke`.
+longer matches the tree — before a release does. It then runs each published script from its tarball with
+`--version` and requires `<name> <version>` back. It runs in CI and from `make smoke`.
 
 ### Release & CI/CD
 

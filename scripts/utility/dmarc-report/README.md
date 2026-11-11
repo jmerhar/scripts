@@ -33,6 +33,7 @@ If no directory is given, the current directory is used.
 | `-w`, `--warn-rate PCT` | Annotate the summary when the DMARC fail rate reaches PCT percent (0–100). Informational only. |
 | `-C`, `--no-color` | Disable colored output. |
 | `-h`, `--help` | Show usage information. |
+| `--version` | Show the version and exit. |
 
 ### Exit Codes
 

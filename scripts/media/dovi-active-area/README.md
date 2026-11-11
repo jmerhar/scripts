@@ -52,6 +52,7 @@ dovi-active-area --fix --yes /mnt/storage/films
 | `-C`, `--no-color` | Disable colored output. |
 | `-d`, `--debug` | Enable verbose debug logging, including each tool invocation. |
 | `-h`, `--help` | Show the help message. |
+| `--version` | Show the version and exit. |
 
 ### Configuration
 

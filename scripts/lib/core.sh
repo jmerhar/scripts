@@ -34,9 +34,26 @@ fi
 SCRIPT_NAME="${SCRIPT_NAME:-$(basename "$0" .sh)}"
 readonly SCRIPT_NAME
 
+# The release this copy belongs to. bin/package/package-script.sh replaces "dev" with the version being
+# packaged, so a checkout reports "dev" and an installed script reports its release. The packager matches
+# this exact line.
+SCRIPT_VERSION="dev"
+readonly SCRIPT_VERSION
+
 # --- Behavioral Flags (callers may override before sourcing or after) ---
 _LOG_QUIET="${_LOG_QUIET:-false}"
 IS_DEBUG_MODE="${IS_DEBUG_MODE:-false}"
+
+########################################
+# Prints the script's name and version, in the "name version" form tools read from a --version line.
+# Globals:
+#   SCRIPT_NAME, SCRIPT_VERSION
+# Outputs:
+#   One line on stdout.
+########################################
+show_version() {
+  printf '%s %s\n' "${SCRIPT_NAME}" "${SCRIPT_VERSION}"
+}
 
 ########################################
 # Enables debug mode (verbose log_debug output).

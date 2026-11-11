@@ -28,6 +28,30 @@ setup() { setup_common; }
   [[ "$output" == *"readonly"* ]]
 }
 
+@test "SCRIPT_VERSION is dev until the packager stamps a release" {
+  run_snippet "$LIB_DIR/core.sh" 'echo "$SCRIPT_VERSION"'
+  [ "$output" = "dev" ]
+}
+
+# The packager finds the line by exact match, so its spelling is part of the contract with
+# bin/package/package-script.sh.
+@test "the version placeholder is spelled the way the packager matches it" {
+  run grep -cxF 'SCRIPT_VERSION="dev"' "$LIB_DIR/core.sh"
+  [ "$output" = "1" ]
+}
+
+@test "SCRIPT_VERSION cannot be reassigned after sourcing" {
+  run_snippet "$LIB_DIR/core.sh" 'SCRIPT_VERSION=9.9.9'
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"readonly"* ]]
+}
+
+@test "show_version prints the name and the version on one line" {
+  run_snippet "$(lib_at bin widget core.sh)" 'show_version'
+  [ "$status" -eq 0 ]
+  [ "$output" = "widget dev" ]
+}
+
 @test "sourcing the library twice is harmless" {
   run_snippet "$LIB_DIR/core.sh" "source '$LIB_DIR/core.sh'; echo twice-ok"
   [ "$status" -eq 0 ]

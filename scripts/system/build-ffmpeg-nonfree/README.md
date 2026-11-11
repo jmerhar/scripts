@@ -56,6 +56,7 @@ rm /usr/local/bin/ffmpeg /usr/local/bin/ffprobe
 | `-k`, `--keep` | Keep the build workspace afterwards, for debugging. |
 | `-d`, `--debug` | Enable verbose debug logging. |
 | `-h`, `--help` | Show the help message. |
+| `--version` | Show the version and exit. |
 
 ### Configuration
 

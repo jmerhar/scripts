@@ -33,3 +33,4 @@ sudo nopasswd-sudo status        # show current state
 | `off` | Revoke the grant now and cancel the auto-revoke timer. |
 | `status` | Show whether the grant and safety nets are active. |
 | `-h`, `--help` | Show the help message. |
+| `--version` | Show the version and exit. |

@@ -96,6 +96,7 @@ Options:
   -C, --no-color   Disable coloured output.
   -d, --debug      Enable verbose debug logging.
   -h, --help       Show this help and exit.
+      --version    Show the version and exit.
 EOF
 }
 
@@ -112,6 +113,7 @@ parse_options() {
       -C | --no-color) _no_color=true; shift ;;
       -d | --debug) enable_debug_mode; shift ;;
       -h | --help) show_usage; exit 0 ;;
+      --version)   show_version; exit 0 ;;
       --) shift; _filters+=("$@"); break ;;
       -*) die_usage "Unknown option '$1'." ;;
       *) _filters+=("${1#/dev/}"); shift ;;

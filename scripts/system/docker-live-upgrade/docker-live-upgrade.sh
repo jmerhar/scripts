@@ -115,6 +115,7 @@ restarted.
 Options:
   -d, --debug     enable debug output
   -h, --help      show this help and exit
+      --version   show the version and exit
 
 Examples:
   sudo $(basename "$0") -- apt upgrade
@@ -151,6 +152,7 @@ parse_options() {
     case "$1" in
       -d | --debug) enable_debug_mode; shift ;;
       -h | --help) show_usage; exit 0 ;;
+      --version)   show_version; exit 0 ;;
       --) shift; _command=("$@"); break ;;
       -*) die_usage "Unknown option '$1'." ;;
       *) die_usage "Put the command after '--', e.g. $(basename "$0") -- apt upgrade." ;;

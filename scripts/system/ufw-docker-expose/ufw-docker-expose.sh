@@ -84,6 +84,7 @@ Options:
   -n, --dry-run          show what ufw would do, changing nothing
   -d, --debug            enable debug output
   -h, --help             show this help and exit
+      --version          show the version and exit
 
 Examples:
   sudo $(basename "$0") 8080                 # tcp 8080
@@ -262,6 +263,7 @@ parse_options() {
       -n | --dry-run) _dry_run=true; shift ;;
       -d | --debug) enable_debug_mode; shift ;;
       -h | --help) show_usage; exit 0 ;;
+      --version)   show_version; exit 0 ;;
       --) shift; _specs+=("$@"); break ;;
       -*) die_usage "Unknown option '$1'." ;;
       *) _specs+=("$1"); shift ;;

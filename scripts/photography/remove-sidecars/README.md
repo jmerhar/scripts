@@ -29,6 +29,7 @@ remove-sidecars [OPTIONS] DIRECTORY
 | `-n`, `--dry-run` | Show what would be deleted without actually deleting. |
 | `-C`, `--no-color` | Disable colored output. |
 | `-h`, `--help` | Show help. |
+| `--version` | Show the version and exit. |
 
 ### Example
 

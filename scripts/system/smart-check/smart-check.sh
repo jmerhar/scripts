@@ -95,6 +95,7 @@ Options:
   -C, --no-color      Disable colored output.
   -d, --debug         Enable verbose debug logging.
   -h, --help          Show this help message.
+      --version       Show the version and exit.
 
 Reading SMART data needs root; sudo is used when this is not already root.
 
@@ -142,6 +143,10 @@ parse_options() {
         ;;
       -h|--help)
         show_usage
+        exit 0
+        ;;
+      --version)
+        show_version
         exit 0
         ;;
       --)

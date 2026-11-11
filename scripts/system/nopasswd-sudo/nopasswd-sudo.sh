@@ -52,6 +52,7 @@ Usage: sudo $(basename "$0") {on|off|status} [user] [minutes]
                         and arm auto-revoke after [minutes] (default ${DEFAULT_TIMEOUT_MIN}; 0 = never)
   off                   revoke it now (removes ${DROPIN}, cancels the timer)
   status                show whether it is enabled and any armed auto-revoke
+  --version             show the version and exit
 
 Examples:
   sudo $(basename "$0") on            # enable for \$SUDO_USER, auto-off in ${DEFAULT_TIMEOUT_MIN} min
@@ -219,6 +220,7 @@ show_status() {
 main() {
   case "${1:-}" in
     -h | --help | "") show_usage; exit 0 ;;
+    --version)        show_version; exit 0 ;;
   esac
   require_root
   case "${1}" in

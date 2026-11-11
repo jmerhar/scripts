@@ -57,6 +57,7 @@ photo-backup \
 | `-d`, `--debug` | Debug mode — enable verbose command logging. |
 | `-l`, `--log-file FILE` | Log all output to a file. Defaults to `<prefix>/var/log/photo-backup.log` for an installed copy. |
 | `-h`, `--help` | Show help. |
+| `--version` | Show the version and exit. |
 
 ### Example
 

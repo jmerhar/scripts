@@ -63,3 +63,4 @@ sudo local-backup
 |------|-------------|
 | `-d`, `--debug` | Debug mode — verbose logging to stderr. |
 | `-h`, `--help` | Show help. |
+| `--version` | Show the version and exit. |

@@ -52,6 +52,7 @@ transcode-audio --replace --yes "/mnt/storage/tv/uk/Show/Season 1"
 | `-C`, `--no-color` | Disable colored output. |
 | `-d`, `--debug` | Enable verbose debug logging, including the ffmpeg command. |
 | `-h`, `--help` | Show the help message. |
+| `--version` | Show the version and exit. |
 
 ### Naming
 

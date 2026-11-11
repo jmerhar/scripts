@@ -35,6 +35,7 @@ compare-dirs [OPTIONS] <dir1> <dir2>
 | `--exclude-right PAT` | Suppress RIGHT-only reports for matches (repeatable) |
 | `-n`, `--no-color` | Disable colored output |
 | `-h`, `--help` | Show usage information |
+| `--version` | Show the version and exit |
 
 ### Example
 

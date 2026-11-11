@@ -98,6 +98,7 @@ Options:
                         PCT percent (0-100; default ${_warn_rate}). Informational only.
   -C, --no-color        Disable colored output.
   -h, --help            Show this help message.
+      --version         Show the version and exit.
 
 If no directory is given, the current directory is used. Files are matched by
 extension (*.xml.gz, *.gz, *.zip, *.xml); anything that is not a DMARC
@@ -146,6 +147,10 @@ parse_options() {
         ;;
       -h|--help)
         show_usage
+        exit 0
+        ;;
+      --version)
+        show_version
         exit 0
         ;;
       --)

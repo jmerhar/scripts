@@ -62,6 +62,7 @@ reconstructed, so both are treated as the point of the exercise rather than as m
 | `-C`, `--no-color` | Disable colored output. |
 | `-d`, `--debug` | Enable verbose debug logging, including the ffmpeg command. |
 | `-h`, `--help` | Show the help message. |
+| `--version` | Show the version and exit. |
 
 ### How the date is chosen
 

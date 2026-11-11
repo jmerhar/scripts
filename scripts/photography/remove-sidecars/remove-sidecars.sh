@@ -81,6 +81,7 @@ Options:
   -n, --dry-run   Show what would be deleted without actually deleting.
   -C, --no-color  Disable colored output.
   -h, --help      Show this help message.
+      --version   Show the version and exit.
 
 DIRECTORY is required; pass "." for the current directory. It is searched
 recursively.
@@ -109,6 +110,10 @@ parse_options() {
         ;;
       -h|--help)
         show_usage
+        exit 0
+        ;;
+      --version)
+        show_version
         exit 0
         ;;
       --)

@@ -105,6 +105,7 @@ sudo ufw-docker-expose [options] <port>[/tcp|/udp] ...
 | `-n`, `--dry-run` | Show what ufw would do, changing nothing. |
 | `-d`, `--debug` | Enable debug output. |
 | `-h`, `--help` | Show help and exit. |
+| `--version` | Show the version and exit. |
 
 The protocol defaults to `tcp` when a port is given without one.
 

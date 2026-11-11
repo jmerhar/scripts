@@ -36,7 +36,9 @@ make_manifest() {
       printf '  %s:\n' "$name"
       printf '    path: scripts/utility/%s.sh\n' "$name"
       printf '    description: "Does %s."\n' "$name"
-      printf '#!/usr/bin/env bash\necho %s\n' "$name" > "$FAKE_REPO/scripts/utility/$name.sh"
+      # Shaped like a real script where it matters here: it holds core.sh's version placeholder and
+      # answers with its name and that version.
+      printf '#!/usr/bin/env bash\nSCRIPT_VERSION="dev"\necho "%s ${SCRIPT_VERSION}"\n' "$name" > "$FAKE_REPO/scripts/utility/$name.sh"
       chmod +x "$FAKE_REPO/scripts/utility/$name.sh"
     done
   } > "$MANIFEST"
@@ -77,6 +79,23 @@ smoke_run() {
   make_manifest alpha
   smoke_run v9.9.9
   ls "$FAKE_REPO/dist/tarballs"/*alpha*v9.9.9* >/dev/null
+}
+
+@test "each published script is asked for its version" {
+  make_manifest alpha
+  smoke_run v1.2.3
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Packaged 1 script(s)."* ]]
+}
+
+# Stands for a script whose --version is wrong or missing: whatever it prints instead fails the walk.
+@test "a published script that misreports its version fails the walk" {
+  make_manifest alpha beta
+  printf '#!/usr/bin/env bash\nSCRIPT_VERSION="dev"\necho "usage: alpha <dir>"\n' > "$FAKE_REPO/scripts/utility/alpha.sh"
+  smoke_run v1.2.3
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"alpha --version reported 'usage: alpha <dir>', expected 'alpha 1.2.3'."* ]]
+  [[ "$output" != *"Smoke-testing: beta"* ]]
 }
 
 # A manifest entry whose script is missing is precisely the drift this exists to catch, so it has to fail

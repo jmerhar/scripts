@@ -135,8 +135,41 @@ compile_for_packaging() {
 }
 
 #######################################
-# Writes the published form of a script — the compiled source, preceded by a bash-version guard when the
-# manifest declares one — and prints its path.
+# Writes a script with its version stamped in, replacing the SCRIPT_VERSION="dev" line core.sh defines.
+#
+# The line must appear exactly once. Every script includes core.sh, so a script without it, or with two,
+# is one whose published form would report "dev" or a version nobody chose.
+# Arguments:
+#   script_path - Path to the compiled script.
+#   version     - The version to stamp, without a leading "v".
+# Outputs:
+#   The stamped script on stdout.
+# Returns:
+#   1 if the version is not a plain version string, or the line does not appear exactly once.
+#######################################
+emit_stamped_script() {
+  local script_path="$1" version="$2"
+  local placeholder='SCRIPT_VERSION="dev"'
+
+  # Lands inside a double-quoted shell string, so a quote, a dollar sign or a backtick would run as code.
+  if [[ ! "${version}" =~ ^[0-9A-Za-z.+~-]+$ ]]; then
+    log_error "Cannot stamp '${version}' into ${script_path}: a version may hold only letters, digits and . + ~ -"
+    return 1
+  fi
+
+  local count
+  count=$(grep -cxF "${placeholder}" "${script_path}" || true)
+  if [[ "${count}" != "1" ]]; then
+    log_error "Cannot stamp the version: ${script_path} must contain the line '${placeholder}' exactly once (found ${count})."
+    return 1
+  fi
+
+  awk -v placeholder="${placeholder}" -v stamped="SCRIPT_VERSION=\"${version}\"" '$0 == placeholder { print stamped; next } { print }' "${script_path}"
+}
+
+#######################################
+# Writes the published form of a script — the compiled source with its version stamped in, preceded by a
+# bash-version guard when the manifest declares one — and prints its path.
 #
 # The guard is generated here rather than kept in the source so that the required version is stated
 # once, in scripts.yaml, alongside the dependency metadata derived from it; the two cannot then
@@ -146,16 +179,18 @@ compile_for_packaging() {
 # The result is used for every channel, so the tarball, the .deb and the Homebrew bottle all carry
 # byte-identical content.
 # Arguments:
-#   script_path - Path to the development form of the script.
+#   script_path - Path to the compiled script.
 #   min_bash    - Required version as major.minor, or empty for no requirement.
+#   version     - Version being packaged (e.g., "v1.3.0"); a leading "v" is dropped.
 # Outputs:
 #   Prints the path of the prepared script, which keeps the original basename.
 # Returns:
-#   1 if the script does not begin with a shebang.
+#   1 if the script does not begin with a shebang, or the version cannot be stamped.
 #######################################
 prepare_script() {
   local script_path="$1"
   local min_bash="$2"
+  local version="$3"
 
   local prepared_dir
   prepared_dir="$(mktemp -d)"
@@ -164,14 +199,17 @@ prepare_script() {
   # Keeping the original basename matters: it becomes the name inside the tarball and the one the
   # formula's bin.install refers to.
   local prepared="${prepared_dir}/${script_filename}"
+  local stamped="${prepared_dir}/stamped"
+
+  emit_stamped_script "${script_path}" "${version#v}" > "${stamped}" || return 1
 
   if [[ -z "${min_bash}" ]]; then
-    cat "${script_path}" > "${prepared}"
+    mv "${stamped}" "${prepared}"
     echo "${prepared}"
     return
   fi
 
-  if [[ "$(head -n 1 "${script_path}")" != '#!'* ]]; then
+  if [[ "$(head -n 1 "${stamped}")" != '#!'* ]]; then
     log_error "Cannot add a bash-version guard: ${script_path} does not start with a shebang."
     return 1
   fi
@@ -182,7 +220,8 @@ prepare_script() {
     minor=0
   fi
 
-  emit_guarded_script "${script_path}" "${min_bash}" "${major}" "${minor}" > "${prepared}"
+  emit_guarded_script "${stamped}" "${min_bash}" "${major}" "${minor}" > "${prepared}"
+  rm -f "${stamped}"
 
   echo "${prepared}"
 }
@@ -596,7 +635,7 @@ main() {
 
   # Every channel ships this one prepared copy, so their contents cannot diverge.
   local published_script
-  published_script=$(prepare_script "${full_script_path}" "${min_bash}")
+  published_script=$(prepare_script "${full_script_path}" "${min_bash}" "${version}")
   local prepared_dir
   prepared_dir=$(dirname "${published_script}")
   # shellcheck disable=SC2064  # expand prepared_dir now; it must not depend on later state

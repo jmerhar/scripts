@@ -97,6 +97,7 @@ Options:
   -C, --no-color  Disable colored output.
   -d, --debug     Enable verbose debug logging.
   -h, --help      Show this help message.
+      --version   Show the version and exit.
 
 The session cookie is read from the configuration file (e.g. /etc/${SCRIPT_NAME}.conf),
 which must not be readable by other users. Create the session in the tracker's
@@ -147,6 +148,10 @@ parse_options() {
         ;;
       -h|--help)
         show_usage
+        exit 0
+        ;;
+      --version)
+        show_version
         exit 0
         ;;
       -*)

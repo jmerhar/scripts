@@ -57,6 +57,7 @@ subtitle-sync [OPTIONS] PATH
 | `-n`, `--dry-run` | Report what would be done; change nothing |
 | `-C`, `--no-color` | Disable colored output |
 | `-h`, `--help` | Show usage information |
+| `--version` | Show the version and exit |
 
 ### Drift types
 

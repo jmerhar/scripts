@@ -129,6 +129,7 @@ Options:
   -C, --no-color        Disable colored output.
   -d, --debug           Enable verbose debug logging, including the ffmpeg command.
   -h, --help            Show this help message.
+      --version         Show the version and exit.
 
 What happens to a file is decided from the codecs it holds, not from its name:
 
@@ -205,6 +206,10 @@ parse_options() {
         ;;
       -h|--help)
         show_usage
+        exit 0
+        ;;
+      --version)
+        show_version
         exit 0
         ;;
       --)

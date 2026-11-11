@@ -119,6 +119,7 @@ Options:
   -C, --no-color      Disable colored output.
   -d, --debug         Enable verbose debug logging, including the search pattern.
   -h, --help          Show this help message.
+      --version       Show the version and exit.
 
 The download folder is read from a configuration file (e.g. /etc/${SCRIPT_NAME}.conf)
 unless --temp-dir names one.
@@ -176,6 +177,10 @@ parse_options() {
         ;;
       -h|--help)
         show_usage
+        exit 0
+        ;;
+      --version)
+        show_version
         exit 0
         ;;
       --)

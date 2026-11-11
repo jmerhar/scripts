@@ -7,6 +7,7 @@
 #
 # Usage:
 #   ./unlock-pdf.sh <input.pdf>
+#   ./unlock-pdf.sh --version
 
 set -o errexit
 set -o nounset
@@ -75,10 +76,15 @@ decrypt_pdf() {
 #   input_file - Path to the PDF file to decrypt.
 #######################################
 main() {
+  if [[ "${1:-}" == "--version" ]]; then
+    show_version
+    exit 0
+  fi
+
   check_dependencies
 
   if (( $# != 1 )); then
-    echo "Usage: $(basename "$0") <input.pdf>" >&2
+    printf 'Usage: %s <input.pdf>\n       %s --version\n' "$(basename "$0")" "$(basename "$0")" >&2
     exit 1
   fi
 

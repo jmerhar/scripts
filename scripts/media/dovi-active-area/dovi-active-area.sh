@@ -112,6 +112,7 @@ Options:
   -C, --no-color        Disable colored output.
   -d, --debug           Enable verbose debug logging, including each tool invocation.
   -h, --help            Show this help message.
+      --version         Show the version and exit.
 
 Files without Dolby Vision metadata are counted and passed over. A rewrite
 replaces the file only once the new one exists and reports a zeroed active area,
@@ -167,6 +168,10 @@ parse_options() {
         ;;
       -h|--help)
         show_usage
+        exit 0
+        ;;
+      --version)
+        show_version
         exit 0
         ;;
       --)

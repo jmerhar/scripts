@@ -102,6 +102,7 @@ Options:
   -k, --keep          Keep the build workspace afterwards, for debugging.
   -d, --debug         Enable verbose debug logging.
   -h, --help          Show this help message.
+      --version       Show the version and exit.
 
 Needs docker and write access to the install prefix. The compile is CPU-heavy —
 x265 dominates — and is capped at ${_cpu_limit} cores, so expect 20-30 minutes.
@@ -161,6 +162,10 @@ parse_options() {
         ;;
       -h|--help)
         show_usage
+        exit 0
+        ;;
+      --version)
+        show_version
         exit 0
         ;;
       *)

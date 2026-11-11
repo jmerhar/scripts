@@ -21,6 +21,12 @@ Decrypts a password-protected PDF file using [`qpdf`](https://github.com/qpdf/qp
 unlock-pdf <input.pdf>
 ```
 
+### Options
+
+| Option | Description |
+| --- | --- |
+| `--version` | Show the version and exit. |
+
 ### Example
 
 The script prompts for the password interactively:

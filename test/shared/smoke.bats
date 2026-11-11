@@ -22,6 +22,19 @@ teardown() {
   fi
 }
 
+# Driven from the manifest, so a script added to it is covered without being named here. The name each
+# reports must be its manifest key, since that is the name it is published under.
+@test "smoke: every script answers --version with its name and version, and does nothing else" {
+  local name path count=0
+  while IFS=$'\t' read -r name path; do
+    run_script "$REPO_ROOT/$path" --version
+    [ "$status" -eq 0 ] || { echo "$name --version exited $status: $output" >&2; return 1; }
+    [ "$output" = "$name dev" ] || { echo "$name --version printed: $output" >&2; return 1; }
+    count=$(( count + 1 ))
+  done < <(yq eval '.scripts | to_entries | .[] | .key + "\t" + .value.path' "$REPO_ROOT/scripts.yaml")
+  (( count > 0 ))
+}
+
 @test "smoke: photo-backup shows usage for -h" {
   run_script "$REPO_ROOT/scripts/photography/photo-backup/photo-backup.sh" -h
   [ "$status" -eq 0 ]

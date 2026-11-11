@@ -63,6 +63,7 @@ Options:
       --exclude-right PAT  Suppress RIGHT-only reports for matches (repeatable)
   -n, --no-color           Disable colored output
   -h, --help               Show this help message
+      --version            Show the version and exit
 
 Output markers:
   ←  Item exists only in LEFT directory
@@ -121,6 +122,10 @@ parse_options() {
         ;;
       -h|--help)
         show_usage
+        exit 0
+        ;;
+      --version)
+        show_version
         exit 0
         ;;
       --)

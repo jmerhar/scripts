@@ -35,5 +35,6 @@ If no directory is given, the current directory is used. The summary is always p
 | `--und-as-english` | Treat undetermined (`und`) subtitles as English. |
 | `-C`, `--no-color` | Disable colored output. |
 | `-h`, `--help` | Show usage information. |
+| `--version` | Show the version and exit. |
 
 > `--list` and `--missing` are mutually exclusive, as are `--no-embedded` and `--no-sidecars`.

@@ -111,6 +111,7 @@ Options:
                        may be a genuinely non-English sub, so use with care.)
   -C, --no-color       Disable colored output.
   -h, --help           Show this help message.
+      --version        Show the version and exit.
 
 The summary is always printed; --list / --missing add a detailed section.
 --list and --missing are mutually exclusive, as are --no-embedded and
@@ -173,6 +174,10 @@ parse_options() {
         ;;
       -h|--help)
         show_usage
+        exit 0
+        ;;
+      --version)
+        show_version
         exit 0
         ;;
       --)

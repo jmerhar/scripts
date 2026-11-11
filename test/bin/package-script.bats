@@ -16,7 +16,9 @@ setup() {
   fake_repo_tool package-script.sh
   TOOL="$FAKE_TOOL"
   mkdir -p "$FAKE_REPO/scripts/utility"
-  printf '#!/usr/bin/env bash\necho hello\n' > "$FAKE_REPO/scripts/utility/my-tool.sh"
+  # The placeholder line is the one core.sh contributes to every real script, and the packager refuses a
+  # script without it.
+  printf '#!/usr/bin/env bash\nSCRIPT_VERSION="dev"\necho hello\n' > "$FAKE_REPO/scripts/utility/my-tool.sh"
 }
 
 ########################################
@@ -458,7 +460,7 @@ publish_and_extract() {
   local published; published=$(publish_and_extract '    min_bash: "4.0"')
   run bash "$published"
   [ "$status" -eq 0 ]
-  # my-tool.sh's whole body is `echo hello`, so reaching it proves the guard stood aside.
+  # my-tool.sh does nothing but echo hello, so reaching it proves the guard stood aside.
   [ "$output" = "hello" ]
 }
 
@@ -562,17 +564,75 @@ publish_and_extract() {
 }
 
 @test "prepare_script refuses a file with no shebang, rather than guarding the wrong line" {
-  printf 'echo no shebang here\n' > "$FAKE_REPO/scripts/utility/headless.sh"
-  run_func "$TOOL" prepare_script "$FAKE_REPO/scripts/utility/headless.sh" "4.0"
+  printf 'SCRIPT_VERSION="dev"\necho no shebang here\n' > "$FAKE_REPO/scripts/utility/headless.sh"
+  run_func "$TOOL" prepare_script "$FAKE_REPO/scripts/utility/headless.sh" "4.0" v1.0.0
   [ "$status" -eq 1 ]
   [[ "$output" == *"does not start with a shebang"* ]]
 }
 
-@test "prepare_script copies a script through untouched when nothing is required" {
-  run_func "$TOOL" prepare_script "$FAKE_REPO/scripts/utility/my-tool.sh" ""
+@test "prepare_script changes nothing but the version line when no bash version is required" {
+  run_func "$TOOL" prepare_script "$FAKE_REPO/scripts/utility/my-tool.sh" "" v1.0.0
   [ "$status" -eq 0 ]
   run diff "$output" "$FAKE_REPO/scripts/utility/my-tool.sh"
+  [ "$status" -eq 1 ]
+  [ "$output" = $'2c2\n< SCRIPT_VERSION="1.0.0"\n---\n> SCRIPT_VERSION="dev"' ]
+}
+
+# --- The version stamp ---------------------------------------------------------------------------
+
+@test "the published script carries the packaged version, without the tag's v" {
+  local published; published=$(publish_and_extract)
+  run grep -x 'SCRIPT_VERSION=.*' "$published"
+  [ "$output" = 'SCRIPT_VERSION="1.0.0"' ]
+}
+
+@test "the version is stamped beneath the guard as well" {
+  local published; published=$(publish_and_extract '    min_bash: "4.0"')
+  run grep -c 'BASH_VERSINFO' "$published"
+  [ "$output" -eq 1 ]
+  run grep -x 'SCRIPT_VERSION=.*' "$published"
+  [ "$output" = 'SCRIPT_VERSION="1.0.0"' ]
+}
+
+@test "packaging refuses a script with no version placeholder" {
+  printf '#!/usr/bin/env bash\necho hello\n' > "$FAKE_REPO/scripts/utility/my-tool.sh"
+  default_manifest
+  run_script "$TOOL" my-tool v1.0.0
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"must contain the line 'SCRIPT_VERSION=\"dev\"' exactly once (found 0)"* ]]
+  [ ! -e "$FAKE_REPO/dist/tarballs/scripts-my-tool-v1.0.0.tar.gz" ]
+}
+
+@test "packaging refuses a script with the placeholder twice" {
+  printf '#!/usr/bin/env bash\nSCRIPT_VERSION="dev"\nSCRIPT_VERSION="dev"\n' > "$FAKE_REPO/scripts/utility/my-tool.sh"
+  default_manifest
+  run_script "$TOOL" my-tool v1.0.0
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"(found 2)"* ]]
+}
+
+# Matched as a whole line, so the name appearing in a comment or a longer assignment is not mistaken for it.
+@test "only the exact placeholder line is replaced" {
+  printf '#!/usr/bin/env bash\n# SCRIPT_VERSION="dev" is replaced\nSCRIPT_VERSION="dev"\n  SCRIPT_VERSION="dev"\n' > "$BATS_TEST_TMPDIR/s.sh"
+  run_func "$TOOL" emit_stamped_script "$BATS_TEST_TMPDIR/s.sh" 2.3.4
   [ "$status" -eq 0 ]
+  [ "$output" = $'#!/usr/bin/env bash\n# SCRIPT_VERSION="dev" is replaced\nSCRIPT_VERSION="2.3.4"\n  SCRIPT_VERSION="dev"' ]
+}
+
+# The version lands inside a double-quoted string in the published script, where these would run as code.
+@test "a version that could break out of its quotes is refused" {
+  local bad
+  for bad in '1.0"; rm -rf /tmp/x; "' '1.$(id)' '1.`id`' '1.0 2'; do
+    run_func "$TOOL" emit_stamped_script "$FAKE_REPO/scripts/utility/my-tool.sh" "$bad"
+    [ "$status" -eq 1 ] || { echo "accepted: $bad" >&2; return 1; }
+    [[ "$output" == *"may hold only letters, digits"* ]]
+  done
+}
+
+@test "a pre-release version is stamped as it is" {
+  run_func "$TOOL" emit_stamped_script "$FAKE_REPO/scripts/utility/my-tool.sh" 1.2.0-rc.1+build~2
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'SCRIPT_VERSION="1.2.0-rc.1+build~2"'* ]]
 }
 
 # --- Pieces worth checking directly ------------------------------------------------------------

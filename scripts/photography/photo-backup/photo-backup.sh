@@ -62,6 +62,7 @@ Options:
   -n, --dry-run         Dry-run mode (no changes are made)
   -d, --debug           Debug mode (enables verbose logging)
   -h, --help            Show this help message
+      --version         Show the version and exit
 EOF
 }
 
@@ -82,6 +83,7 @@ parse_options() {
       -n | --dry-run)  DRY_RUN_FLAG="--dry-run"; shift ;;
       -d | --debug)    enable_debug_mode; shift ;;
       -h | --help)     show_usage; exit 0 ;;
+      --version)       show_version; exit 0 ;;
       -*)              die_usage "Unknown option '$1'." ;;
       *)               break ;;
     esac
@@ -242,7 +244,7 @@ perform_backup() {
 #   Command-line arguments passed to the script.
 #######################################
 main() {
-  load_optional_config || exit 1  # Config is optional; CLI args can provide everything
+  load_optional_config >/dev/null || exit 1  # Config is optional; CLI args can provide everything
   parse_options "$@"
   validate_config "HOST" "DEST_PATH" "array:SOURCES" || { show_usage; exit 1; }
 

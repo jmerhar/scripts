@@ -79,6 +79,7 @@ warning.
 |---|---|
 | `-d`, `--debug` | Enable debug output. |
 | `-h`, `--help` | Show help and exit. |
+| `--version` | Show the version and exit. |
 
 ### Configuration
 

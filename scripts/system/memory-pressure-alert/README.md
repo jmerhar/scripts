@@ -66,6 +66,7 @@ memory-pressure-alert [OPTIONS]
 | `--no-color` | Disable coloured output. |
 | `-d`, `--debug` | Enable verbose debug logging. |
 | `-h`, `--help` | Show the help message. |
+| `--version` | Show the version and exit. |
 
 ### Example
 

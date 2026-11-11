@@ -40,6 +40,27 @@ setup() {
   mkdir -p "$LEFT" "$RIGHT"
 }
 
+# --- every script -------------------------------------------------------------------------------
+
+# unlock-pdf takes no options besides --version, so it has no --help; its usage goes with the
+# argument-count error and is checked there.
+@test "every script's usage text lists --version" {
+  local name path
+  while IFS=$'\t' read -r name path; do
+    [ "$name" != unlock-pdf ] || continue
+    run_script "$REPO_ROOT/$path" --help
+    [ "$status" -eq 0 ] || { echo "$name --help exited $status" >&2; return 1; }
+    [[ "$output" == *"--version"* ]] || { echo "$name usage omits --version" >&2; return 1; }
+  done < <(yq eval '.scripts | to_entries | .[] | .key + "\t" + .value.path' "$REPO_ROOT/scripts.yaml")
+}
+
+@test "every script's README documents --version" {
+  local name path
+  while IFS=$'\t' read -r name path; do
+    grep -qF '| `--version` |' "$REPO_ROOT/$(dirname "$path")/README.md" || { echo "$name README omits --version" >&2; return 1; }
+  done < <(yq eval '.scripts | to_entries | .[] | .key + "\t" + .value.path' "$REPO_ROOT/scripts.yaml")
+}
+
 # --- compare-dirs ------------------------------------------------------------------------------
 
 @test "compare-dirs help lists every documented option" {
@@ -416,6 +437,18 @@ require_non_root() {
   run_script "$UNLOCK" one.pdf two.pdf
   [ "$status" -eq 1 ]
   [[ "$output" == *"Usage:"* ]]
+  [[ "$output" == *"unlock-pdf.sh --version"* ]]
+}
+
+@test "unlock-pdf answers --version even without qpdf" {
+  local minimal="$BATS_TEST_TMPDIR/minimal-path" cmd
+  mkdir -p "$minimal"
+  for cmd in basename dirname uname date tput; do
+    [ -e "$(command -v "$cmd" 2>/dev/null)" ] && ln -sf "$(command -v "$cmd")" "$minimal/$cmd"
+  done
+  run env PATH="$minimal" "$(command -v bash)" "$UNLOCK" --version
+  [ "$status" -eq 0 ]
+  [ "$output" = "unlock-pdf dev" ]
 }
 
 @test "unlock-pdf reports a missing input file" {

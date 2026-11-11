@@ -67,3 +67,4 @@ prune-orphaned-torrents
 | `-C`, `--no-color` | Disable colored output. |
 | `-d`, `--debug` | Enable verbose debug logging. |
 | `-h`, `--help` | Show the help message. |
+| `--version` | Show the version and exit. |
