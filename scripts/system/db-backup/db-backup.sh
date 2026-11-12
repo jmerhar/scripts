@@ -254,7 +254,9 @@ sqlite_check() {
 # starts with its magic number, and a SQLite copy is an intact gzip stream holding a SQLite header. The
 # SQLite check writes nothing: the full integrity checks run where a decompressed copy has to exist anyway,
 # before gzip on backup and beside the target on restore, so a large database is not written out again
-# just to be read.
+# just to be read. The MongoDB and SQLite checks read a few bytes and close the pipe, so gzip's stderr is
+# discarded there: with SIGPIPE ignored, as systemd starts a service, gzip reports the closed pipe as an
+# error, and gzip -t has already proven the stream intact.
 # Arguments:
 #   engine: The entry's engine.
 #   file:   The dump.
@@ -284,7 +286,7 @@ validate_dump() {
       ;;
     mongodb)
       if gzip -t "${file}" 2>/dev/null; then
-        probe=$(gzip -dc "${file}" | head -c 4 | od -An -tx1 | tr -d ' \n') || true
+        probe=$(gzip -dc "${file}" 2>/dev/null | head -c 4 | od -An -tx1 | tr -d ' \n') || true
         case "${probe}" in
           6de29981) return 0 ;;
         esac
@@ -297,7 +299,7 @@ validate_dump() {
         log_error "${file} is not a gzipped SQLite copy."
         return 1
       fi
-      probe=$(gzip -dc "${file}" | head -c 15) || true
+      probe=$(gzip -dc "${file}" 2>/dev/null | head -c 15) || true
       case "${probe}" in
         "SQLite format 3") return 0 ;;
       esac

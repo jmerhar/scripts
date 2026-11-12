@@ -886,3 +886,36 @@ throwaway_answers() {
   [ "$(sqlite3 "$db" 'SELECT v FROM t')" = "current" ]
   [ -z "$(find "$BATS_TEST_TMPDIR" -maxdepth 1 -name '.wiki.db.restore.*')" ]
 }
+
+# The header checks read a few bytes from a decompressing pipe and close it. Under systemd, which starts
+# services with SIGPIPE ignored, gzip then sees EPIPE instead of dying quietly, and complains on stderr on
+# any copy larger than the pipe buffer. The complaint carries nothing, since gzip -t has already proven the
+# stream. The runs ignore SIGPIPE the way systemd does, which children inherit across exec.
+########################################
+# Runs the script on 2026-11-11 with SIGPIPE ignored, as systemd runs a service.
+# Arguments:
+#   The script's own arguments.
+########################################
+run_as_service() {
+  CONFIG_FILE="$CONF" DOCKER_BIN=docker-cli DB_BACKUP_NOW="$WED" run_snippet "$SCRIPT" "trap '' PIPE; main $*"
+}
+
+@test "checking a large sqlite copy under systemd prints no broken-pipe complaint" {
+  local db="$BATS_TEST_TMPDIR/big.db"
+  sqlite3 "$db" "CREATE TABLE t(v); WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 400) INSERT INTO t SELECT randomblob(4096) FROM n;" >/dev/null
+  write_conf "\"sqlite big $db\""
+  run_as_service
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Broken pipe"* ]]
+  run_as_service verify
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Broken pipe"* ]]
+}
+
+@test "checking a large mongodb archive under systemd prints no broken-pipe complaint" {
+  write_conf '"mongodb media media-mongo mediadb"'
+  { printf '\x6d\xe2\x99\x81'; head -c 1048576 /dev/urandom; } | gzip > "$STUB_FIXTURES/docker-cli.mongodump.mediadb.stdout"
+  run_as_service
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Broken pipe"* ]]
+}
