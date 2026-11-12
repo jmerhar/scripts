@@ -804,20 +804,40 @@ throwaway_answers() {
   [ -z "$(find "$BATS_TEST_TMPDIR" -maxdepth 1 -name '.wiki.db.restore.*')" ]
 }
 
-# A decompressed copy can be as large as the database, so nothing is written under TMPDIR. Pointing it at
-# a regular file makes any attempt fail, even as root.
-@test "a sqlite backup, verify and restore write nothing under TMPDIR" {
-  local db="$BATS_TEST_TMPDIR/wiki.db"
+# A file that is renamed into place is created beside its destination, since a rename is atomic only
+# within one filesystem; everything that is only read and thrown away goes under TMPDIR. mktemp and mv are
+# wrapped for the run to record where each file was made and what was renamed.
+@test "only files renamed into place are made beside their destination; scratch goes under TMPDIR" {
+  local db_dir="$BATS_TEST_TMPDIR/app data" scratch="$BATS_TEST_TMPDIR/scratch" log="$BATS_TEST_TMPDIR/files.log"
+  local db="$db_dir/wiki.db"
   make_sqlite "$db" original
+  mkdir -p "$scratch"
   write_conf "\"sqlite wiki $db\""
-  touch "$BATS_TEST_TMPDIR/not-a-dir"
-  TMPDIR="$BATS_TEST_TMPDIR/not-a-dir" run_at "$WED"
-  [ "$status" -eq 0 ]
-  TMPDIR="$BATS_TEST_TMPDIR/not-a-dir" run_at "$WED" verify
-  [ "$status" -eq 0 ]
-  TMPDIR="$BATS_TEST_TMPDIR/not-a-dir" run_at "$WED" -y restore wiki
-  [ "$status" -eq 0 ]
-  [ -z "$(find "$ROOT/wiki" -name '.wiki.*')" ]
+  local wrappers="
+    mktemp() { local made; made=\$(command mktemp \"\$@\") || return; printf 'made %s\\n' \"\$made\" >> '$log'; printf '%s\\n' \"\$made\"; }
+    mv() { printf 'renamed %s\\n' \"\$3\" >> '$log'; command mv \"\$@\"; }
+  "
+  local cmd
+  for cmd in "" "verify" "-y restore wiki"; do
+    TMPDIR="$scratch" CONFIG_FILE="$CONF" DB_BACKUP_NOW="$WED" run_snippet "$SCRIPT" "$wrappers main $cmd"
+    [ "$status" -eq 0 ] || { echo "'$cmd' failed: $output" >&2; return 1; }
+  done
+
+  # Renamed into place: the in-progress dump, and the restored copy.
+  grep -qx "renamed $ROOT/wiki/daily/\\.wiki\\.[A-Za-z0-9]\\{6\\}" "$log"
+  grep -qx "renamed $db_dir/\\.wiki\\.db\\.restore\\.[A-Za-z0-9]\\{6\\}" "$log"
+  [ "$(grep -c '^renamed ' "$log")" -eq 2 ]
+  # Everything else was made under TMPDIR, and nothing is left there or beside the destinations.
+  local made
+  while read -r _ made; do
+    case "$made" in
+      "$ROOT/wiki/daily/.wiki."?????? | "$db_dir/.wiki.db.restore."?????? | "$scratch/"*) ;;
+      *) echo "made outside its place: $made" >&2; return 1 ;;
+    esac
+  done < <(grep '^made ' "$log")
+  [ "$(grep -c "^made $scratch/" "$log")" -ge 4 ]
+  [ -z "$(ls -A "$scratch")" ]
+  [ -z "$(find "$ROOT/wiki" "$db_dir" -name '.wiki*')" ]
 }
 
 @test "verify of an entry with no dumps fails" {

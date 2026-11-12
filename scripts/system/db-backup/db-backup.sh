@@ -69,6 +69,7 @@ _no_color=false
 _answer=""
 # Temporary files and throwaway containers, removed on exit however the run ends.
 _tmp_files=()
+_tmp_dirs=()
 _verify_containers=()
 
 #######################################
@@ -145,14 +146,17 @@ parse_options() {
 }
 
 #######################################
-# Removes temporary files and throwaway containers.
+# Removes temporary files and directories, and throwaway containers.
 # Globals:
-#   _tmp_files, _verify_containers, DOCKER_BIN
+#   _tmp_files, _tmp_dirs, _verify_containers, DOCKER_BIN
 #######################################
 cleanup() {
   local f
   for f in "${_tmp_files[@]}"; do
     rm -f -- "${f}"
+  done
+  for f in "${_tmp_dirs[@]}"; do
+    rm -rf -- "${f}"
   done
   for f in "${_verify_containers[@]}"; do
     "${DOCKER_BIN}" rm -f "${f}" >/dev/null 2>&1 || true
@@ -304,13 +308,13 @@ validate_dump() {
 }
 
 #######################################
-# Creates a temporary file in an entry's daily directory.
+# Creates a scratch file under TMPDIR.
 #
-# Every temporary file lives there rather than under TMPDIR: a decompressed copy can be as large as the
-# database, and the backup directory is where the space for it was planned, not the system's temporary
-# disk. A leftover there is also one remove_stale_temps finds.
-# Globals:
-#   BACKUP_DIR, _tmp_files
+# Scratch is whatever is read and thrown away rather than renamed into place: a tool's captured stderr,
+# and a decompressed SQLite copy that is only checked. It goes where TMPDIR says, so whoever deploys the
+# script decides whether it lives in memory, on the system disk or somewhere larger. Files that end up
+# renamed into place are created beside their destination instead, since a rename is atomic only within
+# one filesystem.
 # Arguments:
 #   name:   The entry's name.
 #   suffix: What the file is for, as part of its name.
@@ -319,10 +323,8 @@ validate_dump() {
 # Returns:
 #   1 when it cannot be created.
 #######################################
-entry_mktemp() {
-  local name="$1" suffix="$2" dir="${BACKUP_DIR}/$1/daily"
-  mkdir -p "${dir}" || return 1
-  mktemp "${dir}/.${name}.${suffix}.XXXXXX"
+scratch_mktemp() {
+  mktemp "${TMPDIR:-/tmp}/db-backup.$1.$2.XXXXXX"
 }
 
 #######################################
@@ -349,7 +351,7 @@ log_tool_output() {
 #######################################
 # Runs an entry's dump tool, writing the dump to a file.
 # Globals:
-#   DOCKER_BIN, SQLITE_BIN, MARIADB_DUMP_SCRIPT, _tmp_files
+#   DOCKER_BIN, SQLITE_BIN, MARIADB_DUMP_SCRIPT, _tmp_dirs
 # Arguments:
 #   out:    Name of the entry's array, as parse_entry fills it.
 #   tmp:    Where to write the dump.
@@ -359,7 +361,7 @@ log_tool_output() {
 #######################################
 run_dump() {
   local -n e="$1"
-  local tmp="$2" errors="$3" raw
+  local tmp="$2" errors="$3" scratch raw
   case "${e[0]}" in
     postgres)
       "${DOCKER_BIN}" exec "${e[2]}" pg_dump -U "${e[3]}" -d "${e[4]}" -Fc > "${tmp}" 2> "${errors}"
@@ -372,14 +374,16 @@ run_dump() {
       ;;
     sqlite)
       # VACUUM INTO on a read-only connection takes a consistent copy while the application keeps writing,
-      # WAL included, and leaves the source untouched. The destination is a SQL string literal, so its
-      # quotes are doubled.
-      raw="${tmp}.raw"
-      _tmp_files+=("${raw}")
+      # WAL included, and leaves the source untouched. The copy is scratch, so it goes under TMPDIR, in a
+      # private directory because VACUUM INTO refuses a file that already exists. Its path is a SQL string
+      # literal, so its quotes are doubled.
+      scratch=$(mktemp -d "${TMPDIR:-/tmp}/db-backup.${e[1]}.copy.XXXXXX") || return 1
+      _tmp_dirs+=("${scratch}")
+      raw="${scratch}/copy.db"
       "${SQLITE_BIN}" -readonly "${e[2]}" "VACUUM INTO '${raw//\'/\'\'}';" 2> "${errors}" || return 1
       sqlite_check "${raw}" quick_check || return 1
       gzip -c "${raw}" > "${tmp}" || return 1
-      rm -f -- "${raw}"
+      rm -rf -- "${scratch}"
       ;;
   esac
 }
@@ -425,12 +429,13 @@ write_dump() {
 #######################################
 # Dumps one entry into the day's daily file.
 #
-# The tool writes to a hidden temporary file beside the target, which replaces the day's file only when
-# the tool succeeded and the result passes validate_dump, so a failed dump leaves every earlier dump as
-# it was. The replacement is a rename, so a second run on the same day puts a new file in place without
-# touching the one a weekly or monthly link still holds. The temporary files are removed as soon as the
-# dump is done either way, rather than left for the EXIT trap, so the caller can tell an empty
-# directory from one holding dumps.
+# The tool writes to a hidden temporary file beside the target, on the same filesystem so the final rename
+# is atomic, and that file replaces the day's file only when the tool succeeded and the result passes
+# validate_dump, so a failed dump leaves every earlier dump as it was. The replacement is a rename, so a
+# second run on the same day puts a new file in place without touching the one a weekly or monthly link
+# still holds. The tool's stderr is scratch, under TMPDIR. Both are removed as soon as the dump is done
+# either way, rather than left for the EXIT trap, so the caller can tell an empty directory from one
+# holding dumps.
 # Globals:
 #   _tmp_files
 # Arguments:
@@ -444,10 +449,10 @@ dump_entry() {
   local file="$2" tmp errors status=0
   local name="${de[1]}"
   tmp=$(mktemp "$(dirname "${file}")/.${name}.XXXXXX") || return 1
-  errors=$(mktemp "$(dirname "${file}")/.${name}.err.XXXXXX") || return 1
-  _tmp_files+=("${tmp}" "${tmp}.raw" "${errors}")
+  errors=$(scratch_mktemp "${name}" err) || return 1
+  _tmp_files+=("${tmp}" "${errors}")
   write_dump "$1" "${file}" "${tmp}" "${errors}" || status=1
-  rm -f -- "${tmp}" "${tmp}.raw" "${errors}"
+  rm -f -- "${tmp}" "${errors}"
   return "${status}"
 }
 
@@ -800,7 +805,7 @@ restore_entry() {
   validate_dump "${re[0]}" "${dump}" || { log_error "${name}: not restoring from a dump that fails its check."; return 1; }
   confirm_restore "$1" "${dump}" || return 1
 
-  errors=$(entry_mktemp "${name}" err) || return 1
+  errors=$(scratch_mktemp "${name}" err) || return 1
   _tmp_files+=("${errors}")
   log_info "${name}: restoring from ${dump}."
   case "${re[0]}" in
@@ -922,11 +927,11 @@ verify_entry() {
   dump=$(find_dump "$1" "") || return 1
   validate_dump "${ve2[0]}" "${dump}" || return 1
 
-  errors=$(entry_mktemp "${name}" err) || return 1
+  errors=$(scratch_mktemp "${name}" err) || return 1
   _tmp_files+=("${errors}")
 
   if [[ "${ve2[0]}" == sqlite ]]; then
-    raw=$(entry_mktemp "${name}" verify) || return 1
+    raw=$(scratch_mktemp "${name}" verify) || return 1
     _tmp_files+=("${raw}")
     gzip -dc "${dump}" > "${raw}" || return 1
     sqlite_check "${raw}" integrity_check || return 1
