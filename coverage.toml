@@ -24,7 +24,7 @@ command = 'bin/coverage/measure.sh'
 # scripts: its per-test timeout shells out to ps/pkill, and without them every test in a file that sets
 # BATS_TEST_TIMEOUT aborts with "Cannot execute timeout". git is for the release suites, which drive real
 # repositories rather than stubbing git.
-packages = ["wget", "libxml2-utils", "zip", "unzip", "jq", "procps", "git"]
+packages = ["wget", "libxml2-utils", "zip", "unzip", "jq", "procps", "git", "sqlite3"]
 requires = ["bats"]
 # Eight of the scripts use case conversion, associative arrays, mapfile or namerefs. Stock kcov on macOS
 # traces with /bin/bash (3.2) whatever the shebang, so it would report failures from constructs the scripts

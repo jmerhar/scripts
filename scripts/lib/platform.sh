@@ -59,11 +59,30 @@ if stat -c '%s' / &> /dev/null; then
   #   path: File to inspect.
   ########################################
   stat_links() { stat -c '%h' "$1"; }
+
+  ########################################
+  # Prints a file's owner as "uid:gid", in the form chown takes.
+  #
+  # A caller replacing a file with a new one uses this to give the replacement the owner the old one had,
+  # which matters when the new file was written by a different user than the one that will read it.
+  # Arguments:
+  #   path: File to inspect.
+  ########################################
+  stat_owner() { stat -c '%u:%g' "$1"; }
+
+  ########################################
+  # Prints a file's permission bits in octal, in the form chmod takes (e.g. 644).
+  # Arguments:
+  #   path: File to inspect.
+  ########################################
+  stat_mode() { stat -c '%a' "$1"; }
 else
   stat_size() { stat -f '%z' "$1"; }
   stat_mtime() { stat -f '%m' "$1"; }
   stat_mtime_iso() { stat -f '%Sm' -t '%Y-%m-%dT%H:%M:%S' "$1"; }
   stat_links() { stat -f '%l' "$1"; }
+  stat_owner() { stat -f '%u:%g' "$1"; }
+  stat_mode() { stat -f '%Lp' "$1"; }
 fi
 
 ########################################

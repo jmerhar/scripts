@@ -18,11 +18,13 @@ scripts:
     dependencies:
       common: [rsync]
 
-  pg-backup:
-    path: scripts/system/pg-backup/pg-backup.sh
-    description: "Dumps Postgres databases from their Docker containers with pg_dump and keeps a daily, weekly and monthly rotation of the dumps, pruning only after a dump that succeeded."
+  db-backup:
+    path: scripts/system/db-backup/db-backup.sh
+    description: "Backs up Postgres, MariaDB, MongoDB and SQLite databases with a daily, weekly and monthly rotation, dumping the server engines inside their Docker containers, and verifies and restores the backups."
     min_bash: "4.3" # local -n
-    # No dependencies: docker stays out, since naming a Docker package would fight a docker-ce install.
+    dependencies:
+      # docker stays out, since naming a Docker package would fight a docker-ce install; macOS ships sqlite3.
+      debian: [sqlite3]
   prune-orphaned-torrents:
     path: scripts/system/prune-orphaned-torrents/prune-orphaned-torrents.sh
     description: "Finds orphaned media files left by *arr hard-linking and interactively removes the corresponding torrents from Deluge."

@@ -29,6 +29,20 @@ setup() {
   [[ "$output" != *"0"* ]] || [[ "$output" == "failed as expected" ]]
 }
 
+# --- stat_owner and stat_mode ------------------------------------------------------------------
+
+@test "stat_owner prints the file's uid and gid" {
+  run_snippet "$TOOL" "stat_owner '$FILE'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(id -u):$(id -g)" ]
+}
+
+@test "stat_mode prints the permission bits in octal" {
+  chmod 640 "$FILE"
+  run_snippet "$TOOL" "stat_mode '$FILE'"
+  [ "$output" = "640" ]
+}
+
 # --- stat_links -------------------------------------------------------------------------------
 
 # A caller about to replace a file needs this: nearly every video file in the library these scripts serve

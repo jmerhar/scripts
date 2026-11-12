@@ -19,6 +19,12 @@ Recursively compares two directories and reports differences in existence, size,
 
 `bash 4.0+`
 
+### [`db-backup`](scripts/system/db-backup/)
+
+Backs up Postgres, MariaDB, MongoDB and SQLite databases with a daily, weekly and monthly rotation, dumping the server engines inside their Docker containers, and verifies and restores the backups.
+
+`bash 4.3+` · deps: `sqlite3`
+
 ### [`dmarc-report`](scripts/utility/dmarc-report/)
 
 Aggregates a folder of DMARC RUA reports (.xml.gz/.zip) into one overall report, tracking policy changes over time and flagging unenforced domains, unaligned senders, DNS/DKIM errors, and spoofing (grouped into subnets with per-range country lookup, or totalled by country).
@@ -84,12 +90,6 @@ deps: `sudo` _(Linux only)_
 Brings episode filenames to one spelling — dots for separators, lower case, and the season and episode as S01E02 — so that sidecar pairing, library linking and episode parsers all match the same names. Renames subtitles alongside their video and refuses a rename whose destination is taken.
 
 `bash 4.0+`
-
-### [`pg-backup`](scripts/system/pg-backup/)
-
-Dumps Postgres databases from their Docker containers with pg_dump and keeps a daily, weekly and monthly rotation of the dumps, pruning only after a dump that succeeded.
-
-`bash 4.3+`
 
 ### [`photo-backup`](scripts/photography/photo-backup/)
 

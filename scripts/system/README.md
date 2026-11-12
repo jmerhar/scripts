@@ -11,6 +11,12 @@ Builds a lean ffmpeg and ffprobe with the nonfree libfdk-aac encoder in a throwa
 
 deps: `git` _(Linux only)_
 
+### [`db-backup`](db-backup/)
+
+Backs up Postgres, MariaDB, MongoDB and SQLite databases with a daily, weekly and monthly rotation, dumping the server engines inside their Docker containers, and verifies and restores the backups.
+
+`bash 4.3+` · deps: `sqlite3`
+
 ### [`docker-live-upgrade`](docker-live-upgrade/)
 
 Runs a command that restarts the Docker daemon, such as a package upgrade, and repairs whatever live-restore did not carry across it: orphaned container processes are stopped first, so no container ever runs twice on one data directory, then affected containers are started in tier order a batch at a time, waiting for their healthchecks, and never before their Compose dependencies; containers tied to a restarted one by `restart: true` or a shared network namespace, or bind-mounting a socket the command replaced, are restarted too. Live-restore is turned on for the length of the run when it is off.
@@ -46,12 +52,6 @@ _(macOS only)_
 Toggles temporary passwordless sudo for a user, with an in-session auto-revoke timer and a boot-time safety net so it never stays enabled by accident.
 
 deps: `sudo` _(Linux only)_
-
-### [`pg-backup`](pg-backup/)
-
-Dumps Postgres databases from their Docker containers with pg_dump and keeps a daily, weekly and monthly rotation of the dumps, pruning only after a dump that succeeded.
-
-`bash 4.3+`
 
 ### [`prune-orphaned-torrents`](prune-orphaned-torrents/)
 

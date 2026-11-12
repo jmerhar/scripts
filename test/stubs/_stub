@@ -245,27 +245,60 @@ case "${command_name}" in
     ;;
 
   docker-cli)
-    # `docker exec <container> pg_dump -U <user> -d <database> -Fc` writes a dump on stdout, and one run
-    # dumps several databases that a suite needs to answer differently — one failing while the rest
-    # succeed. So a pg_dump call is answered per database: docker-cli.pg_dump.<database>.stdout for the
-    # dump, .stderr for what pg_dump says, and .fail for its exit status.
-    if [[ " $* " == *" pg_dump "* ]]; then
-      db=""
+    # db-backup drives databases through docker, and one run makes calls a suite needs to answer
+    # differently: several databases dumped where one fails, a throwaway server that becomes ready, a
+    # restore whose input is checked. So a call is answered by what it runs.
+    #
+    # `exec [-i] <container> <tool> …` is answered from docker-cli.<tool>.<database>.* when that exists,
+    # and from docker-cli.<tool>.* otherwise: .stdout is printed, .stderr goes to stderr, and .fail holds
+    # the exit status. The database is the value after -d, --db or --databases, or else the last
+    # argument. A `sh -c <script>` call is keyed by the first tool its script looks up with `command -v`,
+    # since that is what it runs. With -i, stdin is saved as docker-cli.<tool>.stdin.
+    #
+    # Any other subcommand (run, inspect, rm) is answered from docker-cli.<subcommand>.*.
+    sub="${1:-}"
+    tool=""
+    key=""
+    if [[ "${sub}" == exec ]]; then
+      shift
+      interactive=false
+      while [[ "${1:-}" == -* ]]; do
+        [[ "$1" == -i ]] && interactive=true
+        shift
+      done
+      shift # the container
+      tool="${1:-}"
+      if [[ "${tool}" == sh && "${2:-}" == -c && "${3:-}" =~ command\ -v\ ([A-Za-z0-9_-]+) ]]; then
+        tool="${BASH_REMATCH[1]}"
+      fi
       prev=""
       for arg in "$@"; do
-        [[ "${prev}" == "-d" ]] && db="${arg}"
+        case "${prev}" in
+          -d | --db | --databases) key="${arg}" ;;
+        esac
         prev="${arg}"
       done
-      reply="${fixtures}/docker-cli.pg_dump.${db}"
-      if [[ -f "${reply}.stdout" ]]; then
-        cat "${reply}.stdout"
+      if [[ -z "${key}" ]]; then
+        key="${!#}"
       fi
-      if [[ -f "${reply}.stderr" ]]; then
-        cat "${reply}.stderr" >&2
+      if [[ "${interactive}" == true ]]; then
+        cat > "${fixtures}/docker-cli.${tool}.stdin"
       fi
-      if [[ -f "${reply}.fail" ]]; then
-        exit "$(cat "${reply}.fail")"
-      fi
+    else
+      tool="${sub}"
+    fi
+    reply="${fixtures}/docker-cli.${tool}"
+    if [[ -n "${key}" ]] && compgen -G "${reply}.${key}.*" >/dev/null; then
+      reply="${reply}.${key}"
+    fi
+    if [[ -f "${reply}.stdout" ]]; then
+      cat "${reply}.stdout"
+    fi
+    if [[ -f "${reply}.stderr" ]]; then
+      cat "${reply}.stderr" >&2
+    fi
+    if [[ -f "${reply}.fail" ]]; then
+      exit "$(cat "${reply}.fail")"
     fi
     ;;
 

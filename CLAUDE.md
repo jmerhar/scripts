@@ -136,7 +136,7 @@ and using what it sources. See [`bin/README.md`](bin/README.md).
 | `config.sh` | `load_config`, `load_optional_config`, `validate_config` — needs `core.sh` |
 | `program.sh` | `load_program` — needs `core.sh` |
 | `colors.sh` | the `_C_*` palette and `setup_colors <wanted>` |
-| `platform.sh` | `stat_size`, `stat_mtime`, `stat_mtime_iso`, `stat_links`, `file_checksum`, `has_checksum_tool` — the GNU/BSD differences |
+| `platform.sh` | `stat_size`, `stat_mtime`, `stat_mtime_iso`, `stat_links`, `stat_owner`, `stat_mode`, `file_checksum`, `has_checksum_tool` — the GNU/BSD differences |
 | `prompt.sh` | `prompt_line` and `prompt_key` — needs `colors.sh` |
 | `lang.sh` | the ISO 639 table, `normalize_lang`, `lang_from_tokens` |
 | `cli.sh` | `die_usage`, `require_option_value`, `reject_positionals` — needs `core.sh` |
@@ -362,7 +362,7 @@ real system. The full set:
 | `build-ffmpeg-nonfree` | `DOCKER_BIN`, `GIT_BIN`, `OS_RELEASE`, `BUILD_DIR`, `DEST` (via config) | Otherwise a test reaches the network, runs a 30-minute container, and installs binaries onto the developer's PATH |
 | `remove-old-kernels` | `RUNNING_KERNEL`, `DPKG_QUERY_BIN`, `APT_GET_BIN` | The whole decision is about the machine's own kernels; a test has to describe a machine rather than read one |
 | `smart-check` | `SMARTCTL_BIN`, `SUDO_BIN` | smartctl needs root, and the stub for sudo records without executing — so the escalation is a seam too, or the double's output never comes back |
-| `pg-backup` | `DOCKER_BIN`, `PG_BACKUP_NOW` | `DOCKER_BIN` for the same reason as `ufw-docker-expose` below; `PG_BACKUP_NOW` fixes the moment a run treats as now, since which tier a dump is kept in turns on its day, ISO week and month |
+| `db-backup` | `DOCKER_BIN`, `SQLITE_BIN`, `DB_BACKUP_NOW`, `VERIFY_TIMEOUT`, `VERIFY_POLL` | `DOCKER_BIN` for the same reason as `ufw-docker-expose` below, and `SQLITE_BIN` so a missing sqlite3 can be described; `DB_BACKUP_NOW` fixes the moment a run treats as now, since which tier a dump is kept in turns on its day, ISO week and month; the two verify timings keep a test of a server that never becomes ready from waiting two minutes |
 | `ufw-docker-expose` | `DOCKER_BIN` | The double cannot simply be called `docker`: the bash-3.2 guard test runs the real CLI for pinned images, and a stub of that name on `PATH` would be handed to it |
 | `docker-live-upgrade` | `DOCKER_BIN`, `KILL_BIN`, `PROC_ROOT`, `STAT_BIN`, `DAEMON_JSON`, `DOCKERD_BIN`, `SYSTEMCTL_BIN`, `KILL_GRACE` | `DOCKER_BIN` for the same reason as above. `KILL_BIN` because `kill` is a builtin no `PATH` stub can shadow, so without it a test would signal a real PID; `PROC_ROOT` so orphan detection reads fake processes, never the machine's; `STAT_BIN` because a test cannot create the Unix sockets it describes, and the real GNU `stat` is not on macOS; `DAEMON_JSON`, `DOCKERD_BIN` and `SYSTEMCTL_BIN` so turning live-restore on edits a fixture and reloads a double, never the machine's daemon; `KILL_GRACE` so the never-dies test does not wait ten seconds |
 
