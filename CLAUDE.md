@@ -84,7 +84,7 @@ scripts:
       debian: [debian-only-dep]  # Debian only
 ```
 
-The optional `platforms:` list restricts which package targets are built; valid values are `homebrew` and `debian`. Omit it to publish to both (the default). Set `[debian]` for a Linux-only tool (skips the Homebrew formula) or `[homebrew]` for a macOS-only one (skips the `.deb`).
+The optional `platforms:` list restricts which package targets are built; valid values are `homebrew` and `debian`. Omit it to publish to both (the default). Restrict a script only when it needs something one platform lacks, such as `ufw` or systemd, not because of where it is expected to run. Set `[debian]` for a Linux-only tool (skips the Homebrew formula) or `[homebrew]` for a macOS-only one (skips the `.deb`).
 
 `secret_config: true` says the script's `.conf` holds a credential, and makes every channel install it
 mode `0600` instead of `0644` — the `.deb` payload, the tarball, and an explicit `chmod` in the formula

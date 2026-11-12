@@ -89,7 +89,7 @@ Brings episode filenames to one spelling — dots for separators, lower case, an
 
 Dumps Postgres databases from their Docker containers with pg_dump and keeps a daily, weekly and monthly rotation of the dumps, pruning only after a dump that succeeded.
 
-`bash 4.3+` _(Linux only)_
+`bash 4.3+`
 
 ### [`photo-backup`](scripts/photography/photo-backup/)
 

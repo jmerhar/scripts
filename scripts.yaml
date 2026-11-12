@@ -22,7 +22,6 @@ scripts:
     path: scripts/system/pg-backup/pg-backup.sh
     description: "Dumps Postgres databases from their Docker containers with pg_dump and keeps a daily, weekly and monthly rotation of the dumps, pruning only after a dump that succeeded."
     min_bash: "4.3" # local -n
-    platforms: [debian] # docker-exec backups of server databases
     # No dependencies: docker stays out, since naming a Docker package would fight a docker-ce install.
   prune-orphaned-torrents:
     path: scripts/system/prune-orphaned-torrents/prune-orphaned-torrents.sh

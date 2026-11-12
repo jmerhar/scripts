@@ -10,6 +10,7 @@ Dumps Postgres databases from their Docker containers with `pg_dump` and keeps a
 * **Missed runs cost nothing** — A tier keeps the first dump taken in its week or month, so a run missed on a Sunday or the 1st does not leave that period without a copy.
 * **Safe on failure** — A dump replaces the day's file only when `pg_dump` exited 0 and the output is a custom-format dump. A failed database keeps all its earlier dumps and prunes nothing, and the others are still backed up.
 * **Private files** — Dumps are mode `0640` and their directories `0750`.
+* **No leftovers** — A dump interrupted by `SIGKILL` or a power cut leaves a hidden temporary file, which the next run removes once it is a day old.
 
 ### Requirements
 
@@ -26,11 +27,11 @@ pg-backup [OPTIONS] [NAME...]
 **1. Configure** — Create `/usr/local/etc/pg-backup.conf` (a [template](pg-backup.conf) is included):
 
 ```bash
-BACKUP_DIR="/mnt/storage/backup/scheduled/databases"
+BACKUP_DIR="/srv/backup/postgres"
 
 DATABASES=(
-  "joplin    joplin-db    joplin    joplin"
-  "idealista idealista-db idealista idealista"
+  "app  app-postgres  app  app"
+  "wiki wiki-postgres wiki wiki"
 )
 
 KEEP_DAILY=14
@@ -38,9 +39,9 @@ KEEP_WEEKLY=4
 KEEP_MONTHLY=12
 ```
 
-Each entry is `NAME CONTAINER USER DATABASE`. `pg_dump` runs inside the container and connects as `USER`; the container's local connections must not need a password.
+Each entry is `NAME CONTAINER USER DATABASE`. `CONTAINER` is the container's name as `docker ps` shows it; a Compose network alias does not work, since `docker exec` does not resolve one. `pg_dump` runs inside the container and connects as `USER`; the container's local connections must not need a password.
 
-**2. Run** — `pg-backup` dumps every entry; `pg-backup joplin` dumps only that one.
+**2. Run** — `pg-backup` dumps every entry; `pg-backup app` dumps only that one.
 
 **3. Schedule** — For example with a systemd service and timer:
 
@@ -48,7 +49,7 @@ Each entry is `NAME CONTAINER USER DATABASE`. `pg_dump` runs inside the containe
 # /etc/systemd/system/pg-backup.service
 [Service]
 Type=oneshot
-User=jure
+User=backup
 ExecStart=/usr/local/bin/pg-backup
 
 # /etc/systemd/system/pg-backup.timer
@@ -63,15 +64,15 @@ WantedBy=timers.target
 The dumps land in `<BACKUP_DIR>/<NAME>/`:
 
 ```
-daily/joplin-2026-11-11.dump
-weekly/joplin-2026-W46.dump
-monthly/joplin-2026-11.dump
+daily/app-2026-11-11.dump
+weekly/app-2026-W46.dump
+monthly/app-2026-11.dump
 ```
 
 **Restore** a dump into its database:
 
 ```bash
-docker exec -i joplin-db pg_restore -U joplin -d joplin --clean --if-exists < joplin-2026-11-11.dump
+docker exec -i app-postgres pg_restore -U app -d app --clean --if-exists < app-2026-11-11.dump
 ```
 
 ### Options

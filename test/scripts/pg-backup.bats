@@ -259,6 +259,40 @@ entries() {
   [[ "$output" == *"not in pg_dump's custom format"* ]]
 }
 
+# An empty file would otherwise replace the day's dump and be kept in the tiers.
+@test "an empty dump from a pg_dump that exited 0 is refused" {
+  seed daily 2026-11-11
+  rm "$STUB_FIXTURES/docker-cli.pg_dump.joplindb.stdout"
+  backup_at "$WED"
+  [ "$status" -eq 1 ]
+  [ "$(cat "$ROOT/joplin/daily/joplin-2026-11-11.dump")" = "PGDMP old 2026-11-11" ]
+  [ -z "$(entries "$ROOT/joplin/weekly")" ]
+  [[ "$output" == *"not in pg_dump's custom format"* ]]
+}
+
+@test "an interrupted dump's leftovers are removed once a day old, and only this entry's" {
+  mkdir -p "$ROOT/joplin/daily"
+  local d="$ROOT/joplin/daily"
+  touch "$d/.joplin.old111" "$d/.joplin.err.old222" "$d/.joplin.fresh333" "$d/.other.old444"
+  touch -t 202611090000 "$d/.joplin.old111" "$d/.joplin.err.old222" "$d/.other.old444"
+  backup_at "$WED"
+  [ "$status" -eq 0 ]
+  [ ! -e "$d/.joplin.old111" ]
+  [ ! -e "$d/.joplin.err.old222" ]
+  [ -e "$d/.joplin.fresh333" ]
+  [ -e "$d/.other.old444" ]
+  grep -q "Removed an interrupted dump's leftover: .*/.joplin.old111" "$LOG"
+}
+
+# Two runs can both find a period uncovered; the one whose ln loses finds the other's link in place.
+@test "a link made by an overlapping run between the check and ln counts as kept" {
+  local file="$BATS_TEST_TMPDIR/d.dump" tier="$BATS_TEST_TMPDIR/w.dump"
+  printf 'PGDMP x\n' > "$file"
+  run_snippet "$SCRIPT" "ln() { command ln \"\$@\"; return 1; }; promote '$file' '$tier' weekly && echo kept"
+  [ "$status" -eq 0 ]
+  [ "$output" = "kept" ]
+}
+
 @test "--debug logs the pg_dump command" {
   backup_at "$WED" --debug
   [ "$status" -eq 0 ]
@@ -280,6 +314,7 @@ entries() {
   backup_at "$WED"
   [ "$status" -eq 1 ]
   [[ "$output" == *"failed: joplin."* ]]
+  [[ "$output" == *"Could not link"*"into the weekly tier"* ]]
 }
 
 @test "a tier directory that cannot be created fails the run" {

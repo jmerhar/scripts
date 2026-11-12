@@ -186,6 +186,8 @@ dump_database() {
 #
 # Promotion goes by whether the period is covered rather than by the day of the week or month, so a run
 # missed on one particular day costs nothing: the next dump in the same week or month is kept instead.
+# A link that appears between the check and ln was made by a run overlapping this one, and covers the
+# period just the same.
 # Arguments:
 #   file:      The daily dump.
 #   tier_file: Where the tier keeps its copy for the period.
@@ -198,7 +200,13 @@ promote() {
   if [[ -e "${tier_file}" ]]; then
     return 0
   fi
-  ln -- "${file}" "${tier_file}" || return 1
+  if ! ln -- "${file}" "${tier_file}" 2>/dev/null; then
+    if [[ -e "${tier_file}" ]]; then
+      return 0
+    fi
+    log_error "Could not link ${file} into the ${tier} tier as ${tier_file}."
+    return 1
+  fi
   log_info "Kept as ${tier}: ${tier_file}"
 }
 
@@ -228,6 +236,24 @@ prune() {
 }
 
 #######################################
+# Removes an entry's temporary files that are more than a day old.
+#
+# The EXIT trap removes them on any exit bash sees, but a SIGKILL or a power cut mid-dump leaves them in
+# daily/, where the prune glob never matches them. A day is far longer than any dump takes, so a run
+# overlapping this one keeps its own.
+# Arguments:
+#   dir:  The entry's daily directory.
+#   name: The entry's name.
+#######################################
+remove_stale_temps() {
+  local dir="$1" name="$2" stale
+  while IFS= read -r stale; do
+    rm -f -- "${stale}"
+    log_info "Removed an interrupted dump's leftover: ${stale}"
+  done < <(find "${dir}" -maxdepth 1 -type f -name ".${name}.*" -mmin +1440)
+}
+
+#######################################
 # Backs up one entry: dumps it, keeps it in the tiers, and prunes them.
 #
 # Pruning follows a successful dump only, so a database that keeps failing never loses the dumps it
@@ -246,6 +272,7 @@ backup_entry() {
   local file="${base}/daily/${name}-${day}.dump"
 
   mkdir -p "${base}/daily" "${base}/weekly" "${base}/monthly" || return 1
+  remove_stale_temps "${base}/daily" "${name}"
   dump_database "${name}" "${container}" "${user}" "${database}" "${file}" || return 1
 
   promote "${file}" "${base}/weekly/${name}-${week}.dump" weekly || return 1
