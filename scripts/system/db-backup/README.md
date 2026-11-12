@@ -9,7 +9,7 @@ Backs up Postgres, MariaDB, MongoDB and SQLite databases with a daily, weekly an
 * **Daily, weekly and monthly tiers** — The first dump of each ISO week and each month is also kept in its own tier, as a hard link, so it takes its space once.
 * **Missed runs cost nothing** — A tier keeps the first dump taken in its week or month, so a run missed on a Sunday or the 1st does not leave that period without a copy.
 * **Checked before kept** — A dump replaces the day's file only when its tool succeeded and the result is a complete dump of its format. A failed entry keeps all its earlier dumps and prunes nothing, and the others are still backed up.
-* **Verify** — Restores each entry's newest dump into a throwaway container from the same image, with no network, or runs SQLite's integrity check on a copy, to prove the backups restore.
+* **Verify** — Restores each entry's newest dump into a throwaway container from the same image, with no network, or runs SQLite's integrity check on a copy, to prove the backups restore, and logs exact table and row counts.
 * **Restore** — Puts a dump back, after a prominent warning and a confirmation.
 * **Private files** — Dumps are mode `0640` and their directories `0750`.
 * **No leftovers** — A dump interrupted by `SIGKILL` or a power cut leaves a hidden temporary file, which the next run removes once it is a day old.
@@ -90,7 +90,11 @@ Persistent=true
 WantedBy=timers.target
 ```
 
-**4. Verify** — `db-backup verify` restores each entry's newest daily dump into a throwaway container started from the source container's image, with no network, and checks the result holds tables; a SQLite copy gets SQLite's full integrity check instead. The container is removed afterwards.
+**4. Verify** — `db-backup verify` restores each entry's newest daily dump into a throwaway container started from the source container's image, with no network, and checks the result holds tables; a SQLite copy gets SQLite's full integrity check instead. The container is removed afterwards. Each line of the log gives exact counts of what was restored, so a database that shrank from one night to the next shows there:
+
+```
+app: …/app-2026-11-11.dump restores, with 27 tables and 149327 rows.
+```
 
 **5. Restore** — `db-backup list app` shows the dumps. `db-backup restore app` restores the newest daily dump; `db-backup restore app 2026-W46` restores that period's dump from whichever tier holds it, and a path restores that file.
 

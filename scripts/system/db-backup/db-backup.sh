@@ -52,6 +52,15 @@ source "$(cd "$(dirname "$0")" && pwd -P)/../../lib/prompt.sh"
 readonly MARIADB_DUMP_SCRIPT='tool=$(command -v mariadb-dump || command -v mysqldump) && MYSQL_PWD="${MARIADB_ROOT_PASSWORD:-${MYSQL_ROOT_PASSWORD:-}}" exec "$tool" -uroot --single-transaction --routines --triggers --databases "$1"'
 # shellcheck disable=SC2016
 readonly MARIADB_CLIENT_SCRIPT='tool=$(command -v mariadb || command -v mysql) && MYSQL_PWD="${MARIADB_ROOT_PASSWORD:-${MYSQL_ROOT_PASSWORD:-}}" exec "$tool" -uroot "$@"'
+# What verify asks a restored database: how many tables it holds and how many rows they hold together, as
+# "TABLES ROWS". The counts are exact, not the engines' estimates, so a dump that lost rows shows it.
+# Postgres runs a count per table through query_to_xml; MariaDB builds a UNION of counts and runs it as a
+# prepared statement; MongoDB counts each collection's documents. __DB__ stands for the database name,
+# which parse_entry has limited to characters that are safe in all three.
+readonly POSTGRES_COUNT_SQL="SELECT count(*), coalesce(sum((xpath('/row/c/text()', query_to_xml(format('SELECT count(*) AS c FROM %I.%I', table_schema, table_name), false, true, '')))[1]::text::bigint), 0) FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema NOT IN ('pg_catalog', 'information_schema')"
+# shellcheck disable=SC2016  # the backticks quote MariaDB identifiers
+readonly MARIADB_COUNT_SQL='SET SESSION group_concat_max_len = 16777216; SELECT COUNT(*), GROUP_CONCAT(CONCAT("SELECT COUNT(*) AS c FROM `", REPLACE(table_schema, "`", "``"), "`.`", REPLACE(table_name, "`", "``"), "`") SEPARATOR " UNION ALL ") INTO @n, @q FROM information_schema.tables WHERE table_schema = "__DB__" AND table_type = "BASE TABLE"; SET @q = IF(@n = 0, "SELECT 0, 0", CONCAT("SELECT ", @n, ", COALESCE(SUM(c), 0) FROM (", @q, ") AS t")); PREPARE s FROM @q; EXECUTE s;'
+readonly MONGODB_COUNT_JS='const d = db.getSiblingDB("__DB__"); const cs = d.getCollectionNames(); print(cs.length + " " + cs.reduce((n, c) => n + d.getCollection(c).countDocuments({}), 0));'
 # shellcheck disable=SC2016
 readonly MARIADB_PING_SCRIPT='tool=$(command -v mariadb-admin || command -v mysqladmin) && exec "$tool" ping -h 127.0.0.1 --silent'
 
@@ -861,8 +870,9 @@ wait_until_ready() {
 # Restores a dump into a throwaway container started from the source container's image.
 #
 # The container has no network and is removed afterwards. The dump counts as restorable when the tool
-# succeeds and the restored database holds at least one table or collection. The restore's own stdout is
-# discarded, since this function's output is the count. Every step returns on failure explicitly.
+# succeeds and the restored database holds at least one table or collection; the row count is reported
+# alongside, so a database that shrank shows in the log. The restore's own stdout is discarded, since this
+# function's output is the counts. Every step returns on failure explicitly.
 # Globals:
 #   DOCKER_BIN, MARIADB_CLIENT_SCRIPT, MARIADB_PING_SCRIPT
 # Arguments:
@@ -871,13 +881,13 @@ wait_until_ready() {
 #   errors:    Where to write the tools' stderr.
 #   throwaway: The name to give the container, which the caller has registered for removal.
 # Outputs:
-#   The number of tables or collections restored.
+#   "TABLES ROWS": the tables or collections restored, and the rows or documents they hold.
 # Returns:
-#   1 when the throwaway server or the restore fails.
+#   1 when the throwaway server or the restore fails, or nothing was restored.
 #######################################
 verify_in_container() {
   local -n ve="$1"
-  local dump="$2" errors="$3" throwaway="$4" image count
+  local dump="$2" errors="$3" throwaway="$4" image result tables rows
   image=$("${DOCKER_BIN}" inspect --format '{{.Config.Image}}' "${ve[2]}" 2>> "${errors}") || return 1
 
   case "${ve[0]}" in
@@ -887,35 +897,77 @@ verify_in_container() {
       # before the real one has started.
       wait_until_ready "${throwaway}" pg_isready -h 127.0.0.1 -U postgres -q || return 1
       "${DOCKER_BIN}" exec -i "${throwaway}" pg_restore -U postgres -d verify --no-owner --exit-on-error < "${dump}" >/dev/null 2>> "${errors}" || return 1
-      count=$("${DOCKER_BIN}" exec "${throwaway}" psql -U postgres -d verify -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema')" 2>> "${errors}") || return 1
+      result=$("${DOCKER_BIN}" exec "${throwaway}" psql -U postgres -d verify -tA -F ' ' -c "${POSTGRES_COUNT_SQL}" 2>> "${errors}") || return 1
       ;;
     mariadb)
       "${DOCKER_BIN}" run -d --rm --name "${throwaway}" --network none -e MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=1 -e MYSQL_ALLOW_EMPTY_PASSWORD=yes "${image}" >/dev/null 2>> "${errors}" || return 1
       wait_until_ready "${throwaway}" sh -c "${MARIADB_PING_SCRIPT}" || return 1
       gzip -dc "${dump}" | "${DOCKER_BIN}" exec -i "${throwaway}" sh -c "${MARIADB_CLIENT_SCRIPT}" sh >/dev/null 2>> "${errors}" || return 1
-      count=$("${DOCKER_BIN}" exec "${throwaway}" sh -c "${MARIADB_CLIENT_SCRIPT}" sh -N -e "SELECT count(*) FROM information_schema.tables WHERE table_schema = '${ve[3]}'" 2>> "${errors}") || return 1
+      result=$("${DOCKER_BIN}" exec "${throwaway}" sh -c "${MARIADB_CLIENT_SCRIPT}" sh -N -e "${MARIADB_COUNT_SQL//__DB__/${ve[3]}}" 2>> "${errors}") || return 1
       ;;
     mongodb)
       "${DOCKER_BIN}" run -d --rm --name "${throwaway}" --network none "${image}" >/dev/null 2>> "${errors}" || return 1
       wait_until_ready "${throwaway}" mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok' || return 1
       "${DOCKER_BIN}" exec -i "${throwaway}" mongorestore --quiet --archive --gzip < "${dump}" >/dev/null 2>> "${errors}" || return 1
-      count=$("${DOCKER_BIN}" exec "${throwaway}" mongosh --quiet --eval "db.getSiblingDB('${ve[3]}').getCollectionNames().length" 2>> "${errors}") || return 1
+      result=$("${DOCKER_BIN}" exec "${throwaway}" mongosh --quiet --eval "${MONGODB_COUNT_JS//__DB__/${ve[3]}}" 2>> "${errors}") || return 1
       ;;
   esac
 
-  count="${count//[[:space:]]/}"
-  if [[ ! "${count}" =~ ^[0-9]+$ ]] || (( count == 0 )); then
-    log_error "${ve[1]}: the restored database holds no tables (got '${count}')."
+  # The answer is the last line; anything a client prints before it is not part of it.
+  result="${result##*$'\n'}"
+  read -r tables rows <<<"${result}"
+  if [[ ! "${tables:-}" =~ ^[0-9]+$ || ! "${rows:-}" =~ ^[0-9]+$ ]] || (( tables == 0 )); then
+    log_error "${ve[1]}: the restored database holds no tables (got '${result}')."
     return 1
   fi
-  printf '%s' "${count}"
+  printf '%s %s' "${tables}" "${rows}"
+}
+
+#######################################
+# Prints how many tables a SQLite database holds and how many rows they hold together, as "TABLES ROWS".
+#
+# One query adds up a count per table. Virtual tables are left out, since counting one needs its module,
+# which this sqlite3 may lack; their contents live in ordinary shadow tables, which are counted. Table names
+# are SQL identifiers here, so their double quotes are doubled.
+# Globals:
+#   SQLITE_BIN
+# Arguments:
+#   file: The database.
+# Outputs:
+#   The two counts.
+# Returns:
+#   1 when sqlite3 cannot read it.
+#######################################
+sqlite_counts() {
+  local file="$1" sql="SELECT 0" table rows
+  local -a tables
+  mapfile -t tables < <("${SQLITE_BIN}" -readonly "${file}" "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\_%' ESCAPE '\' AND sql NOT LIKE 'CREATE VIRTUAL%'") || return 1
+  for table in "${tables[@]}"; do
+    sql+=" + (SELECT count(*) FROM \"${table//\"/\"\"}\")"
+  done
+  rows=$("${SQLITE_BIN}" -readonly "${file}" "${sql}") || return 1
+  printf '%s %s' "${#tables[@]}" "${rows}"
+}
+
+#######################################
+# Prints a count with its noun, singular or plural.
+# Arguments:
+#   count, singular, plural.
+#######################################
+plural() {
+  if (( $1 == 1 )); then
+    printf '%s %s' "$1" "$2"
+  else
+    printf '%s %s' "$1" "$3"
+  fi
 }
 
 #######################################
 # Proves an entry's newest dump restores.
 #
 # SQLite copies are checked with integrity_check, which reads every page. The server engines restore into
-# a throwaway container, which is removed again whatever happens.
+# a throwaway container, which is removed again whatever happens. Either way the log gives the tables and
+# rows restored, exact counts, so a database that shrank from one night to the next shows there.
 # Globals:
 #   DOCKER_BIN, _tmp_files, _verify_containers
 # Arguments:
@@ -925,7 +977,7 @@ verify_in_container() {
 #######################################
 verify_entry() {
   local -n ve2="$1"
-  local name="${ve2[1]}" dump errors raw count throwaway
+  local name="${ve2[1]}" dump errors raw counts tables rows throwaway
   dump=$(find_dump "$1" "") || return 1
   validate_dump "${ve2[0]}" "${dump}" || return 1
 
@@ -937,8 +989,10 @@ verify_entry() {
     _tmp_files+=("${raw}")
     gzip -dc "${dump}" > "${raw}" || return 1
     sqlite_check "${raw}" integrity_check || return 1
+    counts=$(sqlite_counts "${raw}") || { log_error "${name}: could not count the rows in ${dump}."; return 1; }
     rm -f -- "${raw}"
-    log_info "${name}: ${dump} passes SQLite's integrity check."
+    read -r tables rows <<<"${counts}"
+    log_info "${name}: ${dump} passes SQLite's integrity check, with $(plural "${tables}" table tables) and $(plural "${rows}" row rows)."
     return 0
   fi
 
@@ -946,14 +1000,19 @@ verify_entry() {
   # changes to the array would never reach the EXIT trap.
   throwaway="db-backup-verify-${name}-$$"
   _verify_containers+=("${throwaway}")
-  if ! count=$(verify_in_container "$1" "${dump}" "${errors}" "${throwaway}"); then
+  if ! counts=$(verify_in_container "$1" "${dump}" "${errors}" "${throwaway}"); then
     log_tool_output "${name}" "${errors}" true
     log_error "${name}: ${dump} did not restore into a throwaway container."
     "${DOCKER_BIN}" rm -f "${throwaway}" >/dev/null 2>&1 || true
     return 1
   fi
   "${DOCKER_BIN}" rm -f "${throwaway}" >/dev/null 2>&1 || true
-  log_info "${name}: ${dump} restores, with ${count} tables or collections."
+  read -r tables rows <<<"${counts}"
+  if [[ "${ve2[0]}" == mongodb ]]; then
+    log_info "${name}: ${dump} restores, with $(plural "${tables}" collection collections) and $(plural "${rows}" document documents)."
+  else
+    log_info "${name}: ${dump} restores, with $(plural "${tables}" table tables) and $(plural "${rows}" row rows)."
+  fi
 }
 
 #######################################

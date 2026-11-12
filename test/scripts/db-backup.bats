@@ -693,10 +693,10 @@ entries() {
 # --- verify ------------------------------------------------------------------------------------
 
 ########################################
-# Sets up the throwaway server the double pretends to run, with the given table count.
+# Sets up the throwaway server the double pretends to run, with the given counts.
 # Arguments:
-#   client: The tool that reports the count (psql, mariadb or mongosh).
-#   count:  What it reports.
+#   client: The tool that reports the counts (psql, mariadb or mongosh).
+#   counts: What it reports: "TABLES ROWS".
 ########################################
 throwaway_answers() {
   printf 'example/image:1\n' > "$STUB_FIXTURES/docker-cli.inspect.stdout"
@@ -706,29 +706,30 @@ throwaway_answers() {
 
 @test "verify restores a postgres dump into a throwaway container from the same image" {
   run_at "$WED"
-  throwaway_answers psql 27
+  throwaway_answers psql '27 149327'
   run_at "$WED" verify
   [ "$status" -eq 0 ]
   grep -q '^docker-cli run -d --rm --name db-backup-verify-app-[0-9]* --network none .* example/image:1$' "$STUB_CALLS"
   grep -q '^docker-cli exec -i db-backup-verify-app-[0-9]* pg_restore -U postgres -d verify --no-owner --exit-on-error$' "$STUB_CALLS"
   grep -q '^docker-cli rm -f db-backup-verify-app-[0-9]*$' "$STUB_CALLS"
-  [[ "$output" == *"restores, with 27 tables or collections"* ]]
+  [[ "$output" == *"restores, with 27 tables and 149327 rows"* ]]
+  grep -q "query_to_xml(format('SELECT count(\*) AS c FROM %I.%I'" "$STUB_CALLS"
   [ "$(cat "$STUB_FIXTURES/docker-cli.pg_restore.stdin")" = "PGDMP app dump" ]
 }
 
 @test "verify fails a dump that restores no tables, and still removes the container" {
   run_at "$WED"
-  throwaway_answers psql 0
+  throwaway_answers psql '0 0'
   run_at "$WED" verify
   [ "$status" -eq 1 ]
-  [[ "$output" == *"the restored database holds no tables (got '0')"* ]]
+  [[ "$output" == *"the restored database holds no tables (got '0 0')"* ]]
   grep -q '^docker-cli rm -f db-backup-verify-app-' "$STUB_CALLS"
   [[ "$output" == *"Verified 0 of 1 database(s); failed: app."* ]]
 }
 
 @test "verify gives up on a throwaway server that never becomes ready" {
   run_at "$WED"
-  throwaway_answers psql 27
+  throwaway_answers psql '27 149327'
   printf '1' > "$STUB_FIXTURES/docker-cli.pg_isready.fail"
   run_at "$WED" verify
   [ "$status" -eq 1 ]
@@ -738,7 +739,7 @@ throwaway_answers() {
 
 @test "verify reports a restore into the throwaway container that fails" {
   run_at "$WED"
-  throwaway_answers psql 27
+  throwaway_answers psql '27 149327'
   printf '1' > "$STUB_FIXTURES/docker-cli.pg_restore.fail"
   printf 'pg_restore: error: bad archive\n' > "$STUB_FIXTURES/docker-cli.pg_restore.stderr"
   run_at "$WED" verify
@@ -752,12 +753,15 @@ throwaway_answers() {
   mariadb_answers booksdb
   mongo_answers mediadb
   run_at "$WED"
-  throwaway_answers mariadb 12
-  printf '3\n' > "$STUB_FIXTURES/docker-cli.mongosh.stdout"
+  throwaway_answers mariadb $'12\t3400'
+  printf '3 10\n' > "$STUB_FIXTURES/docker-cli.mongosh.stdout"
   run_at "$WED" verify
   [ "$status" -eq 0 ]
-  [[ "$output" == *"books-2026-11-11.sql.gz restores, with 12 tables or collections"* ]]
-  [[ "$output" == *"media-2026-11-11.archive.gz restores, with 3 tables or collections"* ]]
+  [[ "$output" == *"books-2026-11-11.sql.gz restores, with 12 tables and 3400 rows"* ]]
+  [[ "$output" == *"media-2026-11-11.archive.gz restores, with 3 collections and 10 documents"* ]]
+  # The count queries name the entry's own database.
+  grep -q 'table_schema = "booksdb"' "$STUB_CALLS"
+  grep -q 'db.getSiblingDB("mediadb")' "$STUB_CALLS"
   grep -q 'MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=1' "$STUB_CALLS"
   grep -q '^docker-cli exec -i db-backup-verify-media-[0-9]* mongorestore --quiet --archive --gzip$' "$STUB_CALLS"
   # Each throwaway container is gone before the next one starts, not left for the end of the run.
@@ -773,7 +777,7 @@ throwaway_answers() {
   run_at "$WED"
   CONFIG_FILE="$CONF" DOCKER_BIN=no-such-docker run_script "$SCRIPT" verify
   [ "$status" -eq 0 ]
-  [[ "$output" == *"passes SQLite's integrity check"* ]]
+  [[ "$output" == *"passes SQLite's integrity check, with 1 table and 1 row"* ]]
 }
 
 @test "verify fails a sqlite copy that is not a database" {
@@ -838,6 +842,32 @@ throwaway_answers() {
   [ "$(grep -c "^made $scratch/" "$log")" -ge 4 ]
   [ -z "$(ls -A "$scratch")" ]
   [ -z "$(find "$ROOT/wiki" "$db_dir" -name '.wiki*')" ]
+}
+
+@test "verify counts every sqlite table's rows, whatever the table is called" {
+  local db="$BATS_TEST_TMPDIR/wiki.db"
+  sqlite3 "$db" "CREATE TABLE a(x); CREATE TABLE \"o\"\"dd name\"(y); INSERT INTO a VALUES (1), (2); INSERT INTO \"o\"\"dd name\" VALUES (3);" >/dev/null
+  write_conf "\"sqlite wiki $db\""
+  run_at "$WED"
+  run_at "$WED" verify
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"with 2 tables and 3 rows"* ]]
+}
+
+@test "verify fails when the restored database's counts cannot be read" {
+  run_at "$WED"
+  throwaway_answers psql 'not a number'
+  run_at "$WED" verify
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"holds no tables (got 'not a number')"* ]]
+}
+
+@test "verify reads the counts from the client's last line" {
+  run_at "$WED"
+  throwaway_answers psql $'NOTICE: something\n5 42'
+  run_at "$WED" verify
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"with 5 tables and 42 rows"* ]]
 }
 
 @test "verify of an entry with no dumps fails" {
