@@ -776,14 +776,48 @@ throwaway_answers() {
   [[ "$output" == *"passes SQLite's integrity check"* ]]
 }
 
-@test "verify fails a corrupt sqlite copy" {
+@test "verify fails a sqlite copy that is not a database" {
   make_sqlite "$BATS_TEST_TMPDIR/wiki.db" x
   write_conf "\"sqlite wiki $BATS_TEST_TMPDIR/wiki.db\""
   run_at "$WED"
   printf 'corrupt' | gzip > "$ROOT/wiki/daily/wiki-2026-11-11.sqlite.gz"
   run_at "$WED" verify
   [ "$status" -eq 1 ]
-  [[ "$output" == *"SQLite quick_check of"*"failed"* ]]
+  [[ "$output" == *"does not hold a SQLite database"* ]]
+}
+
+# The header check on a stored copy reads only its first bytes, so a copy whose header is intact and
+# whose body is not gets through it, and has to be caught by the full check verify and restore run.
+@test "verify and restore catch a sqlite copy with a good header and a corrupt body" {
+  local db="$BATS_TEST_TMPDIR/wiki.db"
+  make_sqlite "$db" original
+  write_conf "\"sqlite wiki $db\""
+  { printf 'SQLite format 3\0'; head -c 4096 /dev/zero | tr '\0' 'x'; } | gzip > "$BATS_TEST_TMPDIR/bad.sqlite.gz"
+  mkdir -p "$ROOT/wiki/daily"
+  cp "$BATS_TEST_TMPDIR/bad.sqlite.gz" "$ROOT/wiki/daily/wiki-2026-11-11.sqlite.gz"
+  run_at "$WED" verify
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"SQLite integrity_check of"*"failed"* ]]
+  run_at "$WED" -y restore wiki
+  [ "$status" -eq 1 ]
+  [ "$(sqlite3 "$db" 'SELECT v FROM t')" = "original" ]
+  [ -z "$(find "$BATS_TEST_TMPDIR" -maxdepth 1 -name '.wiki.db.restore.*')" ]
+}
+
+# A decompressed copy can be as large as the database, so nothing is written under TMPDIR. Pointing it at
+# a regular file makes any attempt fail, even as root.
+@test "a sqlite backup, verify and restore write nothing under TMPDIR" {
+  local db="$BATS_TEST_TMPDIR/wiki.db"
+  make_sqlite "$db" original
+  write_conf "\"sqlite wiki $db\""
+  touch "$BATS_TEST_TMPDIR/not-a-dir"
+  TMPDIR="$BATS_TEST_TMPDIR/not-a-dir" run_at "$WED"
+  [ "$status" -eq 0 ]
+  TMPDIR="$BATS_TEST_TMPDIR/not-a-dir" run_at "$WED" verify
+  [ "$status" -eq 0 ]
+  TMPDIR="$BATS_TEST_TMPDIR/not-a-dir" run_at "$WED" -y restore wiki
+  [ "$status" -eq 0 ]
+  [ -z "$(find "$ROOT/wiki" -name '.wiki.*')" ]
 }
 
 @test "verify of an entry with no dumps fails" {

@@ -247,7 +247,10 @@ sqlite_check() {
 #
 # Each check reads the format rather than trusting the exit status that produced it: a custom-format
 # Postgres dump starts with PGDMP, a MariaDB dump ends with mysqldump's completion line, a MongoDB archive
-# starts with its magic number, and a SQLite copy passes quick_check.
+# starts with its magic number, and a SQLite copy is an intact gzip stream holding a SQLite header. The
+# SQLite check writes nothing: the full integrity checks run where a decompressed copy has to exist anyway,
+# before gzip on backup and beside the target on restore, so a large database is not written out again
+# just to be read.
 # Arguments:
 #   engine: The entry's engine.
 #   file:   The dump.
@@ -255,7 +258,7 @@ sqlite_check() {
 #   1 when the file is not a complete dump for that engine.
 #######################################
 validate_dump() {
-  local engine="$1" file="$2" probe raw
+  local engine="$1" file="$2" probe
   case "${engine}" in
     postgres)
       probe=$(head -c 5 "${file}")
@@ -290,13 +293,36 @@ validate_dump() {
         log_error "${file} is not a gzipped SQLite copy."
         return 1
       fi
-      raw=$(mktemp "${TMPDIR:-/tmp}/db-backup-check.XXXXXX") || return 1
-      _tmp_files+=("${raw}")
-      gzip -dc "${file}" > "${raw}" || return 1
-      sqlite_check "${raw}" quick_check || return 1
-      rm -f -- "${raw}"
+      probe=$(gzip -dc "${file}" | head -c 15) || true
+      case "${probe}" in
+        "SQLite format 3") return 0 ;;
+      esac
+      log_error "${file} does not hold a SQLite database."
+      return 1
       ;;
   esac
+}
+
+#######################################
+# Creates a temporary file in an entry's daily directory.
+#
+# Every temporary file lives there rather than under TMPDIR: a decompressed copy can be as large as the
+# database, and the backup directory is where the space for it was planned, not the system's temporary
+# disk. A leftover there is also one remove_stale_temps finds.
+# Globals:
+#   BACKUP_DIR, _tmp_files
+# Arguments:
+#   name:   The entry's name.
+#   suffix: What the file is for, as part of its name.
+# Outputs:
+#   The file's path.
+# Returns:
+#   1 when it cannot be created.
+#######################################
+entry_mktemp() {
+  local name="$1" suffix="$2" dir="${BACKUP_DIR}/$1/daily"
+  mkdir -p "${dir}" || return 1
+  mktemp "${dir}/.${name}.${suffix}.XXXXXX"
 }
 
 #######################################
@@ -774,7 +800,7 @@ restore_entry() {
   validate_dump "${re[0]}" "${dump}" || { log_error "${name}: not restoring from a dump that fails its check."; return 1; }
   confirm_restore "$1" "${dump}" || return 1
 
-  errors=$(mktemp "${TMPDIR:-/tmp}/db-backup-restore.XXXXXX") || return 1
+  errors=$(entry_mktemp "${name}" err) || return 1
   _tmp_files+=("${errors}")
   log_info "${name}: restoring from ${dump}."
   case "${re[0]}" in
@@ -896,11 +922,11 @@ verify_entry() {
   dump=$(find_dump "$1" "") || return 1
   validate_dump "${ve2[0]}" "${dump}" || return 1
 
-  errors=$(mktemp "${TMPDIR:-/tmp}/db-backup-verify.XXXXXX") || return 1
+  errors=$(entry_mktemp "${name}" err) || return 1
   _tmp_files+=("${errors}")
 
   if [[ "${ve2[0]}" == sqlite ]]; then
-    raw=$(mktemp "${TMPDIR:-/tmp}/db-backup-verify-db.XXXXXX") || return 1
+    raw=$(entry_mktemp "${name}" verify) || return 1
     _tmp_files+=("${raw}")
     gzip -dc "${dump}" > "${raw}" || return 1
     sqlite_check "${raw}" integrity_check || return 1

@@ -20,6 +20,7 @@ Backs up Postgres, MariaDB, MongoDB and SQLite databases with a daily, weekly an
 * `docker`, for Postgres, MariaDB and MongoDB, with a user able to run `docker exec`
 * `sqlite3` 3.27+, for SQLite
 * `gzip`
+* Room in `BACKUP_DIR` for a decompressed copy of the largest SQLite database, which backup, verify and restore write there rather than under `TMPDIR`
 
 ### Usage
 
