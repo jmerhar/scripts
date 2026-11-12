@@ -27,21 +27,23 @@ _C_RESET=""
 # Fills in the colour variables, unless colour is switched off or output is not a terminal.
 #
 # The whole palette is defined at once rather than per script: a script that gains a colour should not have
-# to add it here, and the unused ones cost nothing. Whether colour is wanted is the caller's decision, so
-# it is an argument — the scripts spell that flag differently (`_no_color`, `_opt_no_color`), and reading a
-# global by name from here would make the library depend on each script's naming.
+# to add it here, and the unused ones cost nothing. Whether colour is turned off is the caller's decision,
+# so it is an argument — the scripts spell their --no-color flag differently (`_no_color`, `_opt_no_color`),
+# and reading a global by name from here would make the library depend on each script's naming. The
+# argument is that flag itself, so a script passes its own variable unchanged.
 #
 # A pipe or a file gets no escape codes, which is what keeps them out of logs and out of anything parsing
 # the output.
 # Globals:
 #   _C_RED, _C_GREEN, _C_BRIGHT_GREEN, _C_YELLOW, _C_CYAN, _C_MAGENTA, _C_WHITE, _C_DIM, _C_BOLD, _C_RESET
 # Arguments:
-#   wanted: "false" to leave the palette empty; anything else enables it. Defaults to enabled.
+#   no_color: "true" to leave the palette empty, as --no-color asks; anything else allows colour.
+#             Defaults to allowing it.
 ########################################
 setup_colors() {
-  local wanted="${1:-true}"
+  local no_color="${1:-false}"
 
-  if [[ "${wanted}" == false ]]; then
+  if [[ "${no_color}" == true ]]; then
     return
   fi
   if [[ ! -t 1 ]]; then

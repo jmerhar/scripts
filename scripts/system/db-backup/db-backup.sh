@@ -992,12 +992,8 @@ check_tools() {
 #######################################
 main() {
   parse_options "$@"
-  local want_color=true
-  if [[ "${_no_color}" == true ]]; then
-    want_color=false
-    disable_log_colors
-  fi
-  setup_colors "${want_color}"
+  setup_colors "${_no_color}"
+  [[ "${_no_color}" == true ]] && disable_log_colors
   load_config || { log_error "Configuration file not found."; exit 1; }
   validate_config "BACKUP_DIR" "int:KEEP_DAILY" "int:KEEP_WEEKLY" "int:KEEP_MONTHLY" "array:DATABASES" || exit 1
 

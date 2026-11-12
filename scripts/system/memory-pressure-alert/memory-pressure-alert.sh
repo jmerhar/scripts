@@ -553,7 +553,7 @@ uninstall_agent() {
 #   0 healthy or reported, 2 alert raised. Usage errors exit 1 via die_usage.
 ########################################
 main() {
-  local opt_report=false opt_no_notify=false wanted_color=auto
+  local opt_report=false opt_no_notify=false no_color=false
   # CLI values are held separately from the config globals and applied after the
   # config is read. Writing them straight into the globals would let the config
   # file silently overwrite an explicit flag, since it is loaded afterwards.
@@ -599,7 +599,7 @@ main() {
         shift 2
         ;;
       --no-color)
-        wanted_color=never
+        no_color=true
         shift
         ;;
       -d|--debug)
@@ -607,7 +607,7 @@ main() {
         shift
         ;;
       -h|--help)
-        setup_colors "${wanted_color}"
+        setup_colors "${no_color}"
         show_usage
         return 0
         ;;
@@ -616,13 +616,13 @@ main() {
         return 0
         ;;
       *)
-        setup_colors "${wanted_color}"
+        setup_colors "${no_color}"
         die_usage "Unknown option '$1'."
         ;;
     esac
   done
 
-  setup_colors "${wanted_color}"
+  setup_colors "${no_color}"
 
   # Handled before the config is read, because installing the agent does not
   # depend on any threshold: the agent reads the config itself at each run.

@@ -135,7 +135,7 @@ and using what it sources. See [`bin/README.md`](bin/README.md).
 | `core.sh` | `SCRIPT_NAME`, `SCRIPT_VERSION` and `show_version`, the install prefix, `log_info`/`log_warn`/`log_error`/`log_debug` (and their writer `log_message`), `disable_log_colors`, `enable_debug_mode`, `default_log_file`, `log_command` |
 | `config.sh` | `load_config`, `load_optional_config`, `validate_config` — needs `core.sh` |
 | `program.sh` | `load_program` — needs `core.sh` |
-| `colors.sh` | the `_C_*` palette and `setup_colors <wanted>` |
+| `colors.sh` | the `_C_*` palette and `setup_colors <no_color>` |
 | `platform.sh` | `stat_size`, `stat_mtime`, `stat_mtime_iso`, `stat_links`, `stat_owner`, `stat_mode`, `file_checksum`, `has_checksum_tool` — the GNU/BSD differences |
 | `prompt.sh` | `prompt_line` and `prompt_key` — needs `colors.sh` |
 | `lang.sh` | the ISO 639 table, `normalize_lang`, `lang_from_tokens` |
@@ -147,9 +147,10 @@ double-source guard, which is what makes that safe at development time — and w
 file exactly once: a guard inlined twice puts a `return` at the top level of the published script, where it
 is an error, and the script would exit 2 before doing anything.
 
-Three of those exist to keep one answer to a question several scripts ask. `colors.sh` takes the
-"colour wanted" flag as an **argument**, not as a global it reads by name, so each script may spell its own
-option however it likes. `platform.sh` hides the GNU/BSD `stat` split, which is the one difference that would
+Three of those exist to keep one answer to a question several scripts ask. `colors.sh` takes the script's
+`--no-color` flag as an **argument**, passed unchanged, not as a global it reads by name, so each script may
+spell its own option however it likes; `test/shared/lib-colors.bats` checks every caller passes that flag,
+and runs the library in a pseudo-terminal, the only place colour shows. `platform.sh` hides the GNU/BSD `stat` split, which is the one difference that would
 otherwise break every script on one of the two platforms this repository publishes to. `prompt.sh` offers two
 prompts under names that say which is which: `prompt_line` treats end-of-input as an empty answer, so a
 caller's default applies; `prompt_key` passes it back, because a script looping over candidates with nothing
