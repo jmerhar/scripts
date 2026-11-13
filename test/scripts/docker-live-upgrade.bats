@@ -84,8 +84,8 @@ host_path() {
 }
 
 ########################################
-# Writes the docker double. It answers exactly the calls the script makes: info, ps, inspect, start
-# and restart. start and restart give the container a new start time, a new PID and a healthy status,
+# Writes the docker double. It answers exactly the calls the script makes: info, ps, inspect (by ID or
+# by name), start and restart. start and restart give the container a new start time, a new PID and a healthy status,
 # unless a fixture under $FAKE says the start fails, the container exits, or it never becomes healthy.
 # inspect reports a container as starting while $FAKE/starting-<id> counts down, logging when it ends.
 # ps fails when $FAKE/ps-fails exists.
@@ -109,6 +109,17 @@ case "$1" in
     ;;
   inspect)
     id="${*: -1}" f="$FAKE/state/${*: -1}"
+    # Like Docker, a name finds the container that carries it.
+    if [[ ! -e "$f" ]]; then
+      for g in "$FAKE/state"/*; do
+        [[ -e "$g" ]] || continue
+        IFS='|' read -r gid gname _ <"$g"
+        if [[ "$gname" == "/$id" ]]; then
+          id="$gid" f="$g"
+          break
+        fi
+      done
+    fi
     [[ -e "$f" ]] || exit 1
     # $FAKE/crash-after-<id> holds how many more lookups find the container running before it exits.
     if [[ -e "$FAKE/crash-after-$id" ]]; then
@@ -1019,6 +1030,48 @@ printf "bbb|/db|exited|t2|0|none|<no value>||<no value>\n" > "$FAKE/state/bbb"'
   dlu_run
   [ "$status" -eq 3 ]
   [[ "$output" == *"web no longer exists"* ]]
+}
+
+# A deploy alongside the command (`docker compose up -d`) removes the container and creates a new one
+# under the same name, which the snapshot never saw.
+@test "a container replaced during the run by one that is running is reported, not failed" {
+  container aaa web running t1 9999901
+  container ccc db running t3 9999903
+  upgrade_does 'rm "$FAKE/state/aaa"; printf "bbb|/web|running|t9|9999950|healthy|<no value>||<no value>\n" > "$FAKE/state/bbb"'
+  dlu_run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"web was replaced during the run, and the new container is running."* ]]
+  [[ "$output" == *"All 2 containers are running: 1 live-restored, 1 replaced during the run (web)."* ]]
+  [[ "$output" != *"[ERROR]"* ]]
+  [ "$(count_calls '^docker start\|^docker restart')" -eq 0 ]
+}
+
+@test "a replacement that has exited fails the run" {
+  container aaa web running t1 9999901
+  upgrade_does 'rm "$FAKE/state/aaa"; printf "bbb|/web|exited|t9|0|none|<no value>||<no value>\n" > "$FAKE/state/bbb"'
+  dlu_run
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"web was replaced during the run, but the new container is not running and healthy"* ]]
+  [[ "$output" == *"1 of 1 containers need attention: web."* ]]
+}
+
+@test "a replacement that never becomes healthy fails the run" {
+  printf 'HEALTH_TIMEOUT=1\n' >> "$CONF"
+  container aaa web running t1 9999901
+  upgrade_does 'rm "$FAKE/state/aaa"; printf "bbb|/web|running|t9|9999950|unhealthy|<no value>||<no value>\n" > "$FAKE/state/bbb"'
+  dlu_run
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"not running and healthy after 1s"* ]]
+}
+
+@test "a replaced container whose old process lives on is a failure, and the process is not signalled" {
+  container aaa web running t1 9999901
+  process 9999901 aaa
+  upgrade_does 'rm "$FAKE/state/aaa"; printf "bbb|/web|running|t9|9999950|healthy|<no value>||<no value>\n" > "$FAKE/state/bbb"'
+  dlu_run
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"web was replaced during the run, but its old process 9999901 is still running outside Docker's control."* ]]
+  [ "$(count_calls '^kill ')" -eq 0 ]
 }
 
 @test "the process of a container removed during the command is named, not signalled" {

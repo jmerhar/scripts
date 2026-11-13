@@ -43,6 +43,9 @@ container run with `--pid=host` has no namespace of its own, so its other proces
   after-hook receives the outcome.
 - Turns live-restore on for the length of the run when it is off, and puts it back afterwards; see
   [Live-restore](#live-restore).
+- Tells a container that something else replaced during the run, such as a `docker compose up -d`
+  deploy, from one that was lost: a running container under the same name is reported as replaced, not
+  as a failure.
 - Distinct exit codes for restored, repaired, failed and command-failed.
 
 ### Requirements
@@ -179,7 +182,7 @@ POST_HOOK='curl -fsS -d "$DOCKER_LIVE_UPGRADE_SUMMARY" https://ntfy.example/dock
 
 | Code | Meaning |
 |---|---|
-| `0` | Every container was live-restored. |
+| `0` | Every container was live-restored, or was replaced during the run by one that is running. |
 | `1` | Invalid arguments or configuration, not root, Docker unreachable, or live-restore could not be turned on. Nothing was run. |
 | `2` | Some containers were restarted, by the daemon or by this script, and all are running again. |
 | `3` | Some containers could not be brought back, or the daemon did not return. |

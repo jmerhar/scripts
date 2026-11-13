@@ -94,6 +94,9 @@ _to_start=()
 _to_restart=()
 _repaired=()
 _failed=()
+# Recorded containers that something else replaced during the run, with a running container of the same
+# name.
+_replaced=()
 # Containers restarted because something they are tied to was restarted; also listed in _to_restart.
 _followers=()
 # Restored containers restarted because a socket they bind-mount was replaced; also in _to_restart.
@@ -748,22 +751,70 @@ terminate_orphan() {
 }
 
 ########################################
+# Check whether a recorded container that is gone by ID was replaced during the run.
+#
+# A deploy running alongside the command (`docker compose up -d`) removes a container and creates a new one
+# under the same name. Docker names are unique, so a container with the recorded name and a different ID
+# was created after the recorded one went. It counts as replaced once it is running and, if it has a
+# healthcheck, healthy.
+# Globals:
+#   _name
+# Arguments:
+#   The recorded container's ID.
+# Returns:
+#   0 when a replacement is running, 1 when no container has the name, 2 when the replacement is not
+#   running and healthy within HEALTH_TIMEOUT.
+########################################
+find_replacement() {
+  local id="$1" line new_id rest
+  line=$(inspect_container "${_name[${id}]}") || return 1
+  IFS='|' read -r new_id rest <<<"${line}"
+  if [[ "${new_id}" == "${id}" ]]; then
+    return 1
+  fi
+  wait_until_ready "${new_id}" || return 2
+}
+
+########################################
 # Compare every recorded container with its state now, and sort it into an outcome.
+# A container gone by ID is either replaced, when find_replacement finds a running one by its name and
+# its old process is not left behind, or failed.
 # Globals:
 #   _ids, _name, _started, _pid, _restored, _daemon_restarted, _orphans, _to_start, _to_restart,
-#   _failed
+#   _replaced, _failed, HEALTH_TIMEOUT
 ########################################
 verify_containers() {
-  local id line name status started pid health label parent stop
+  local id line name status started pid health label parent stop replacement
   for id in "${_ids[@]}"; do
     if ! line=$(inspect_container "${id}"); then
-      log_error "${_name[${id}]} no longer exists; it cannot be restored."
-      # With no container left to start, the orphan is not stopped automatically: whatever replaces the
-      # container is unknown here, so the process is named for someone to decide about.
+      replacement=0
+      find_replacement "${id}" || replacement=$?
+      # With no container of its own left, an orphan is never stopped automatically, replaced or not:
+      # the process is named for someone to decide about, since it may hold what the new container needs.
       if is_orphan "${id}" "${_pid[${id}]}"; then
-        log_error "its process ${_pid[${id}]} is still running outside Docker's control."
+        if (( replacement == 0 )); then
+          log_error "${_name[${id}]} was replaced during the run, but its old process ${_pid[${id}]} is still running outside Docker's control."
+        else
+          log_error "${_name[${id}]} no longer exists; it cannot be restored."
+          log_error "its process ${_pid[${id}]} is still running outside Docker's control."
+        fi
+        _failed+=("${id}")
+        continue
       fi
-      _failed+=("${id}")
+      case "${replacement}" in
+        0)
+          log_info "${_name[${id}]} was replaced during the run, and the new container is running."
+          _replaced+=("${id}")
+          ;;
+        2)
+          log_error "${_name[${id}]} was replaced during the run, but the new container is not running and healthy after ${HEALTH_TIMEOUT}s."
+          _failed+=("${id}")
+          ;;
+        *)
+          log_error "${_name[${id}]} no longer exists; it cannot be restored."
+          _failed+=("${id}")
+          ;;
+      esac
       continue
     fi
     IFS='|' read -r id name status started pid health label parent stop _ <<<"${line}"
@@ -1074,8 +1125,8 @@ names_of() {
 # Print the run's one-line outcome: a verdict first, then how every recorded container got there, in
 # counts that add up to the total. Failed containers are named; the rest are named in earlier lines.
 # Globals:
-#   _ids, _restored, _daemon_restarted, _to_start, _orphans, _stale, _followers, _repaired, _failed,
-#   _name, _command
+#   _ids, _restored, _daemon_restarted, _to_start, _orphans, _stale, _followers, _repaired, _replaced,
+#   _failed, _name, _command
 # Arguments:
 #   The command's exit status.
 # Outputs:
@@ -1107,6 +1158,7 @@ summarise() {
   (( orphaned == 0 )) || accounting+=", ${orphaned} restarted after an orphaned process was stopped"
   (( socket == 0 )) || accounting+=", ${socket} restarted onto a new socket"
   (( tied == 0 )) || accounting+=", ${tied} restarted with a container they are tied to"
+  (( ${#_replaced[@]} == 0 )) || accounting+=", ${#_replaced[@]} replaced during the run ($(names_of "${_replaced[@]}"))"
   if (( ${#failed[@]} == 0 )); then
     line="All ${total} containers are running: ${accounting}."
   else
