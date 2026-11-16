@@ -400,7 +400,7 @@ Line coverage is measured by kcov and published to
 gate and how to run it — the `command` (`bin/coverage/measure.sh`), the container's `packages`, `requires`,
 `min_bash` and the container-only `setup` (`bin/coverage/setup.sh`) — and the runner, reporting and gate
 are shared tooling from [jmerhar/coverage](https://github.com/jmerhar/coverage): its `run-kcov.sh`, fetched
-into `.coverage-tooling/` by `make coverage-tooling`, and its actions in CI. Do not reintroduce a runner
+into `.devtools/coverage/` by `make coverage-tooling`, and its actions in CI. Do not reintroduce a runner
 of this repository's own. Several things about it are not obvious:
 
 - **The kcov seam lives in `test/test_helper.bash` and nowhere else.** `run_script`, `run_func` and
@@ -478,6 +478,14 @@ Run the packager directly:
 Output lands in `./dist/tarballs/`, `./dist/homebrew/`, and `./dist/debian/`.
 
 Requires [yq](https://github.com/mikefarah/yq) to be installed.
+
+## Shared tooling
+
+`help`, `devtools-update`, `coverage-tooling` and `devtools-check` come from jmerhar/devtools,
+pinned in `devtools.toml` and fetched into `.devtools/` by `tools/devtools-fetch.sh`, which is a
+vendored copy and lives outside `bin/` so this repository's lint rules leave it alone.
+`.github/dependabot.yml` and `codecov.yml` are generated from `devtools.toml` and `coverage.toml`:
+edit those and run `make devtools-fix`; `make check` and the Lint workflow fail when they drift.
 
 ## Shell Script Conventions
 

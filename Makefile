@@ -1,12 +1,12 @@
-.PHONY: compile coverage-tooling docs docs-check help install lint published smoke test test-ci test-coverage coverage check clean
+.PHONY: compile docs docs-check install lint published smoke test test-ci test-coverage coverage check clean
 
-help: ## Show available commands
-	@grep -E '^[a-zA-Z_-]+:.*##|^##@' $(MAKEFILE_LIST) | \
-		awk 'BEGIN {FS = ":.*## "}; /^##@/ {printf "\n\033[1m%s\033[0m\n", substr($$0, 5); next} {printf "  \033[36mmake %-14s\033[0m %s\n", $$1, $$2}'
-
-# Defined here so `coverage-tooling` (which fetches into it), the coverage targets (which run from it) and
-# `clean` see one name.
-COVERAGE_TOOLING := .coverage-tooling
+# help, devtools-update, coverage-tooling and devtools-check come from jmerhar/devtools; make
+# fetches them on the first run and whenever devtools.toml changes.
+.DEFAULT_GOAL := help
+DEVTOOLS_FETCH := tools/devtools-fetch.sh
+include .devtools/make/devtools.mk
+.devtools/make/devtools.mk: devtools.toml $(DEVTOOLS_FETCH)
+	$(DEVTOOLS_FETCH)
 
 ##@ Setup
 
@@ -71,20 +71,6 @@ test: ## Run the bats suite
 test-ci: ## Run the suite with the environment CI has
 	bin/test/run-suite.sh --ci
 
-# The kcov runner, the summary and the gate are shared tooling from jmerhar/coverage, configured by
-# coverage.toml. Fetched rather than vendored, so a local run does exactly what CI does, and kept side by
-# side because run-kcov.sh finds coverage-report.py in its own directory. Refreshed on every run rather
-# than only when absent: v1 moves within its major version, so a cached copy would drift from what CI
-# enforces. -z makes an unchanged file cost a 304, and a failed request falls back to the copy already on
-# disk, so this still works offline.
-coverage-tooling: ## Fetch the shared coverage tooling (run automatically by `make coverage`)
-	@mkdir -p $(COVERAGE_TOOLING)
-	@for f in coverage-report.py run-kcov.sh; do \
-		curl -fsSL -z $(COVERAGE_TOOLING)/$$f -o $(COVERAGE_TOOLING)/$$f \
-			https://raw.githubusercontent.com/jmerhar/coverage/v1/bin/$$f \
-			|| test -f $(COVERAGE_TOOLING)/$$f || exit 1; \
-	done
-
 # Measured in the pinned kcov container, even locally (`local = false` in coverage.toml), so this needs
 # Docker: the scripts branch on the platform, the coreutils flavour and root, and a Mac would measure
 # different lines from the Linux container CI publishes.
@@ -94,9 +80,9 @@ test-coverage: coverage-tooling ## Run the suite under kcov without gating (writ
 coverage: test-coverage ## Run the suite under kcov and enforce the coverage gate
 	python3 $(COVERAGE_TOOLING)/coverage-report.py --gate
 
-check: lint test-ci published ## Lint + tests + published form (gate a commit on this)
+check: lint test-ci published devtools-check ## Lint + tests + published form (gate a commit on this)
 
 ##@ Housekeeping
 
 clean: ## Remove build and coverage artefacts (all regenerable)
-	rm -rf dist coverage junit $(COVERAGE_TOOLING)
+	rm -rf dist coverage junit

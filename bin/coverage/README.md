@@ -1,6 +1,6 @@
 # `bin/coverage/` — coverage hooks
 
-The runner itself is shared: jmerhar/coverage's `run-kcov.sh` (fetched into `.coverage-tooling/` by
+The runner itself is shared: jmerhar/coverage's `run-kcov.sh` (fetched into `.devtools/coverage/` by
 `make coverage-tooling`, and the `kcov` action in CI) reads the suite in `coverage.toml` and calls these.
 
 | Script | Role |

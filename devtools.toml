@@ -1,0 +1,17 @@
+# Shared tooling from jmerhar/devtools, fetched into .devtools/ by tools/devtools-fetch.sh, which
+# sits outside bin/ because everything under bin/ follows this repository's own lint rules.
+[fetch]
+ref = "v1"
+files = ["make/devtools.mk", "bin/devtools-check.py", "fetch/devtools-fetch.sh"]
+coverage = true
+
+[check]
+fetcher = "tools/devtools-fetch.sh"
+
+# .github/dependabot.yml is generated from the [dependabot] table by `make devtools-fix`, and
+# codecov.yml from coverage.toml and the table below; with no [dependabot] table, Dependabot
+# updates the GitHub Actions alone.
+[codecov]
+# kcov measures inside its container, which mounts the repository at /src; stripping that prefix
+# lines the paths up with the repository as Codecov sees it.
+fixes = ["/src/::"]

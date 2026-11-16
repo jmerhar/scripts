@@ -103,3 +103,13 @@ jobs:
           test -d dist/homebrew && ls dist/homebrew/*.rb
           test -d dist/tarballs && ls dist/tarballs/*.tar.gz
           test -d dist/debian && ls dist/debian/*.deb
+
+  devtools-check:
+    name: In step with devtools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # The vendored fetcher and the generated dependabot.yml and codecov.yml match devtools.
+      - name: devtools-check
+        run: tools/devtools-fetch.sh && python3 .devtools/bin/devtools-check.py
