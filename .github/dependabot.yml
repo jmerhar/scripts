@@ -2,9 +2,10 @@
 # table rather than this file, which `devtools-check.py` compares with what it generates.
 #
 # Weekly updates: per ecosystem, one pull request of minor and patch releases and one
-# of majors, which waits for a hand migration. A release is taken once it is three days
-# old, so a hijacked version has usually been pulled before an update proposes it; the
-# packages released from the same hands are taken at once.
+# of majors. A -majors group waits for a hand migration; a -majors-auto group is merged
+# once its checks pass. A release is taken once it is three days old, so a hijacked
+# version has usually been pulled before an update proposes it; the packages released
+# from the same hands are taken at once.
 version: 2
 updates:
   - package-ecosystem: "github-actions"
@@ -20,7 +21,7 @@ updates:
         update-types:
           - "minor"
           - "patch"
-      actions-majors:
+      actions-majors-auto:
         patterns:
           - "*"
         update-types:
